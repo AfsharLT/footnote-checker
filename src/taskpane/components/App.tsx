@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useState } from "react";
 import { Button, makeStyles, tokens } from "@fluentui/react-components";
-import { readFootnotes } from "../taskpane";
+import { FootnoteSnapshot, readFootnotes } from "../taskpane";
 
 const useStyles = makeStyles({
   root: {
@@ -64,7 +64,7 @@ const useStyles = makeStyles({
     fontWeight: tokens.fontWeightSemibold,
   },
   resultText: {
-    margin: 0,
+    margin: "4px 0 0",
     color: tokens.colorNeutralForeground1,
     fontSize: tokens.fontSizeBase300,
     lineHeight: tokens.lineHeightBase400,
@@ -82,7 +82,7 @@ const useStyles = makeStyles({
 
 const App: React.FC = () => {
   const styles = useStyles();
-  const [footnotes, setFootnotes] = useState<string[]>([]);
+  const [footnotes, setFootnotes] = useState<FootnoteSnapshot[]>([]);
   const [message, setMessage] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
@@ -93,10 +93,10 @@ const App: React.FC = () => {
     setMessage("");
 
     try {
-      const footnoteTexts = await readFootnotes();
-      setFootnotes(footnoteTexts);
+      const footnoteSnapshots = await readFootnotes();
+      setFootnotes(footnoteSnapshots);
 
-      if (footnoteTexts.length === 0) {
+      if (footnoteSnapshots.length === 0) {
         setMessage("Das Dokument enthält keine Fußnoten.");
       }
     } catch (error) {
@@ -128,10 +128,16 @@ const App: React.FC = () => {
         </Button>
         <section className={styles.results} aria-label="Ergebnisse" aria-live="polite">
           {message && <p className={hasError ? styles.error : styles.message}>{message}</p>}
-          {footnotes.map((footnote, index) => (
-            <article className={styles.resultItem} key={index}>
-              <h2 className={styles.resultTitle}>Fußnote {index + 1}</h2>
-              <p className={styles.resultText}>{footnote}</p>
+          {footnotes.map((footnote) => (
+            <article className={styles.resultItem} key={footnote.id}>
+              <h2 className={styles.resultTitle}>Fußnote {footnote.ordinal}</h2>
+              <p className={styles.resultText}>ID: {footnote.id}</p>
+              <p className={styles.resultText}>
+                Label: {footnote.displayLabel || "Nicht verfügbar"}
+              </p>
+              <p className={styles.resultText}>Text: {footnote.contentText}</p>
+              <p className={styles.resultText}>Länge: {footnote.contentLength}</p>
+              <p className={styles.resultText}>Hash: {footnote.originalTextHash}</p>
             </article>
           ))}
         </section>
