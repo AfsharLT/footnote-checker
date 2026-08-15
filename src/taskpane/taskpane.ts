@@ -1,14 +1,18 @@
-/* global Word console */
+/* global Office, Word */
 
-export async function insertText(text: string) {
-  // Write text to the document.
-  try {
-    await Word.run(async (context) => {
-      let body = context.document.body;
-      body.insertParagraph(text, Word.InsertLocation.end);
-      await context.sync();
-    });
-  } catch (error) {
-    console.log("Error: " + error);
+export async function readFootnotes(): Promise<string[]> {
+  if (!Office.context.requirements.isSetSupported("WordApi", "1.5")) {
+    throw new Error(
+      "Diese Word-Version unterstützt das Auslesen von Fußnoten nicht (WordApi 1.5 erforderlich)."
+    );
   }
+
+  return Word.run(async (context) => {
+    const footnotes = context.document.body.footnotes;
+    footnotes.load({ body: { text: true } });
+
+    await context.sync();
+
+    return footnotes.items.map((footnote) => footnote.body.text);
+  });
 }

@@ -1,5 +1,7 @@
 import * as React from "react";
+import { useState } from "react";
 import { Button, makeStyles, tokens } from "@fluentui/react-components";
+import { readFootnotes } from "../taskpane";
 
 const useStyles = makeStyles({
   root: {
@@ -41,24 +43,98 @@ const useStyles = makeStyles({
   results: {
     minHeight: "180px",
     marginTop: "24px",
+    padding: "20px",
+    boxSizing: "border-box",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
     borderRadius: tokens.borderRadiusMedium,
     backgroundColor: tokens.colorNeutralBackground1,
+  },
+  resultItem: {
+    ":not(:last-child)": {
+      marginBottom: "24px",
+      paddingBottom: "24px",
+      borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
+    },
+  },
+  resultTitle: {
+    margin: "0 0 8px",
+    color: "#12355b",
+    fontSize: tokens.fontSizeBase400,
+    lineHeight: tokens.lineHeightBase400,
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  resultText: {
+    margin: 0,
+    color: tokens.colorNeutralForeground1,
+    fontSize: tokens.fontSizeBase300,
+    lineHeight: tokens.lineHeightBase400,
+    whiteSpace: "pre-wrap",
+  },
+  message: {
+    margin: 0,
+    color: tokens.colorNeutralForeground2,
+  },
+  error: {
+    margin: 0,
+    color: tokens.colorPaletteRedForeground1,
   },
 });
 
 const App: React.FC = () => {
   const styles = useStyles();
+  const [footnotes, setFootnotes] = useState<string[]>([]);
+  const [message, setMessage] = useState<string>("");
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [hasError, setHasError] = useState<boolean>(false);
+
+  const handleReadFootnotes = async () => {
+    setIsLoading(true);
+    setHasError(false);
+    setMessage("");
+
+    try {
+      const footnoteTexts = await readFootnotes();
+      setFootnotes(footnoteTexts);
+
+      if (footnoteTexts.length === 0) {
+        setMessage("Das Dokument enthält keine Fußnoten.");
+      }
+    } catch (error) {
+      setFootnotes([]);
+      setHasError(true);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Die Fußnoten konnten nicht ausgelesen werden. Bitte versuchen Sie es erneut."
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <main className={styles.root}>
       <div className={styles.content}>
         <h1 className={styles.title}>Footnote Checker</h1>
         <p className={styles.description}>Analyse und Prüfung juristischer Fußnoten</p>
-        <Button className={styles.button} appearance="primary" size="large">
-          Fußnoten auslesen
+        <Button
+          className={styles.button}
+          appearance="primary"
+          size="large"
+          disabled={isLoading}
+          onClick={handleReadFootnotes}
+        >
+          {isLoading ? "Fußnoten werden ausgelesen …" : "Fußnoten auslesen"}
         </Button>
-        <section className={styles.results} aria-label="Ergebnisse" />
+        <section className={styles.results} aria-label="Ergebnisse" aria-live="polite">
+          {message && <p className={hasError ? styles.error : styles.message}>{message}</p>}
+          {footnotes.map((footnote, index) => (
+            <article className={styles.resultItem} key={index}>
+              <h2 className={styles.resultTitle}>Fußnote {index + 1}</h2>
+              <p className={styles.resultText}>{footnote}</p>
+            </article>
+          ))}
+        </section>
       </div>
     </main>
   );
