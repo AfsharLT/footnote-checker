@@ -1,6 +1,8 @@
 import * as React from "react";
-import { useState } from "react";
-import { Button, makeStyles, tokens } from "@fluentui/react-components";
+import { useMemo, useState } from "react";
+import { Button, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
+import { analyzeFootnotes } from "../../footnote-engine/engine";
+import type { Finding, FootnoteEngineResult } from "../../footnote-engine/types";
 import {
   CharacterFormat,
   DocumentFormattingSnapshot,
@@ -123,6 +125,10 @@ const useStyles = makeStyles({
       borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
     },
   },
+  findingResultItem: {
+    paddingLeft: "16px",
+    borderLeft: `4px solid ${tokens.colorPaletteRedBorder2}`,
+  },
   resultTitle: {
     margin: "0 0 8px",
     color: "#12355b",
@@ -136,6 +142,35 @@ const useStyles = makeStyles({
     fontSize: tokens.fontSizeBase300,
     lineHeight: tokens.lineHeightBase400,
     whiteSpace: "pre-wrap",
+  },
+  findingCount: {
+    margin: "4px 0 12px",
+    color: tokens.colorPaletteRedForeground1,
+    fontSize: tokens.fontSizeBase300,
+    lineHeight: tokens.lineHeightBase400,
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  findingItem: {
+    margin: "12px 0",
+    padding: "12px",
+    borderRadius: tokens.borderRadiusMedium,
+    backgroundColor: tokens.colorNeutralBackground2,
+  },
+  findingTitle: {
+    margin: "0 0 6px",
+    color: tokens.colorNeutralForeground1,
+    fontSize: tokens.fontSizeBase300,
+    lineHeight: tokens.lineHeightBase400,
+    fontWeight: tokens.fontWeightSemibold,
+  },
+  findingSeverityError: {
+    color: tokens.colorPaletteRedForeground1,
+  },
+  findingSeverityWarning: {
+    color: tokens.colorPaletteDarkOrangeForeground1,
+  },
+  findingSeverityInfo: {
+    color: "#12355b",
   },
   message: {
     margin: 0,
@@ -156,21 +191,39 @@ const App: React.FC = () => {
   const [readerMetrics, setReaderMetrics] = useState<FootnoteReadResult["readerMetrics"] | null>(
     null
   );
+  const [engineResult, setEngineResult] = useState<FootnoteEngineResult | null>(null);
   const [message, setMessage] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
+  const findingsByFootnoteId = useMemo(() => {
+    const result = new Map<string, Finding[]>();
+
+    for (const finding of engineResult?.findings ?? []) {
+      const footnoteFindings = result.get(finding.footnoteId);
+
+      if (footnoteFindings) {
+        footnoteFindings.push(finding);
+      } else {
+        result.set(finding.footnoteId, [finding]);
+      }
+    }
+
+    return result;
+  }, [engineResult]);
 
   const handleReadFootnotes = async () => {
     setIsLoading(true);
     setHasError(false);
     setMessage("");
     setReaderMetrics(null);
+    setEngineResult(null);
 
     try {
       const result = await readFootnotes();
       setFootnotes(result.footnotes);
       setDocumentFormatting(result.documentFormatting);
       setReaderMetrics(result.readerMetrics);
+      setEngineResult(analyzeFootnotes(result.footnotes));
 
       if (result.footnotes.length === 0) {
         setMessage("Das Dokument enthält keine Fußnoten.");
@@ -179,6 +232,7 @@ const App: React.FC = () => {
       setFootnotes([]);
       setDocumentFormatting(null);
       setReaderMetrics(null);
+      setEngineResult(null);
       setHasError(true);
       setMessage(
         error instanceof Error
@@ -217,6 +271,23 @@ const App: React.FC = () => {
               </p>
             </article>
           )}
+          {engineResult && (
+            <article className={styles.resultItem}>
+              <h2 className={styles.resultTitle}>Footnote Engine</h2>
+              <p className={styles.resultText}>
+                Analysierte Fußnoten: {engineResult.analyzedFootnotes}
+              </p>
+              <p className={styles.resultText}>Findings: {engineResult.findings.length}</p>
+              <p className={styles.resultText}>
+                Errors: {engineResult.findingsBySeverity.error} · Warnings:{" "}
+                {engineResult.findingsBySeverity.warning} · Infos:{" "}
+                {engineResult.findingsBySeverity.info}
+              </p>
+              {engineResult.durationMs !== undefined && (
+                <p className={styles.resultText}>Dauer: {engineResult.durationMs} ms</p>
+              )}
+            </article>
+          )}
           {documentFormatting && (
             <article className={styles.resultItem}>
               <h2 className={styles.resultTitle}>Dokumentformatierung</h2>
@@ -235,9 +306,48 @@ const App: React.FC = () => {
               </p>
             </article>
           )}
-          {footnotes.map((footnote) => (
-            <article className={styles.resultItem} key={footnote.id}>
+          {footnotes.map((footnote) => {
+            const findings = findingsByFootnoteId.get(footnote.id) ?? [];
+
+            return (
+            <article
+              className={mergeClasses(
+                styles.resultItem,
+                findings.length > 0 ? styles.findingResultItem : undefined
+              )}
+              key={footnote.id}
+            >
               <h2 className={styles.resultTitle}>Fußnote {footnote.ordinal}</h2>
+              <p className={findings.length > 0 ? styles.findingCount : styles.resultText}>
+                Findings: {findings.length}
+              </p>
+              {findings.map((finding) => (
+                <div className={styles.findingItem} key={finding.findingId}>
+                  <h3 className={styles.findingTitle}>Finding</h3>
+                  <p className={styles.resultText}>Rule: {finding.ruleId}</p>
+                  <p className={styles.resultText}>Category: {finding.category}</p>
+                  <p
+                    className={mergeClasses(
+                      styles.resultText,
+                      finding.severity === "error"
+                        ? styles.findingSeverityError
+                        : finding.severity === "warning"
+                          ? styles.findingSeverityWarning
+                          : styles.findingSeverityInfo
+                    )}
+                  >
+                    Severity: {finding.severity}
+                  </p>
+                  <p className={styles.resultText}>Message: {finding.message}</p>
+                  <p className={styles.resultText}>
+                    Range: [{finding.start}, {finding.end})
+                  </p>
+                  <p className={styles.resultText}>Original: {finding.originalText}</p>
+                  {finding.suggestedText !== undefined && (
+                    <p className={styles.resultText}>Vorschlag: {finding.suggestedText}</p>
+                  )}
+                </div>
+              ))}
               <p className={styles.resultText}>ID: {footnote.id}</p>
               <p className={styles.resultText}>
                 Label: {footnote.displayLabel || "Nicht verfügbar"}
@@ -335,7 +445,8 @@ const App: React.FC = () => {
                 </p>
               ))}
             </article>
-          ))}
+            );
+          })}
         </section>
       </div>
     </main>
