@@ -138,6 +138,32 @@ const App: React.FC = () => {
               <p className={styles.resultText}>Text: {footnote.contentText}</p>
               <p className={styles.resultText}>Länge: {footnote.contentLength}</p>
               <p className={styles.resultText}>Hash: {footnote.originalTextHash}</p>
+              <p className={styles.resultText}>
+                Kontext davor: {footnote.locator.contextBefore}
+              </p>
+              <p className={styles.resultText}>
+                Kontext danach: {footnote.locator.contextAfter}
+              </p>
+              {footnote.locator.paragraphIndex !== undefined && (
+                <p className={styles.resultText}>
+                  Absatzindex: {footnote.locator.paragraphIndex}
+                </p>
+              )}
+              <p className={styles.resultText}>Absätze: {footnote.paragraphCount}</p>
+              {footnote.hyperlinks.length === 0 ? (
+                <p className={styles.resultText}>Hyperlinks: keine</p>
+              ) : (
+                <div className={styles.resultText}>
+                  Hyperlinks:
+                  <ul>
+                    {footnote.hyperlinks.map((hyperlink, hyperlinkIndex) => (
+                      <li key={`${hyperlink.target}-${hyperlinkIndex}`}>
+                        {hyperlink.displayText}: {hyperlink.target}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </article>
           ))}
         </section>
