@@ -4,6 +4,7 @@ import { Button, makeStyles, tokens } from "@fluentui/react-components";
 import {
   CharacterFormat,
   DocumentFormattingSnapshot,
+  FootnoteReadResult,
   FootnoteSnapshot,
   FormattingRun,
   readFootnotes,
@@ -152,6 +153,9 @@ const App: React.FC = () => {
   const [documentFormatting, setDocumentFormatting] = useState<DocumentFormattingSnapshot | null>(
     null
   );
+  const [readerMetrics, setReaderMetrics] = useState<FootnoteReadResult["readerMetrics"] | null>(
+    null
+  );
   const [message, setMessage] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
@@ -160,11 +164,13 @@ const App: React.FC = () => {
     setIsLoading(true);
     setHasError(false);
     setMessage("");
+    setReaderMetrics(null);
 
     try {
       const result = await readFootnotes();
       setFootnotes(result.footnotes);
       setDocumentFormatting(result.documentFormatting);
+      setReaderMetrics(result.readerMetrics);
 
       if (result.footnotes.length === 0) {
         setMessage("Das Dokument enthält keine Fußnoten.");
@@ -172,6 +178,7 @@ const App: React.FC = () => {
     } catch (error) {
       setFootnotes([]);
       setDocumentFormatting(null);
+      setReaderMetrics(null);
       setHasError(true);
       setMessage(
         error instanceof Error
@@ -199,6 +206,17 @@ const App: React.FC = () => {
         </Button>
         <section className={styles.results} aria-label="Ergebnisse" aria-live="polite">
           {message && <p className={hasError ? styles.error : styles.message}>{message}</p>}
+          {readerMetrics && (
+            <article className={styles.resultItem}>
+              <h2 className={styles.resultTitle}>Reader</h2>
+              <p className={styles.resultText}>Fußnoten: {readerMetrics.footnoteCount}</p>
+              <p className={styles.resultText}>Dauer: {readerMetrics.durationMs} ms</p>
+              <p className={styles.resultText}>
+                complete: {readerMetrics.completeCount} · partial: {readerMetrics.partialCount} ·
+                failed: {readerMetrics.failedCount}
+              </p>
+            </article>
+          )}
           {documentFormatting && (
             <article className={styles.resultItem}>
               <h2 className={styles.resultTitle}>Dokumentformatierung</h2>
@@ -227,12 +245,48 @@ const App: React.FC = () => {
               <p className={styles.resultText}>Text: {footnote.contentText}</p>
               <p className={styles.resultText}>Länge: {footnote.contentLength}</p>
               <p className={styles.resultText}>Hash: {footnote.originalTextHash}</p>
+              <p className={styles.resultText}>Read Status: {footnote.readStatus}</p>
+              {footnote.readWarnings.length === 0 ? (
+                <p className={styles.resultText}>Warnings: keine</p>
+              ) : (
+                <div className={styles.resultText}>
+                  Warnings:
+                  <ul>
+                    {footnote.readWarnings.map((warning) => (
+                      <li key={warning.code}>{warning.code}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <p className={styles.resultText}>Kontext davor: {footnote.locator.contextBefore}</p>
               <p className={styles.resultText}>Kontext danach: {footnote.locator.contextAfter}</p>
               {footnote.locator.paragraphIndex !== undefined && (
                 <p className={styles.resultText}>Absatzindex: {footnote.locator.paragraphIndex}</p>
               )}
               <p className={styles.resultText}>Absätze: {footnote.paragraphCount}</p>
+              <div className={styles.resultText}>
+                Geschützte Strukturen:
+                <ul>
+                  <li>Hyperlinks: {footnote.hyperlinks.length}</li>
+                  <li>Fields: {footnote.fields.length}</li>
+                  <li>Bookmarks: {footnote.bookmarks.length}</li>
+                  <li>Content Controls: {footnote.contentControls.length}</li>
+                </ul>
+              </div>
+              {footnote.protectedRanges.length === 0 ? (
+                <p className={styles.resultText}>Protected Ranges: keine</p>
+              ) : (
+                <div className={styles.resultText}>
+                  Protected Ranges:
+                  <ul>
+                    {footnote.protectedRanges.map((range, rangeIndex) => (
+                      <li key={`${range.type}-${range.start}-${range.end}-${rangeIndex}`}>
+                        {range.type} [{range.start}, {range.end})
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {footnote.hyperlinks.length === 0 ? (
                 <p className={styles.resultText}>Hyperlinks: keine</p>
               ) : (

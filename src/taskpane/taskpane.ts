@@ -1,4 +1,4 @@
-/* global Office, Word, DOMParser, Element */
+/* global Office, Word, DOMParser, Element, performance */
 
 export interface CharacterFormat {
   fontName?: string | null;
@@ -15,6 +15,44 @@ export interface CharacterFormat {
 }
 
 export interface FormattingRun extends CharacterFormat {
+  start: number;
+  end: number;
+}
+
+export type FootnoteReadStatus = "complete" | "partial" | "failed";
+
+export interface FootnoteReadWarning {
+  code: string;
+  message: string;
+}
+
+export interface FootnoteField {
+  type?: string;
+  start?: number;
+  end?: number;
+  resultText?: string;
+  locked?: boolean;
+}
+
+export interface FootnoteBookmark {
+  name: string;
+  start?: number;
+  end?: number;
+}
+
+export interface FootnoteContentControl {
+  id?: number;
+  tag?: string;
+  title?: string;
+  type?: string;
+  start?: number;
+  end?: number;
+}
+
+export type ProtectedStructureType = "hyperlink" | "field" | "bookmark" | "contentControl";
+
+export interface ProtectedRange {
+  type: ProtectedStructureType;
   start: number;
   end: number;
 }
@@ -69,6 +107,12 @@ export interface FootnoteSnapshot {
     displayText: string;
     target: string;
   }>;
+  fields: FootnoteField[];
+  bookmarks: FootnoteBookmark[];
+  contentControls: FootnoteContentControl[];
+  protectedRanges: ProtectedRange[];
+  readStatus: FootnoteReadStatus;
+  readWarnings: FootnoteReadWarning[];
   baseCharacterFormat?: CharacterFormat;
   formattingRuns: FormattingRun[];
   paragraphFormats: FootnoteParagraphFormat[];
@@ -77,9 +121,18 @@ export interface FootnoteSnapshot {
 export interface FootnoteReadResult {
   footnotes: FootnoteSnapshot[];
   documentFormatting: DocumentFormattingSnapshot;
+  readerMetrics: {
+    durationMs: number;
+    footnoteCount: number;
+    completeCount: number;
+    partialCount: number;
+    failedCount: number;
+    syncCount: number;
+  };
 }
 
 const WORD_NOTE_REFERENCE_MARK = "\u0002";
+const FOOTNOTE_CHUNK_SIZE = 150;
 const OOXML_STRUCTURAL_TEXT_MARKS = new Set(["\r", "\n", "\v", "\f"]);
 const CHARACTER_FORMAT_KEYS: Array<keyof CharacterFormat> = [
   "fontName",
@@ -172,8 +225,52 @@ function getFormattingKey(formatting: CharacterFormat): string {
 
 interface OoxmlTextRun {
   text: string;
+  ooxmlStart: number;
+  ooxmlEnd: number;
   directFormat: CharacterFormat;
   characterStyle?: string;
+}
+
+interface OoxmlStructureRange {
+  ooxmlStart: number;
+  ooxmlEnd: number;
+}
+
+interface ParsedOoxmlField extends OoxmlStructureRange {
+  locked?: boolean;
+}
+
+interface ParsedOoxmlBookmark extends OoxmlStructureRange {
+  name: string;
+}
+
+interface ParsedOoxmlContentControl extends OoxmlStructureRange {
+  id?: number;
+  tag?: string;
+  title?: string;
+  type?: string;
+}
+
+interface ParsedFootnoteOoxml {
+  parsed: boolean;
+  textRuns: OoxmlTextRun[];
+  fields: ParsedOoxmlField[];
+  bookmarks: ParsedOoxmlBookmark[];
+  hyperlinks: OoxmlStructureRange[];
+  contentControls: ParsedOoxmlContentControl[];
+  hasCharacterStyles: boolean;
+  hasUnclosedStructures: boolean;
+}
+
+interface MappedOoxmlTextRun extends OoxmlTextRun {
+  contentStart: number;
+  contentEnd: number;
+}
+
+interface OoxmlContentMapping {
+  complete: boolean;
+  textRuns: MappedOoxmlTextRun[];
+  toContentOffset: (ooxmlOffset: number, affinity: "start" | "end") => number | undefined;
 }
 
 function isWordprocessingElement(element: Element, localName?: string): boolean {
@@ -342,71 +439,302 @@ function parseOoxmlRunFormat(runProperties: Element | undefined): CharacterForma
   return formatting;
 }
 
-function getOoxmlRunText(runElement: Element): string {
-  const textParts: string[] = [];
-
-  for (const element of Array.from(runElement.getElementsByTagName("*"))) {
-    if (!isWordprocessingElement(element)) {
-      continue;
-    }
-
-    switch (element.localName) {
-      case "t":
-      case "delText":
-        textParts.push(element.textContent ?? "");
-        break;
-      case "tab":
-        textParts.push("\t");
-        break;
-      case "br":
-      case "cr":
-        textParts.push("\v");
-        break;
-      case "noBreakHyphen":
-        textParts.push("\u2011");
-        break;
-      case "softHyphen":
-        textParts.push("\u00ad");
-        break;
-    }
+function getOoxmlTextValue(element: Element): string | undefined {
+  switch (element.localName) {
+    case "t":
+    case "delText":
+      return element.textContent ?? "";
+    case "tab":
+    case "ptab":
+      return "\t";
+    case "br":
+    case "cr":
+      return getOoxmlAttribute(element, "type") === "page" ? "\f" : "\v";
+    case "noBreakHyphen":
+      return "\u2011";
+    case "softHyphen":
+      return "\u00ad";
+    default:
+      return undefined;
   }
-
-  return textParts.join("");
 }
 
-function parseOoxmlTextRuns(ooxml: string): OoxmlTextRun[] {
+function getContentControlType(properties: Element | undefined): string | undefined {
+  if (!properties) return undefined;
+
+  const knownTypes = [
+    "text",
+    "richText",
+    "checkBox",
+    "dropDownList",
+    "comboBox",
+    "buildingBlockGallery",
+    "date",
+    "repeatingSection",
+    "picture",
+    "group",
+  ];
+
+  return knownTypes.find((type) => Boolean(getDirectChild(properties, type)));
+}
+
+function parseFootnoteOoxml(ooxml: string): ParsedFootnoteOoxml {
+  const emptyResult: ParsedFootnoteOoxml = {
+    parsed: false,
+    textRuns: [],
+    fields: [],
+    bookmarks: [],
+    hyperlinks: [],
+    contentControls: [],
+    hasCharacterStyles: false,
+    hasUnclosedStructures: false,
+  };
+
   try {
     const xmlDocument = new DOMParser().parseFromString(ooxml, "application/xml");
     if (xmlDocument.getElementsByTagName("parsererror").length > 0) {
-      return [];
+      return emptyResult;
     }
 
     const allElements = Array.from(xmlDocument.getElementsByTagName("*"));
     const contentRoot =
       allElements.find((element) => isWordprocessingElement(element, "body")) ??
+      allElements.find((element) => isWordprocessingElement(element, "footnote")) ??
       xmlDocument.documentElement;
-    const runElements = Array.from(contentRoot.getElementsByTagName("*")).filter((element) =>
-      isWordprocessingElement(element, "r")
-    );
+    const textRuns: OoxmlTextRun[] = [];
+    const fields: ParsedOoxmlField[] = [];
+    const bookmarks: ParsedOoxmlBookmark[] = [];
+    const hyperlinks: OoxmlStructureRange[] = [];
+    const contentControls: ParsedOoxmlContentControl[] = [];
+    const openBookmarks = new Map<string, { name: string; start: number }>();
+    const openFields: Array<{ resultStart?: number; locked?: boolean }> = [];
+    let ooxmlOffset = 0;
+    let hasCharacterStyles = false;
+    let hasUnclosedStructures = false;
 
-    return runElements
-      .map((runElement) => {
-        const runProperties = getDirectChild(runElement, "rPr");
-        const characterStyle = runProperties ? getDirectChild(runProperties, "rStyle") : undefined;
-        return {
-          text: getOoxmlRunText(runElement),
-          directFormat: parseOoxmlRunFormat(runProperties),
-          characterStyle: characterStyle ? getOoxmlAttribute(characterStyle, "val") : undefined,
-        };
-      })
-      .filter((run) => run.text.length > 0);
+    const appendText = (text: string, directFormat: CharacterFormat, characterStyle?: string) => {
+      if (text.length === 0) return;
+
+      if (characterStyle) hasCharacterStyles = true;
+      const ooxmlStart = ooxmlOffset;
+      ooxmlOffset += text.length;
+      textRuns.push({
+        text,
+        ooxmlStart,
+        ooxmlEnd: ooxmlOffset,
+        directFormat,
+        characterStyle,
+      });
+    };
+
+    const walkRun = (runElement: Element) => {
+      const runProperties = getDirectChild(runElement, "rPr");
+      const characterStyleElement = runProperties
+        ? getDirectChild(runProperties, "rStyle")
+        : undefined;
+      const characterStyle = characterStyleElement
+        ? getOoxmlAttribute(characterStyleElement, "val")
+        : undefined;
+      const directFormat = parseOoxmlRunFormat(runProperties);
+
+      for (const child of Array.from(runElement.children)) {
+        if (!isWordprocessingElement(child) || child.localName === "rPr") continue;
+
+        if (child.localName === "fldChar") {
+          const fieldCharacterType = getOoxmlAttribute(child, "fldCharType");
+          if (fieldCharacterType === "begin") {
+            openFields.push({
+              locked: parseOoxmlBooleanAttribute(getOoxmlAttribute(child, "fldLock")),
+            });
+          } else if (fieldCharacterType === "separate") {
+            const currentField = openFields[openFields.length - 1];
+            if (currentField) currentField.resultStart = ooxmlOffset;
+          } else if (fieldCharacterType === "end") {
+            const currentField = openFields.pop();
+            if (currentField) {
+              fields.push({
+                ooxmlStart: currentField.resultStart ?? ooxmlOffset,
+                ooxmlEnd: ooxmlOffset,
+                locked: currentField.locked,
+              });
+            } else {
+              hasUnclosedStructures = true;
+            }
+          }
+          continue;
+        }
+
+        if (child.localName === "instrText") continue;
+        const text = getOoxmlTextValue(child);
+        if (text !== undefined) appendText(text, directFormat, characterStyle);
+      }
+    };
+
+    const walk = (element: Element) => {
+      if (!isWordprocessingElement(element)) {
+        for (const child of Array.from(element.children)) walk(child);
+        return;
+      }
+
+      if (element.localName === "r") {
+        walkRun(element);
+        return;
+      }
+
+      if (element.localName === "bookmarkStart") {
+        const id = getOoxmlAttribute(element, "id");
+        const name = getOoxmlAttribute(element, "name");
+        if (id && name) openBookmarks.set(id, { name, start: ooxmlOffset });
+        return;
+      }
+
+      if (element.localName === "bookmarkEnd") {
+        const id = getOoxmlAttribute(element, "id");
+        const bookmark = id ? openBookmarks.get(id) : undefined;
+        if (id && bookmark) {
+          bookmarks.push({
+            name: bookmark.name,
+            ooxmlStart: bookmark.start,
+            ooxmlEnd: ooxmlOffset,
+          });
+          openBookmarks.delete(id);
+        } else {
+          hasUnclosedStructures = true;
+        }
+        return;
+      }
+
+      if (element.localName === "hyperlink") {
+        const start = ooxmlOffset;
+        for (const child of Array.from(element.children)) walk(child);
+        hyperlinks.push({ ooxmlStart: start, ooxmlEnd: ooxmlOffset });
+        return;
+      }
+
+      if (element.localName === "fldSimple") {
+        const start = ooxmlOffset;
+        for (const child of Array.from(element.children)) walk(child);
+        fields.push({
+          ooxmlStart: start,
+          ooxmlEnd: ooxmlOffset,
+          locked: parseOoxmlBooleanAttribute(getOoxmlAttribute(element, "fldLock")),
+        });
+        return;
+      }
+
+      if (element.localName === "sdt") {
+        const start = ooxmlOffset;
+        const properties = getDirectChild(element, "sdtPr");
+        for (const child of Array.from(element.children)) walk(child);
+        const idElement = properties ? getDirectChild(properties, "id") : undefined;
+        const idValue = idElement ? Number(getOoxmlAttribute(idElement, "val")) : undefined;
+        const tagElement = properties ? getDirectChild(properties, "tag") : undefined;
+        const titleElement = properties ? getDirectChild(properties, "alias") : undefined;
+        contentControls.push({
+          id: Number.isFinite(idValue) ? idValue : undefined,
+          tag: tagElement ? getOoxmlAttribute(tagElement, "val") : undefined,
+          title: titleElement ? getOoxmlAttribute(titleElement, "val") : undefined,
+          type: getContentControlType(properties),
+          ooxmlStart: start,
+          ooxmlEnd: ooxmlOffset,
+        });
+        return;
+      }
+
+      for (const child of Array.from(element.children)) walk(child);
+    };
+
+    walk(contentRoot);
+    hasUnclosedStructures =
+      hasUnclosedStructures || openBookmarks.size > 0 || openFields.length > 0;
+
+    return {
+      parsed: true,
+      textRuns,
+      fields,
+      bookmarks,
+      hyperlinks,
+      contentControls,
+      hasCharacterStyles,
+      hasUnclosedStructures,
+    };
   } catch {
-    return [];
+    return emptyResult;
   }
+}
+
+function parseOoxmlBooleanAttribute(value: string | undefined): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (value === "1" || value.toLowerCase() === "true" || value.toLowerCase() === "on") {
+    return true;
+  }
+  if (value === "0" || value.toLowerCase() === "false" || value.toLowerCase() === "off") {
+    return false;
+  }
+  return undefined;
 }
 
 function isStructuralOoxmlGap(text: string): boolean {
   return Array.from(text).every((character) => OOXML_STRUCTURAL_TEXT_MARKS.has(character));
+}
+
+function mapOoxmlContent(textRuns: OoxmlTextRun[], contentText: string): OoxmlContentMapping {
+  const mappedRuns: MappedOoxmlTextRun[] = [];
+  let searchOffset = 0;
+  let removedReferenceMark = false;
+
+  for (const sourceRun of textRuns) {
+    let text = sourceRun.text;
+    let ooxmlStart = sourceRun.ooxmlStart;
+    if (!removedReferenceMark && text.startsWith(WORD_NOTE_REFERENCE_MARK)) {
+      text = text.slice(1);
+      ooxmlStart += 1;
+      removedReferenceMark = true;
+    }
+    if (text.length === 0) continue;
+
+    const contentStart = contentText.indexOf(text, searchOffset);
+    if (contentStart < 0 || !isStructuralOoxmlGap(contentText.slice(searchOffset, contentStart))) {
+      return { complete: false, textRuns: [], toContentOffset: () => undefined };
+    }
+
+    const contentEnd = contentStart + text.length;
+    mappedRuns.push({
+      ...sourceRun,
+      text,
+      ooxmlStart,
+      ooxmlEnd: ooxmlStart + text.length,
+      contentStart,
+      contentEnd,
+    });
+    searchOffset = contentEnd;
+  }
+
+  if (!isStructuralOoxmlGap(contentText.slice(searchOffset))) {
+    return { complete: false, textRuns: [], toContentOffset: () => undefined };
+  }
+
+  const toContentOffset = (ooxmlOffset: number, affinity: "start" | "end") => {
+    const containingRun = mappedRuns.find(
+      (run) => ooxmlOffset > run.ooxmlStart && ooxmlOffset < run.ooxmlEnd
+    );
+    if (containingRun) {
+      return containingRun.contentStart + (ooxmlOffset - containingRun.ooxmlStart);
+    }
+
+    if (affinity === "start") {
+      const nextRun = mappedRuns.find((run) => run.ooxmlStart === ooxmlOffset);
+      if (nextRun) return nextRun.contentStart;
+    } else {
+      const previousRun = [...mappedRuns].reverse().find((run) => run.ooxmlEnd === ooxmlOffset);
+      if (previousRun) return previousRun.contentEnd;
+    }
+
+    if (mappedRuns.length === 0 && ooxmlOffset === 0 && contentText.length === 0) return 0;
+    return undefined;
+  };
+
+  return { complete: true, textRuns: mappedRuns, toContentOffset };
 }
 
 function getDirectFormattingDifferences(
@@ -432,36 +760,16 @@ function getDirectFormattingDifferences(
 }
 
 function createFormattingRunsFromOoxml(
-  ooxml: string,
-  contentText: string,
+  mappedRuns: MappedOoxmlTextRun[],
   baseCharacterFormat: CharacterFormat
 ): FormattingRun[] {
-  if (!ooxml || contentText.length === 0) {
-    return [];
-  }
-
-  const ooxmlRuns = parseOoxmlTextRuns(ooxml);
   const runs: FormattingRun[] = [];
-  let searchOffset = 0;
-  let removedReferenceMark = false;
   let previousRunCharacterStyle: string | undefined;
 
-  for (const ooxmlRun of ooxmlRuns) {
-    let runText = ooxmlRun.text;
-    if (!removedReferenceMark && runText.startsWith(WORD_NOTE_REFERENCE_MARK)) {
-      runText = runText.slice(1);
-      removedReferenceMark = true;
-    }
-    if (runText.length === 0) continue;
-
-    const start = contentText.indexOf(runText, searchOffset);
-    if (start < 0 || !isStructuralOoxmlGap(contentText.slice(searchOffset, start))) {
-      return [];
-    }
-
-    const end = start + runText.length;
+  for (const ooxmlRun of mappedRuns) {
+    const start = ooxmlRun.contentStart;
+    const end = ooxmlRun.contentEnd;
     const formatting = getDirectFormattingDifferences(ooxmlRun.directFormat, baseCharacterFormat);
-    searchOffset = end;
 
     if (Object.keys(formatting).length === 0) {
       continue;
@@ -482,7 +790,250 @@ function createFormattingRunsFromOoxml(
     }
   }
 
-  return isStructuralOoxmlGap(contentText.slice(searchOffset)) ? runs : [];
+  return runs;
+}
+
+function addReadWarning(warnings: FootnoteReadWarning[], code: string, message: string): void {
+  if (!warnings.some((warning) => warning.code === code)) {
+    warnings.push({ code, message });
+  }
+}
+
+function mapStructureRange(
+  range: OoxmlStructureRange,
+  mapping: OoxmlContentMapping
+): { start: number; end: number } | undefined {
+  const start = mapping.toContentOffset(range.ooxmlStart, "start");
+  const end = mapping.toContentOffset(range.ooxmlEnd, "end");
+
+  return start !== undefined && end !== undefined && start <= end ? { start, end } : undefined;
+}
+
+interface LoadedFieldData {
+  type?: string;
+  resultText?: string;
+  locked?: boolean;
+}
+
+interface LoadedHyperlinkData {
+  displayText: string;
+  target: string;
+}
+
+interface LoadedContentControlData {
+  id?: number;
+  tag?: string;
+  title?: string;
+  type?: string;
+}
+
+function createFootnoteFields(
+  loadedFields: LoadedFieldData[],
+  parsedFields: ParsedOoxmlField[],
+  mapping: OoxmlContentMapping,
+  contentText: string,
+  warnings: FootnoteReadWarning[]
+): FootnoteField[] {
+  const sortedParsedFields = [...parsedFields].sort(
+    (left, right) => left.ooxmlStart - right.ooxmlStart || right.ooxmlEnd - left.ooxmlEnd
+  );
+  const fieldCount = Math.max(loadedFields.length, sortedParsedFields.length);
+  const fields: FootnoteField[] = [];
+
+  for (let index = 0; index < fieldCount; index += 1) {
+    const loadedField = loadedFields[index];
+    const parsedField = sortedParsedFields[index];
+    const mappedRange = parsedField ? mapStructureRange(parsedField, mapping) : undefined;
+    const mappedResultText = mappedRange
+      ? contentText.slice(mappedRange.start, mappedRange.end)
+      : undefined;
+    const resultTextMatches =
+      !loadedField ||
+      loadedField.resultText === undefined ||
+      loadedField.resultText === mappedResultText;
+
+    if (loadedField && parsedField && (!mappedRange || !resultTextMatches)) {
+      addReadWarning(
+        warnings,
+        "FIELD_OFFSET_UNRESOLVED",
+        "A field result could not be mapped safely to contentText."
+      );
+    }
+
+    fields.push({
+      type: loadedField?.type,
+      start: mappedRange && resultTextMatches ? mappedRange.start : undefined,
+      end: mappedRange && resultTextMatches ? mappedRange.end : undefined,
+      resultText: loadedField?.resultText ?? mappedResultText,
+      locked: loadedField?.locked ?? parsedField?.locked,
+    });
+  }
+
+  if (loadedFields.length !== sortedParsedFields.length) {
+    addReadWarning(
+      warnings,
+      "FIELD_STRUCTURE_COUNT_MISMATCH",
+      "Office.js and OOXML reported different field counts."
+    );
+  }
+
+  return fields;
+}
+
+function createFootnoteBookmarks(
+  parsedBookmarks: ParsedOoxmlBookmark[],
+  mapping: OoxmlContentMapping,
+  warnings: FootnoteReadWarning[]
+): FootnoteBookmark[] {
+  return parsedBookmarks.map((bookmark) => {
+    const mappedRange = mapStructureRange(bookmark, mapping);
+    if (!mappedRange) {
+      addReadWarning(
+        warnings,
+        "BOOKMARK_OFFSET_UNRESOLVED",
+        "A bookmark could not be mapped safely to contentText."
+      );
+    }
+
+    return {
+      name: bookmark.name,
+      start: mappedRange?.start,
+      end: mappedRange?.end,
+    };
+  });
+}
+
+function createFootnoteHyperlinks(
+  loadedHyperlinks: LoadedHyperlinkData[],
+  parsedHyperlinks: OoxmlStructureRange[],
+  mapping: OoxmlContentMapping,
+  contentText: string,
+  warnings: FootnoteReadWarning[]
+): FootnoteSnapshot["hyperlinks"] {
+  const hyperlinks = loadedHyperlinks.map((hyperlink, index) => {
+    const parsedHyperlink = parsedHyperlinks[index];
+    const mappedRange = parsedHyperlink ? mapStructureRange(parsedHyperlink, mapping) : undefined;
+    const rangeMatches =
+      mappedRange !== undefined &&
+      contentText.slice(mappedRange.start, mappedRange.end) === hyperlink.displayText;
+
+    if (!rangeMatches) {
+      addReadWarning(
+        warnings,
+        "HYPERLINK_OFFSET_UNRESOLVED",
+        "A hyperlink could not be mapped safely to contentText."
+      );
+    }
+
+    return {
+      displayText: hyperlink.displayText,
+      target: hyperlink.target,
+      start: rangeMatches ? mappedRange.start : undefined,
+      end: rangeMatches ? mappedRange.end : undefined,
+    };
+  });
+
+  if (loadedHyperlinks.length !== parsedHyperlinks.length) {
+    addReadWarning(
+      warnings,
+      "HYPERLINK_STRUCTURE_COUNT_MISMATCH",
+      "Office.js and OOXML reported different hyperlink counts."
+    );
+  }
+
+  return hyperlinks;
+}
+
+function createFootnoteContentControls(
+  loadedControls: LoadedContentControlData[],
+  parsedControls: ParsedOoxmlContentControl[],
+  mapping: OoxmlContentMapping,
+  warnings: FootnoteReadWarning[]
+): FootnoteContentControl[] {
+  const loadedById = new Map(
+    loadedControls
+      .filter((control) => control.id !== undefined)
+      .map((control) => [control.id as number, control])
+  );
+  const usedIds = new Set<number>();
+  const controls: FootnoteContentControl[] = parsedControls.map((parsedControl) => {
+    const loadedControl =
+      parsedControl.id !== undefined ? loadedById.get(parsedControl.id) : undefined;
+    if (loadedControl?.id !== undefined) usedIds.add(loadedControl.id);
+    const mappedRange = mapStructureRange(parsedControl, mapping);
+    if (!mappedRange) {
+      addReadWarning(
+        warnings,
+        "CONTENT_CONTROL_OFFSET_UNRESOLVED",
+        "A content control could not be mapped safely to contentText."
+      );
+    }
+
+    return {
+      id: loadedControl?.id ?? parsedControl.id,
+      tag: loadedControl?.tag ?? parsedControl.tag,
+      title: loadedControl?.title ?? parsedControl.title,
+      type: loadedControl?.type ?? parsedControl.type,
+      start: mappedRange?.start,
+      end: mappedRange?.end,
+    };
+  });
+
+  for (const loadedControl of loadedControls) {
+    if (loadedControl.id !== undefined && usedIds.has(loadedControl.id)) continue;
+    controls.push(loadedControl);
+    addReadWarning(
+      warnings,
+      "CONTENT_CONTROL_OFFSET_UNRESOLVED",
+      "A content control could not be mapped safely to contentText."
+    );
+  }
+
+  if (loadedControls.length !== parsedControls.length) {
+    addReadWarning(
+      warnings,
+      "CONTENT_CONTROL_STRUCTURE_COUNT_MISMATCH",
+      "Office.js and OOXML reported different content control counts."
+    );
+  }
+
+  return controls;
+}
+
+function createProtectedRanges(snapshot: {
+  hyperlinks: FootnoteSnapshot["hyperlinks"];
+  fields: FootnoteField[];
+  bookmarks: FootnoteBookmark[];
+  contentControls: FootnoteContentControl[];
+}): ProtectedRange[] {
+  const protectedRanges: ProtectedRange[] = [];
+  const append = (
+    type: ProtectedStructureType,
+    structures: Array<{ start?: number; end?: number }>
+  ) => {
+    for (const structure of structures) {
+      if (structure.start !== undefined && structure.end !== undefined) {
+        protectedRanges.push({ type, start: structure.start, end: structure.end });
+      }
+    }
+  };
+
+  append("hyperlink", snapshot.hyperlinks);
+  append("field", snapshot.fields);
+  append("bookmark", snapshot.bookmarks);
+  append("contentControl", snapshot.contentControls);
+
+  return protectedRanges
+    .filter(
+      (range, index, allRanges) =>
+        allRanges.findIndex(
+          (candidate) =>
+            candidate.type === range.type &&
+            candidate.start === range.start &&
+            candidate.end === range.end
+        ) === index
+    )
+    .sort((left, right) => left.start - right.start || left.end - right.end);
 }
 
 function getDocumentFormatting(
@@ -499,6 +1050,8 @@ function getDocumentFormatting(
 }
 
 export async function readFootnotes(): Promise<FootnoteReadResult> {
+  const startedAt = performance.now();
+
   if (!Office.context.requirements.isSetSupported("WordApi", "1.5")) {
     throw new Error(
       "Diese Word-Version unterstützt das Auslesen von Fußnoten nicht (WordApi 1.5 erforderlich)."
@@ -508,7 +1061,7 @@ export async function readFootnotes(): Promise<FootnoteReadResult> {
   const supportsDesktop13 = Office.context.requirements.isSetSupported("WordApiDesktop", "1.3");
   const supportsDesktop14 = Office.context.requirements.isSetSupported("WordApiDesktop", "1.4");
 
-  return Word.run(async (context) => {
+  const result = await Word.run(async (context) => {
     const document = context.document;
     const footnotes = context.document.body.footnotes;
     footnotes.load({ body: { text: true }, reference: { text: true } });
@@ -519,140 +1072,310 @@ export async function readFootnotes(): Promise<FootnoteReadResult> {
       document.load("hyphenationZone");
     }
 
+    let syncCount = 1;
     await context.sync();
 
-    const readContexts = footnotes.items.map((footnote) => {
-      const reference = footnote.reference;
-      const paragraph = reference.paragraphs.getFirst();
-      const beforeRange = paragraph
-        .getRange(Word.RangeLocation.start)
-        .expandTo(reference.getRange(Word.RangeLocation.start));
-      const afterRange = reference
-        .getRange(Word.RangeLocation.end)
-        .expandTo(paragraph.getRange(Word.RangeLocation.end));
+    const snapshots: FootnoteSnapshot[] = [];
 
-      beforeRange.load("text");
-      afterRange.load("text");
-      const paragraphs = footnote.body.paragraphs;
-      paragraphs.load({
-        text: true,
-        style: true,
-        lineSpacing: true,
-        spaceBefore: true,
-        spaceAfter: true,
-        leftIndent: true,
-        rightIndent: true,
-        firstLineIndent: true,
-        alignment: true,
+    for (
+      let chunkStart = 0;
+      chunkStart < footnotes.items.length;
+      chunkStart += FOOTNOTE_CHUNK_SIZE
+    ) {
+      const chunk = footnotes.items.slice(chunkStart, chunkStart + FOOTNOTE_CHUNK_SIZE);
+      const readContexts = chunk.map((footnote) => {
+        const reference = footnote.reference;
+        const paragraph = reference.paragraphs.getFirst();
+        const beforeRange = paragraph
+          .getRange(Word.RangeLocation.start)
+          .expandTo(reference.getRange(Word.RangeLocation.start));
+        const afterRange = reference
+          .getRange(Word.RangeLocation.end)
+          .expandTo(paragraph.getRange(Word.RangeLocation.end));
+
+        beforeRange.load("text");
+        afterRange.load("text");
+        const paragraphs = footnote.body.paragraphs;
+        paragraphs.load({
+          text: true,
+          style: true,
+          lineSpacing: true,
+          spaceBefore: true,
+          spaceAfter: true,
+          leftIndent: true,
+          rightIndent: true,
+          firstLineIndent: true,
+          alignment: true,
+        });
+
+        const hyperlinks = supportsDesktop13 ? footnote.body.getRange().hyperlinks : undefined;
+        hyperlinks?.load({ address: true, subAddress: true, textToDisplay: true });
+
+        const fields = footnote.body.fields;
+        fields.load({ type: true, locked: true, result: { text: true } });
+
+        const contentControls = footnote.body.getContentControls();
+        contentControls.load({ id: true, tag: true, title: true, type: true });
+
+        const baseCharacterRange = footnote.body.getRange(Word.RangeLocation.content);
+        // These are scalar Font values; the lint rule interprets the nested load path as navigational.
+        // eslint-disable-next-line office-addins/no-navigational-load
+        baseCharacterRange.load({
+          font: {
+            name: true,
+            size: true,
+            bold: true,
+            italic: true,
+            underline: true,
+            strikeThrough: true,
+            superscript: true,
+            subscript: true,
+            color: true,
+            highlightColor: true,
+            spacing: supportsDesktop13,
+          },
+        });
+        const ooxml = footnote.body.getOoxml();
+
+        return {
+          beforeRange,
+          afterRange,
+          paragraphs,
+          hyperlinks,
+          fields,
+          contentControls,
+          baseCharacterRange,
+          ooxml,
+        };
       });
 
-      const hyperlinks = supportsDesktop13 ? footnote.body.getRange().hyperlinks : undefined;
-      hyperlinks?.load({ address: true, subAddress: true, textToDisplay: true });
+      // One sync per bounded chunk prevents an unbounded all-footnotes OOXML payload.
+      // eslint-disable-next-line office-addins/no-context-sync-in-loop
+      await context.sync();
+      syncCount += 1;
 
-      const baseCharacterRange = footnote.body.getRange(Word.RangeLocation.content);
-      // These are scalar Font values; the lint rule interprets the nested load path as navigational.
-      // eslint-disable-next-line office-addins/no-navigational-load
-      baseCharacterRange.load({
-        font: {
-          name: true,
-          size: true,
-          bold: true,
-          italic: true,
-          underline: true,
-          strikeThrough: true,
-          superscript: true,
-          subscript: true,
-          color: true,
-          highlightColor: true,
-          spacing: supportsDesktop13,
-        },
-      });
-      const ooxml = footnote.body.getOoxml();
+      for (let localIndex = 0; localIndex < chunk.length; localIndex += 1) {
+        const footnote = chunk[localIndex];
+        const readContext = readContexts[localIndex];
+        const ordinal = chunkStart + localIndex + 1;
 
-      return {
-        beforeRange,
-        afterRange,
-        paragraphs,
-        hyperlinks,
-        baseCharacterRange,
-        ooxml,
-      };
-    });
+        try {
+          const rawWordText = footnote.body.text;
+          const contentText = removeLeadingWordNoteReferenceMark(rawWordText);
+          const referenceText = footnote.reference.text;
+          const displayLabel = getDisplayLabel(referenceText, ordinal);
+          const originalTextHash = hashText(contentText);
+          const warnings: FootnoteReadWarning[] = [];
+          const contextBefore = readContext.beforeRange.text.slice(-60);
+          const contextAfter = readContext.afterRange.text.slice(0, 60);
+          const paragraphTexts = readContext.paragraphs.items.map((paragraph) => paragraph.text);
+          const paragraphs = createParagraphStructure(paragraphTexts, contentText);
+          if (paragraphs.some((paragraph) => paragraph.start === undefined)) {
+            addReadWarning(
+              warnings,
+              "PARAGRAPH_OFFSET_UNRESOLVED",
+              "Paragraph boundaries could not be mapped safely to contentText."
+            );
+          }
 
-    await context.sync();
+          const parsedOoxml = parseFootnoteOoxml(readContext.ooxml.value);
+          if (!parsedOoxml.parsed) {
+            addReadWarning(
+              warnings,
+              "OOXML_PARSE_FAILED",
+              "The footnote OOXML could not be processed."
+            );
+          }
+          if (parsedOoxml.hasUnclosedStructures) {
+            addReadWarning(
+              warnings,
+              "OOXML_STRUCTURE_UNCLOSED",
+              "The footnote OOXML contains an unclosed protected structure."
+            );
+          }
+          if (parsedOoxml.hasCharacterStyles) {
+            addReadWarning(
+              warnings,
+              "CHARACTER_STYLE_UNRESOLVED",
+              "Character style inheritance could not be resolved completely."
+            );
+          }
 
-    const snapshots = footnotes.items.map((footnote, index) => {
-      const ordinal = index + 1;
-      const rawWordText = readLoadedText(() => footnote.body.text);
-      const contentText = removeLeadingWordNoteReferenceMark(rawWordText);
-      const referenceText = readLoadedText(() => footnote.reference.text);
-      const displayLabel = getDisplayLabel(referenceText, ordinal);
-      const originalTextHash = hashText(contentText);
-      const readContext = readContexts[index];
-      const textBeforeReference = readLoadedText(() => readContext.beforeRange.text);
-      const textAfterReference = readLoadedText(() => readContext.afterRange.text);
-      const contextBefore = textBeforeReference.slice(-60);
-      const contextAfter = textAfterReference.slice(0, 60);
-      const paragraphTexts = readContext.paragraphs.items.map((paragraph) =>
-        readLoadedText(() => paragraph.text)
-      );
-      const paragraphs = createParagraphStructure(paragraphTexts, contentText);
-      const hyperlinks =
-        readContext.hyperlinks?.items.map((hyperlink) => ({
-          displayText: hyperlink.textToDisplay,
-          target: getHyperlinkTarget(hyperlink.address, hyperlink.subAddress),
-        })) ?? [];
-      const baseCharacterFormat = getCharacterFormat(
-        readContext.baseCharacterRange.font,
-        supportsDesktop13
-      );
-      const formattingRuns = createFormattingRunsFromOoxml(
-        readContext.ooxml.value,
-        contentText,
-        baseCharacterFormat
-      );
-      const paragraphFormats = readContext.paragraphs.items.map((paragraph, paragraphIndex) => ({
-        index: paragraphIndex,
-        styleName: paragraph.style,
-        lineSpacing: paragraph.lineSpacing,
-        spaceBefore: paragraph.spaceBefore,
-        spaceAfter: paragraph.spaceAfter,
-        leftIndent: paragraph.leftIndent,
-        rightIndent: paragraph.rightIndent,
-        firstLineIndent: paragraph.firstLineIndent,
-        alignment: paragraph.alignment,
-      }));
+          const ooxmlMapping = mapOoxmlContent(parsedOoxml.textRuns, contentText);
+          if (parsedOoxml.parsed && !ooxmlMapping.complete) {
+            addReadWarning(
+              warnings,
+              "FORMAT_OFFSET_UNRESOLVED",
+              "OOXML text and formatting runs could not be mapped safely to contentText."
+            );
+          }
 
-      return {
-        id: `footnote-${ordinal}-${originalTextHash}`,
-        ordinal,
-        displayLabel,
-        rawWordText,
-        contentText,
-        contentLength: contentText.length,
-        originalTextHash,
-        reference: {
-          referenceText,
-        },
-        locator: {
-          ordinal,
-          displayLabel,
-          originalTextHash,
-          contextBefore,
-          contextAfter,
-        },
-        paragraphCount: paragraphs.length,
-        paragraphs,
-        hyperlinks,
-        baseCharacterFormat,
-        formattingRuns,
-        paragraphFormats,
-      };
-    });
+          const loadedHyperlinks: LoadedHyperlinkData[] =
+            readContext.hyperlinks?.items.map((hyperlink) => ({
+              displayText: hyperlink.textToDisplay,
+              target: getHyperlinkTarget(hyperlink.address, hyperlink.subAddress),
+            })) ?? [];
+          const hyperlinks = supportsDesktop13
+            ? createFootnoteHyperlinks(
+                loadedHyperlinks,
+                parsedOoxml.hyperlinks,
+                ooxmlMapping,
+                contentText,
+                warnings
+              )
+            : [];
+          const loadedFields: LoadedFieldData[] = readContext.fields.items.map((field) => ({
+            type: field.type,
+            resultText: field.result.text,
+            locked: field.locked,
+          }));
+          const fields = createFootnoteFields(
+            loadedFields,
+            parsedOoxml.fields,
+            ooxmlMapping,
+            contentText,
+            warnings
+          );
+          const bookmarks = createFootnoteBookmarks(parsedOoxml.bookmarks, ooxmlMapping, warnings);
+          const loadedContentControls: LoadedContentControlData[] =
+            readContext.contentControls.items.map((control) => ({
+              id: control.id,
+              tag: control.tag,
+              title: control.title,
+              type: control.type,
+            }));
+          const contentControls = createFootnoteContentControls(
+            loadedContentControls,
+            parsedOoxml.contentControls,
+            ooxmlMapping,
+            warnings
+          );
+          const protectedRanges = createProtectedRanges({
+            hyperlinks,
+            fields,
+            bookmarks,
+            contentControls,
+          });
+          const baseCharacterFormat = getCharacterFormat(
+            readContext.baseCharacterRange.font,
+            supportsDesktop13
+          );
+          const formattingRuns = ooxmlMapping.complete
+            ? createFormattingRunsFromOoxml(ooxmlMapping.textRuns, baseCharacterFormat)
+            : [];
+          const paragraphFormats = readContext.paragraphs.items.map(
+            (paragraph, paragraphIndex) => ({
+              index: paragraphIndex,
+              styleName: paragraph.style,
+              lineSpacing: paragraph.lineSpacing,
+              spaceBefore: paragraph.spaceBefore,
+              spaceAfter: paragraph.spaceAfter,
+              leftIndent: paragraph.leftIndent,
+              rightIndent: paragraph.rightIndent,
+              firstLineIndent: paragraph.firstLineIndent,
+              alignment: paragraph.alignment,
+            })
+          );
+
+          snapshots.push({
+            id: `footnote-${ordinal}-${originalTextHash}`,
+            ordinal,
+            displayLabel,
+            rawWordText,
+            contentText,
+            contentLength: contentText.length,
+            originalTextHash,
+            reference: { referenceText },
+            locator: {
+              ordinal,
+              displayLabel,
+              originalTextHash,
+              contextBefore,
+              contextAfter,
+            },
+            paragraphCount: paragraphs.length,
+            paragraphs,
+            hyperlinks,
+            fields,
+            bookmarks,
+            contentControls,
+            protectedRanges,
+            readStatus: warnings.length === 0 ? "complete" : "partial",
+            readWarnings: warnings,
+            baseCharacterFormat,
+            formattingRuns,
+            paragraphFormats,
+          });
+        } catch {
+          const rawWordText = readLoadedText(() => footnote.body.text);
+          const contentText = removeLeadingWordNoteReferenceMark(rawWordText);
+          const originalTextHash = hashText(contentText);
+          const referenceText = readLoadedText(() => footnote.reference.text);
+          const displayLabel = getDisplayLabel(referenceText, ordinal);
+          snapshots.push({
+            id: `footnote-${ordinal}-${originalTextHash}`,
+            ordinal,
+            displayLabel,
+            rawWordText,
+            contentText,
+            contentLength: contentText.length,
+            originalTextHash,
+            reference: { referenceText },
+            locator: {
+              ordinal,
+              displayLabel,
+              originalTextHash,
+              contextBefore: "",
+              contextAfter: "",
+            },
+            paragraphCount: 0,
+            paragraphs: [],
+            hyperlinks: [],
+            fields: [],
+            bookmarks: [],
+            contentControls: [],
+            protectedRanges: [],
+            readStatus: "failed",
+            readWarnings: [
+              {
+                code: "FOOTNOTE_SNAPSHOT_FAILED",
+                message: "The footnote could not be converted into a reliable snapshot.",
+              },
+            ],
+            formattingRuns: [],
+            paragraphFormats: [],
+          });
+        }
+      }
+    }
 
     return {
       footnotes: snapshots,
       documentFormatting: getDocumentFormatting(document, supportsDesktop13, supportsDesktop14),
+      syncCount,
     };
   });
+
+  const completeCount = result.footnotes.filter(
+    (footnote) => footnote.readStatus === "complete"
+  ).length;
+  const partialCount = result.footnotes.filter(
+    (footnote) => footnote.readStatus === "partial"
+  ).length;
+  const failedCount = result.footnotes.filter(
+    (footnote) => footnote.readStatus === "failed"
+  ).length;
+
+  return {
+    footnotes: result.footnotes,
+    documentFormatting: result.documentFormatting,
+    readerMetrics: {
+      durationMs: Math.round((performance.now() - startedAt) * 10) / 10,
+      footnoteCount: result.footnotes.length,
+      completeCount,
+      partialCount,
+      failedCount,
+      syncCount: result.syncCount,
+    },
+  };
 }
