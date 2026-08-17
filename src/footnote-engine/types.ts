@@ -71,6 +71,7 @@ export interface StatuteReferenceCandidate {
   variant?: string;
   case?: string;
   law?: string;
+  referenceContext?: "statute" | "workSection" | "unknown";
 }
 
 export type CitationType =

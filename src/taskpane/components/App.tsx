@@ -410,13 +410,17 @@ const App: React.FC = () => {
                     </ul>
                   </div>
                   <p className={styles.resultText}>
-                    Statute References: {segment.embeddedStatuteReferences.length}
+                    Reference Candidates: {segment.embeddedStatuteReferences.length}
                   </p>
                   {segment.embeddedStatuteReferences.length > 0 && (
                     <ul className={styles.resultText}>
                       {segment.embeddedStatuteReferences.map((reference) => (
                         <li key={`${reference.start}-${reference.end}`}>
-                          {reference.originalText} [{reference.start}, {reference.end})
+                          {reference.originalText} [{reference.start}, {reference.end}) · section:{" "}
+                          {reference.section ?? reference.sections?.join(", ") ?? "–"} · paragraph:{" "}
+                          {reference.paragraph ?? "–"} · sentence: {reference.sentence ?? "–"} · law:{" "}
+                          {reference.law ?? "–"} · context:{" "}
+                          {reference.referenceContext ?? "unknown"}
                         </li>
                       ))}
                     </ul>

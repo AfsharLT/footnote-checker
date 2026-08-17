@@ -47,6 +47,20 @@ const CONSERVATIVE_CITATION_START =
   /^(?:(?:vgl\.|siehe|dazu|so\s+auch|a\.\s*A\.|anders|ausführlich|zust\.|krit\.|ahnlich|ähnlich|ebenso)\s+)?(?:BGH|BVerfG|BAG|BFH|BSG|BVerwG|EuGH|OLG|LG|AG|MüKo-|Fischer,|Roxin\/|BT-Drs\.|(?:§§?|Art\.)\s*\d)/i;
 const SECTION_PATTERN = /^\d+[A-Za-z]?/;
 const LAW_PATTERN = /^([A-ZÄÖÜ][A-Za-zÄÖÜäöüß0-9-]{0,30})(?=$|[\s,.;:)\]])/;
+const ROMAN_PARAGRAPH_VALUES: Readonly<Record<string, string>> = {
+  I: "1",
+  II: "2",
+  III: "3",
+  IV: "4",
+  V: "5",
+  VI: "6",
+  VII: "7",
+  VIII: "8",
+  IX: "9",
+  X: "10",
+};
+const ROMAN_PARAGRAPH_PATTERN = /^(?:VIII|VII|III|VI|IV|IX|II|V|X|I)(?=$|[\s,.;:)\]])/;
+const SHORTHAND_SENTENCE_PATTERN = /^\d+(?=$|[\s,.;:)\]])/;
 
 const QUALIFIER_PATTERNS: ReadonlyArray<{
   property:
@@ -325,6 +339,27 @@ function findStatuteReferences(
 
     let meaningfulEnd = cursor;
     const values: Partial<StatuteReferenceCandidate> = {};
+    const romanParagraphStart = skipWhitespace(text, cursor, coreEnd);
+    const romanParagraphMatch = ROMAN_PARAGRAPH_PATTERN.exec(
+      text.slice(romanParagraphStart, coreEnd)
+    );
+
+    if (romanParagraphMatch) {
+      values.paragraph = ROMAN_PARAGRAPH_VALUES[romanParagraphMatch[0]];
+      cursor = romanParagraphStart + romanParagraphMatch[0].length;
+      meaningfulEnd = cursor;
+
+      const shorthandSentenceStart = skipWhitespace(text, cursor, coreEnd);
+      const shorthandSentenceMatch = SHORTHAND_SENTENCE_PATTERN.exec(
+        text.slice(shorthandSentenceStart, coreEnd)
+      );
+      if (shorthandSentenceMatch) {
+        values.sentence = shorthandSentenceMatch[0];
+        cursor = shorthandSentenceStart + shorthandSentenceMatch[0].length;
+        meaningfulEnd = cursor;
+      }
+    }
+
     let qualifierFound = true;
 
     while (qualifierFound) {
@@ -359,6 +394,7 @@ function findStatuteReferences(
       unitType,
       ...(unitType === "§§" ? { sections } : { section: sections[0] }),
       ...values,
+      referenceContext: "unknown",
     };
 
     if (reference.start < reference.end && reference.end <= coreEnd) {

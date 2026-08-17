@@ -109,6 +109,18 @@ function embeddedStatuteSignal(segment: CitationSegment): ClassificationSignal |
     : undefined;
 }
 
+function sectionReferenceSignal(segment: CitationSegment): ClassificationSignal | undefined {
+  const reference = segment.embeddedStatuteReferences[0];
+  return reference
+    ? createSignal(
+        "SECTION_REFERENCE_CANDIDATE",
+        reference.originalText,
+        reference.start,
+        reference.end
+      )
+    : undefined;
+}
+
 function detectCaseLaw(segment: CitationSegment): CaseLawSignals {
   const text = segment.coreText;
   const offset = segment.coreStart;
@@ -302,9 +314,37 @@ function detectBook(segment: CitationSegment): CitationClassification | undefine
       edition,
       year,
       marginNumber,
-      embeddedStatuteSignal(segment),
+      sectionReferenceSignal(segment),
     ]),
   };
+}
+
+function resolveReferenceContexts(
+  segment: CitationSegment,
+  classification: CitationClassification
+): CitationSegment["embeddedStatuteReferences"] {
+  return segment.embeddedStatuteReferences.map((reference, index, references) => {
+    if (classification.type === "STATUTE" || classification.type === "COMMENTARY") {
+      return { ...reference, referenceContext: "statute" };
+    }
+
+    if (reference.law) {
+      return { ...reference, referenceContext: "statute" };
+    }
+
+    if (classification.type === "BOOK") {
+      const followingEnd = references[index + 1]?.start ?? segment.end;
+      const followingText = segment.originalText.slice(
+        reference.end - segment.start,
+        followingEnd - segment.start
+      );
+      if (/^\s*,?\s*(?:Rn\.|Rdnr\.)\s*\d+/i.test(followingText)) {
+        return { ...reference, referenceContext: "workSection" };
+      }
+    }
+
+    return { ...reference, referenceContext: "unknown" };
+  });
 }
 
 function isAllowedStatuteGap(gap: string, position: "before" | "between" | "after"): boolean {
@@ -538,9 +578,13 @@ export function classifyFootnoteParseResult(
 ): FootnoteParseResult {
   return {
     ...parseResult,
-    segments: parseResult.segments.map((segment) => ({
-      ...segment,
-      classification: classifyCitationSegment(segment, protectedRanges),
-    })),
+    segments: parseResult.segments.map((segment) => {
+      const classification = classifyCitationSegment(segment, protectedRanges);
+      return {
+        ...segment,
+        embeddedStatuteReferences: resolveReferenceContexts(segment, classification),
+        classification,
+      };
+    }),
   };
 }
