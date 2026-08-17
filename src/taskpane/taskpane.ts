@@ -1,5 +1,7 @@
 /* global Office, Word, DOMParser, Element, performance */
 
+import { normalizeFootnoteReferencesInContext, WORD_NOTE_REFERENCE_MARK } from "./locator-context";
+
 export interface CharacterFormat {
   fontName?: string | null;
   fontSize?: number | null;
@@ -131,7 +133,6 @@ export interface FootnoteReadResult {
   };
 }
 
-const WORD_NOTE_REFERENCE_MARK = "\u0002";
 const FOOTNOTE_CHUNK_SIZE = 150;
 const OOXML_STRUCTURAL_TEXT_MARKS = new Set(["\r", "\n", "\v", "\f"]);
 const CHARACTER_FORMAT_KEYS: Array<keyof CharacterFormat> = [
@@ -497,9 +498,12 @@ function parseFootnoteOoxml(ooxml: string): ParsedFootnoteOoxml {
     }
 
     const allElements = Array.from(xmlDocument.getElementsByTagName("*"));
+    const footnoteElement = allElements.find((element) =>
+      isWordprocessingElement(element, "footnote")
+    );
     const contentRoot =
       allElements.find((element) => isWordprocessingElement(element, "body")) ??
-      allElements.find((element) => isWordprocessingElement(element, "footnote")) ??
+      footnoteElement ??
       xmlDocument.documentElement;
     const textRuns: OoxmlTextRun[] = [];
     const fields: ParsedOoxmlField[] = [];
@@ -1166,8 +1170,6 @@ export async function readFootnotes(): Promise<FootnoteReadResult> {
           const displayLabel = getDisplayLabel(referenceText, ordinal);
           const originalTextHash = hashText(contentText);
           const warnings: FootnoteReadWarning[] = [];
-          const contextBefore = readContext.beforeRange.text.slice(-60);
-          const contextAfter = readContext.afterRange.text.slice(0, 60);
           const paragraphTexts = readContext.paragraphs.items.map((paragraph) => paragraph.text);
           const paragraphs = createParagraphStructure(paragraphTexts, contentText);
           if (paragraphs.some((paragraph) => paragraph.start === undefined)) {
@@ -1276,6 +1278,21 @@ export async function readFootnotes(): Promise<FootnoteReadResult> {
               alignment: paragraph.alignment,
             })
           );
+          const normalizedContextBefore = normalizeFootnoteReferencesInContext(
+            readContext.beforeRange.text,
+            "before"
+          );
+          const normalizedContextAfter = normalizeFootnoteReferencesInContext(
+            readContext.afterRange.text,
+            "after"
+          );
+          if (normalizedContextBefore.failed || normalizedContextAfter.failed) {
+            addReadWarning(
+              warnings,
+              "REFERENCE_TOKENIZATION_FALLBACK",
+              "Footnote reference markers in the locator context required a safe fallback."
+            );
+          }
 
           snapshots.push({
             id: `footnote-${ordinal}-${originalTextHash}`,
@@ -1290,8 +1307,8 @@ export async function readFootnotes(): Promise<FootnoteReadResult> {
               ordinal,
               displayLabel,
               originalTextHash,
-              contextBefore,
-              contextAfter,
+              contextBefore: normalizedContextBefore.text,
+              contextAfter: normalizedContextAfter.text,
             },
             paragraphCount: paragraphs.length,
             paragraphs,

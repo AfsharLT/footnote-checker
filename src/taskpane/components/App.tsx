@@ -2,7 +2,12 @@ import * as React from "react";
 import { useMemo, useState } from "react";
 import { Button, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
 import { analyzeFootnotes } from "../../footnote-engine/engine";
-import type { Finding, FootnoteEngineResult } from "../../footnote-engine/types";
+import type {
+  Finding,
+  FootnoteAnalysisResult,
+  FootnoteEngineResult,
+} from "../../footnote-engine/types";
+import { formatReaderError } from "../reader-error";
 import {
   CharacterFormat,
   DocumentFormattingSnapshot,
@@ -179,6 +184,7 @@ const useStyles = makeStyles({
   error: {
     margin: 0,
     color: tokens.colorPaletteRedForeground1,
+    whiteSpace: "pre-wrap",
   },
 });
 
@@ -210,6 +216,15 @@ const App: React.FC = () => {
 
     return result;
   }, [engineResult]);
+  const analysesByFootnoteId = useMemo(() => {
+    const result = new Map<string, FootnoteAnalysisResult>();
+
+    for (const analysis of engineResult?.footnoteAnalyses ?? []) {
+      result.set(analysis.footnoteId, analysis);
+    }
+
+    return result;
+  }, [engineResult]);
 
   const handleReadFootnotes = async () => {
     setIsLoading(true);
@@ -234,11 +249,7 @@ const App: React.FC = () => {
       setReaderMetrics(null);
       setEngineResult(null);
       setHasError(true);
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Die Fußnoten konnten nicht ausgelesen werden. Bitte versuchen Sie es erneut."
-      );
+      setMessage(formatReaderError(error));
     } finally {
       setIsLoading(false);
     }
@@ -279,6 +290,12 @@ const App: React.FC = () => {
               </p>
               <p className={styles.resultText}>Findings: {engineResult.findings.length}</p>
               <p className={styles.resultText}>
+                Erkannte Klartext-URLs: {engineResult.plainTextUrlCount}
+              </p>
+              <p className={styles.resultText}>
+                Engine Protected Ranges: {engineResult.engineProtectedRangeCount}
+              </p>
+              <p className={styles.resultText}>
                 Errors: {engineResult.findingsBySeverity.error} · Warnings:{" "}
                 {engineResult.findingsBySeverity.warning} · Infos:{" "}
                 {engineResult.findingsBySeverity.info}
@@ -308,15 +325,17 @@ const App: React.FC = () => {
           )}
           {footnotes.map((footnote) => {
             const findings = findingsByFootnoteId.get(footnote.id) ?? [];
+            const analysis = analysesByFootnoteId.get(footnote.id);
+            const engineProtectedRanges = analysis?.engineProtectedRanges ?? [];
 
             return (
-            <article
-              className={mergeClasses(
-                styles.resultItem,
-                findings.length > 0 ? styles.findingResultItem : undefined
-              )}
-              key={footnote.id}
-            >
+              <article
+                className={mergeClasses(
+                  styles.resultItem,
+                  findings.length > 0 ? styles.findingResultItem : undefined
+                )}
+                key={footnote.id}
+              >
               <h2 className={styles.resultTitle}>Fußnote {footnote.ordinal}</h2>
               <p className={findings.length > 0 ? styles.findingCount : styles.resultText}>
                 Findings: {findings.length}
@@ -383,11 +402,29 @@ const App: React.FC = () => {
                   <li>Content Controls: {footnote.contentControls.length}</li>
                 </ul>
               </div>
+              <div className={styles.resultText}>
+                Engine-Schutzbereiche:
+                <ul>
+                  <li>Plain-Text-URLs: {engineProtectedRanges.length}</li>
+                </ul>
+              </div>
+              {engineProtectedRanges.map((range, rangeIndex) => (
+                <p
+                  className={styles.resultText}
+                  key={`${range.type}-${range.start}-${range.end}-${rangeIndex}`}
+                >
+                  {range.type} [{range.start}, {range.end}): {range.text}
+                </p>
+              ))}
+              <p className={styles.resultText}>
+                Gemeinsame Protected Ranges: Reader {footnote.protectedRanges.length} · Engine{" "}
+                {engineProtectedRanges.length}
+              </p>
               {footnote.protectedRanges.length === 0 ? (
-                <p className={styles.resultText}>Protected Ranges: keine</p>
+                <p className={styles.resultText}>Reader Protected Ranges: keine</p>
               ) : (
                 <div className={styles.resultText}>
-                  Protected Ranges:
+                  Reader Protected Ranges:
                   <ul>
                     {footnote.protectedRanges.map((range, rangeIndex) => (
                       <li key={`${range.type}-${range.start}-${range.end}-${rangeIndex}`}>
@@ -444,7 +481,7 @@ const App: React.FC = () => {
                   {formatValue(paragraph.alignment)}
                 </p>
               ))}
-            </article>
+              </article>
             );
           })}
         </section>
