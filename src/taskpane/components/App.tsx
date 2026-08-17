@@ -390,7 +390,25 @@ const App: React.FC = () => {
                     Modifier: {segment.modifiers.map((modifier) => modifier.text).join(", ") || "keine"}
                   </p>
                   <p className={styles.resultText}>Core: {segment.coreText}</p>
-                  <p className={styles.resultText}>Type: {segment.classification}</p>
+                  <p className={styles.resultText}>Type: {segment.classification.type}</p>
+                  <p className={styles.resultText}>
+                    Certainty: {segment.classification.certainty}
+                  </p>
+                  {segment.classification.caseLawForm && (
+                    <p className={styles.resultText}>
+                      Citation Form: {segment.classification.caseLawForm}
+                    </p>
+                  )}
+                  <div className={styles.resultText}>
+                    Signals:
+                    <ul>
+                      {segment.classification.signals.map((signal, signalIndex) => (
+                        <li key={`${signal.code}-${signal.start ?? ""}-${signalIndex}`}>
+                          {signal.code}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                   <p className={styles.resultText}>
                     Statute References: {segment.embeddedStatuteReferences.length}
                   </p>

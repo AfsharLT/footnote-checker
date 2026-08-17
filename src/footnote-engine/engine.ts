@@ -1,6 +1,7 @@
 /* global performance */
 
 import type { FootnoteSnapshot } from "../taskpane/taskpane";
+import { classifyFootnoteParseResult } from "./citation-classifier";
 import { segmentFootnote } from "./citation-segmenter";
 import { findPlainTextUrls } from "./patterns";
 export { isRangeProtected } from "./protected-ranges";
@@ -206,7 +207,12 @@ export function analyzeFootnotes(footnotes: readonly FootnoteSnapshot[]): Footno
   for (const footnote of footnotes) {
     const analysis = createFootnoteAnalysis(footnote);
     footnoteAnalyses.push(analysis);
-    parseResults.push(segmentFootnote(footnote, analysis.protectedRanges));
+    parseResults.push(
+      classifyFootnoteParseResult(
+        segmentFootnote(footnote, analysis.protectedRanges),
+        analysis.protectedRanges
+      )
+    );
     engineProtectedRangeCount += analysis.engineProtectedRanges.length;
 
     for (const range of analysis.engineProtectedRanges) {

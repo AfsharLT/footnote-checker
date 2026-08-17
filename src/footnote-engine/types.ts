@@ -73,6 +73,38 @@ export interface StatuteReferenceCandidate {
   law?: string;
 }
 
+export type CitationType =
+  | "STATUTE"
+  | "CASE_LAW"
+  | "COMMENTARY"
+  | "BOOK"
+  | "JOURNAL_ARTICLE"
+  | "BOOK_CHAPTER"
+  | "CASE_NOTE"
+  | "LEGISLATIVE_MATERIAL"
+  | "ONLINE_SOURCE"
+  | "ADMINISTRATIVE_MATERIAL"
+  | "OTHER";
+
+export type CitationCertainty = "high" | "medium" | "low";
+
+export type CaseLawCitationForm =
+  "DIRECT" | "OFFICIAL_COLLECTION" | "JOURNAL" | "DATABASE" | "HYBRID" | "UNKNOWN";
+
+export interface ClassificationSignal {
+  code: string;
+  text?: string;
+  start?: number;
+  end?: number;
+}
+
+export interface CitationClassification {
+  type: CitationType;
+  certainty: CitationCertainty;
+  signals: ClassificationSignal[];
+  caseLawForm?: CaseLawCitationForm;
+}
+
 export interface CitationSegment {
   segmentId: string;
   footnoteId: string;
@@ -87,7 +119,7 @@ export interface CitationSegment {
   coreEnd: number;
   coreText: string;
   embeddedStatuteReferences: StatuteReferenceCandidate[];
-  classification: "unclassified";
+  classification: CitationClassification;
 }
 
 export interface FootnoteParseResult {

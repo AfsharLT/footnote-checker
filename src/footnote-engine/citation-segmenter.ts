@@ -441,7 +441,11 @@ export function segmentFootnote(
       coreEnd: trimmed.end,
       coreText: text.slice(coreStart, trimmed.end),
       embeddedStatuteReferences: findStatuteReferences(text, coreStart, trimmed.end),
-      classification: "unclassified",
+      classification: {
+        type: "OTHER",
+        certainty: "low",
+        signals: [{ code: "NOT_YET_CLASSIFIED" }],
+      },
     };
 
     if (isValidCitationSegment(segment, text)) {
