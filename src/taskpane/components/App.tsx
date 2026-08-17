@@ -6,6 +6,7 @@ import type {
   Finding,
   FootnoteAnalysisResult,
   FootnoteEngineResult,
+  FootnoteParseResult,
 } from "../../footnote-engine/types";
 import { formatReaderError } from "../reader-error";
 import {
@@ -225,6 +226,15 @@ const App: React.FC = () => {
 
     return result;
   }, [engineResult]);
+  const parseResultsByFootnoteId = useMemo(() => {
+    const result = new Map<string, FootnoteParseResult>();
+
+    for (const parseResult of engineResult?.parseResults ?? []) {
+      result.set(parseResult.footnoteId, parseResult);
+    }
+
+    return result;
+  }, [engineResult]);
 
   const handleReadFootnotes = async () => {
     setIsLoading(true);
@@ -327,6 +337,7 @@ const App: React.FC = () => {
             const findings = findingsByFootnoteId.get(footnote.id) ?? [];
             const analysis = analysesByFootnoteId.get(footnote.id);
             const engineProtectedRanges = analysis?.engineProtectedRanges ?? [];
+            const citationSegments = parseResultsByFootnoteId.get(footnote.id)?.segments ?? [];
 
             return (
               <article
@@ -364,6 +375,33 @@ const App: React.FC = () => {
                   <p className={styles.resultText}>Original: {finding.originalText}</p>
                   {finding.suggestedText !== undefined && (
                     <p className={styles.resultText}>Vorschlag: {finding.suggestedText}</p>
+                  )}
+                </div>
+              ))}
+              <p className={styles.resultText}>Citation Segments: {citationSegments.length}</p>
+              {citationSegments.map((segment) => (
+                <div className={styles.findingItem} key={segment.segmentId}>
+                  <h3 className={styles.findingTitle}>Segment {segment.ordinal}</h3>
+                  <p className={styles.resultText}>
+                    Range: [{segment.start}, {segment.end})
+                  </p>
+                  <p className={styles.resultText}>Original: {segment.originalText}</p>
+                  <p className={styles.resultText}>
+                    Modifier: {segment.modifiers.map((modifier) => modifier.text).join(", ") || "keine"}
+                  </p>
+                  <p className={styles.resultText}>Core: {segment.coreText}</p>
+                  <p className={styles.resultText}>Type: {segment.classification}</p>
+                  <p className={styles.resultText}>
+                    Statute References: {segment.embeddedStatuteReferences.length}
+                  </p>
+                  {segment.embeddedStatuteReferences.length > 0 && (
+                    <ul className={styles.resultText}>
+                      {segment.embeddedStatuteReferences.map((reference) => (
+                        <li key={`${reference.start}-${reference.end}`}>
+                          {reference.originalText} [{reference.start}, {reference.end})
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </div>
               ))}

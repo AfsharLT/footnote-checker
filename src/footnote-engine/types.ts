@@ -36,6 +36,66 @@ export interface FootnoteAnalysisResult {
   protectedRanges: AnalysisProtectedRange[];
 }
 
+export type CitationModifierType =
+  | "comparison"
+  | "reference"
+  | "context"
+  | "agreement"
+  | "disagreement"
+  | "additionalReferences"
+  | "detail"
+  | "approval"
+  | "criticism"
+  | "similarity";
+
+export interface CitationModifier {
+  type: CitationModifierType;
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface StatuteReferenceCandidate {
+  start: number;
+  end: number;
+  originalText: string;
+  unitType?: "§" | "§§" | "Art.";
+  section?: string;
+  sections?: string[];
+  paragraph?: string;
+  sentence?: string;
+  number?: string;
+  letter?: string;
+  halfSentence?: string;
+  alternative?: string;
+  variant?: string;
+  case?: string;
+  law?: string;
+}
+
+export interface CitationSegment {
+  segmentId: string;
+  footnoteId: string;
+  ordinal: number;
+  start: number;
+  end: number;
+  originalText: string;
+  separatorBefore?: string;
+  separatorAfter?: string;
+  modifiers: CitationModifier[];
+  coreStart: number;
+  coreEnd: number;
+  coreText: string;
+  embeddedStatuteReferences: StatuteReferenceCandidate[];
+  classification: "unclassified";
+}
+
+export interface FootnoteParseResult {
+  footnoteId: string;
+  sourceTextHash: string;
+  segments: CitationSegment[];
+}
+
 export interface Finding {
   findingId: string;
   footnoteId: string;
@@ -55,6 +115,7 @@ export interface Finding {
 export interface FootnoteEngineResult {
   findings: Finding[];
   footnoteAnalyses: FootnoteAnalysisResult[];
+  parseResults: FootnoteParseResult[];
   analyzedFootnotes: number;
   plainTextUrlCount: number;
   engineProtectedRangeCount: number;

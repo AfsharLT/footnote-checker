@@ -1,6 +1,7 @@
 /* global performance */
 
 import type { FootnoteSnapshot } from "../taskpane/taskpane";
+import { segmentFootnote } from "./citation-segmenter";
 import { findPlainTextUrls } from "./patterns";
 export { isRangeProtected } from "./protected-ranges";
 import { finalPeriodRule } from "./rules/final-period";
@@ -11,6 +12,7 @@ import type {
   Finding,
   FootnoteAnalysisResult,
   FootnoteEngineResult,
+  FootnoteParseResult,
   TextPatternMatch,
 } from "./types";
 
@@ -197,12 +199,14 @@ export function analyzeFootnotes(footnotes: readonly FootnoteSnapshot[]): Footno
   const startedAt = getTimestamp();
   const findings: Finding[] = [];
   const footnoteAnalyses: FootnoteAnalysisResult[] = [];
+  const parseResults: FootnoteParseResult[] = [];
   let plainTextUrlCount = 0;
   let engineProtectedRangeCount = 0;
 
   for (const footnote of footnotes) {
     const analysis = createFootnoteAnalysis(footnote);
     footnoteAnalyses.push(analysis);
+    parseResults.push(segmentFootnote(footnote, analysis.protectedRanges));
     engineProtectedRangeCount += analysis.engineProtectedRanges.length;
 
     for (const range of analysis.engineProtectedRanges) {
@@ -239,6 +243,7 @@ export function analyzeFootnotes(footnotes: readonly FootnoteSnapshot[]): Footno
   return {
     findings,
     footnoteAnalyses,
+    parseResults,
     analyzedFootnotes: footnotes.length,
     plainTextUrlCount,
     engineProtectedRangeCount,
