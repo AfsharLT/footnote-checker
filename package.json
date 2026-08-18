@@ -12,17 +12,23 @@
     "dev_server_port": 3000
   },
   "scripts": {
+    "generate:mapping": "node scripts/generate-citation-source-mapping.mjs",
+    "prebuild": "npm run generate:mapping",
     "build": "webpack --mode production",
+    "prebuild:dev": "npm run generate:mapping",
     "build:dev": "webpack --mode development",
+    "predev-server": "npm run generate:mapping",
     "dev-server": "webpack serve --mode development",
     "lint": "office-addin-lint check",
     "lint:fix": "office-addin-lint fix",
     "prettier": "office-addin-lint prettier",
     "signin": "office-addin-dev-settings m365-account login",
     "signout": "office-addin-dev-settings m365-account logout",
+    "prestart": "npm run generate:mapping",
     "start": "office-addin-debugging start manifest.xml",
     "stop": "office-addin-debugging stop manifest.xml",
     "validate": "office-addin-manifest validate manifest.xml",
+    "prewatch": "npm run generate:mapping",
     "watch": "webpack --mode development --watch"
   },
   "dependencies": {

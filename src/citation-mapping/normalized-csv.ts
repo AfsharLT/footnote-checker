@@ -1,0 +1,318 @@
+import { encodeSemicolonCsvRow, parseSemicolonCsv } from "./csv";
+import { normalizeCitationSourceText } from "./normalization";
+import type {
+  CitationSourceAlias,
+  CitationSourceKind,
+  CitationSourceLegalArea,
+  CitationSourceMappingData,
+  CitationSourceMappingValidationResult,
+  CitationSourceMaster,
+  CommentaryPersonStructureHint,
+  LegacySafetyLevel,
+} from "./types";
+
+const NORMALIZED_HEADERS = [
+  "schemaVersion",
+  "canonicalSourceId",
+  "kind",
+  "legalArea",
+  "commentedLaw",
+  "preferredName",
+  "alias",
+  "matchMode",
+  "wholeWord",
+  "active",
+  "sourceActive",
+  "legacySafetyLevel",
+  "personStructureHint",
+  "examplePattern",
+  "notes",
+  "aliasNotes",
+  "legacyMappingId",
+  "legacyCommentCode",
+  "legacyAutoCorrectionAllowed",
+  "legacyAnalysisAction",
+  "legacyReviewAction",
+  "legacyCorrectionAction",
+  "legacyVersion",
+  "legacyDate",
+] as const;
+
+function csvValue(value: string | boolean | undefined): string {
+  return value === undefined ? "" : String(value);
+}
+
+export function exportCitationSourceMappingCsv(data: CitationSourceMappingData): string {
+  const sources = new Map(data.sources.map((source) => [source.canonicalSourceId, source]));
+  const aliases = [...data.aliases].sort(
+    (left, right) =>
+      left.canonicalSourceId.localeCompare(right.canonicalSourceId) ||
+      normalizeCitationSourceText(left.alias).localeCompare(
+        normalizeCitationSourceText(right.alias)
+      ) ||
+      left.alias.localeCompare(right.alias)
+  );
+  const rows = aliases.flatMap((alias) => {
+    const source = sources.get(alias.canonicalSourceId);
+    if (!source) return [];
+    return [
+      encodeSemicolonCsvRow([
+        "1",
+        source.canonicalSourceId,
+        source.kind,
+        source.legalArea,
+        csvValue(source.commentedLaw),
+        source.preferredName,
+        alias.alias,
+        alias.matchMode,
+        csvValue(alias.wholeWord),
+        csvValue(alias.active),
+        csvValue(source.active),
+        csvValue(alias.legacySafetyLevel),
+        csvValue(source.personStructureHint),
+        csvValue(source.examplePattern),
+        csvValue(source.notes),
+        csvValue(alias.notes),
+        csvValue(alias.legacyMappingId),
+        csvValue(alias.legacyCommentCode),
+        csvValue(alias.legacyAutoCorrectionAllowed),
+        csvValue(alias.legacyActions?.analysis),
+        csvValue(alias.legacyActions?.review),
+        csvValue(alias.legacyActions?.correction),
+        csvValue(alias.legacyVersion),
+        csvValue(alias.legacyDate),
+      ]),
+    ];
+  });
+  return [encodeSemicolonCsvRow(NORMALIZED_HEADERS), ...rows].join("\n");
+}
+
+function parseBoolean(value: string, path: string, errors: string[]): boolean | undefined {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  errors.push(`${path} must be true or false`);
+  return undefined;
+}
+
+function optionalBoolean(value: string, path: string, errors: string[]): boolean | undefined {
+  return value === "" ? undefined : parseBoolean(value, path, errors);
+}
+
+function enumValue<T extends string>(
+  value: string,
+  allowed: readonly T[],
+  path: string,
+  errors: string[]
+): T | undefined {
+  if (allowed.includes(value as T)) return value as T;
+  errors.push(`${path} has an unsupported value`);
+  return undefined;
+}
+
+function optional(value: string): string | undefined {
+  return value === "" ? undefined : value;
+}
+
+export function parseCitationSourceMappingCsv(
+  csvText: string
+): CitationSourceMappingValidationResult {
+  const parsed = parseSemicolonCsv(csvText);
+  const errors = [...parsed.errors];
+  if (parsed.rows.length === 0) {
+    return {
+      success: false,
+      data: { schemaVersion: 1, sources: [], aliases: [] },
+      errors: [...errors, "Normalized mapping CSV is empty"],
+    };
+  }
+  const header = parsed.rows[0];
+  const positions = new Map(header.map((name, index) => [name, index]));
+  NORMALIZED_HEADERS.forEach((name) => {
+    if (!positions.has(name)) errors.push(`Missing normalized CSV column: ${name}`);
+  });
+  const valueAt = (row: readonly string[], name: (typeof NORMALIZED_HEADERS)[number]): string => {
+    const index = positions.get(name);
+    return index === undefined ? "" : (row[index] ?? "");
+  };
+
+  const sourcesById = new Map<string, CitationSourceMaster>();
+  const aliases: CitationSourceAlias[] = [];
+  parsed.rows.slice(1).forEach((row, rowIndex) => {
+    if (row.every((value) => value.trim() === "")) return;
+    const path = `row ${rowIndex + 2}`;
+    if (valueAt(row, "schemaVersion") !== "1") {
+      errors.push(`${path} has an unsupported schemaVersion`);
+      return;
+    }
+    const canonicalSourceId = valueAt(row, "canonicalSourceId");
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(canonicalSourceId)) {
+      errors.push(`${path} has an invalid canonicalSourceId`);
+      return;
+    }
+    const kind = enumValue<CitationSourceKind>(
+      valueAt(row, "kind"),
+      ["COMMENTARY", "JOURNAL"],
+      `${path}.kind`,
+      errors
+    );
+    const area = enumValue<CitationSourceLegalArea>(
+      valueAt(row, "legalArea"),
+      ["BGB", "STGB", "STPO", "ZPO", "GG", "GENERAL", "UNKNOWN"],
+      `${path}.legalArea`,
+      errors
+    );
+    const preferredName = valueAt(row, "preferredName");
+    const aliasText = valueAt(row, "alias");
+    const matchMode = enumValue(
+      valueAt(row, "matchMode"),
+      ["CASE_INSENSITIVE_TEXT"] as const,
+      `${path}.matchMode`,
+      errors
+    );
+    if (!kind || !area || !preferredName || !aliasText || !matchMode) {
+      errors.push(`${path} is missing required source or alias values`);
+      return;
+    }
+    const sourceActive = parseBoolean(valueAt(row, "sourceActive"), `${path}.sourceActive`, errors);
+    const aliasActive = parseBoolean(valueAt(row, "active"), `${path}.active`, errors);
+    const wholeWord = parseBoolean(valueAt(row, "wholeWord"), `${path}.wholeWord`, errors);
+    const hint = optional(valueAt(row, "personStructureHint"));
+    const personHint = hint
+      ? enumValue<CommentaryPersonStructureHint>(
+          hint,
+          ["WORK_THEN_BEARBEITER", "WORK_WITHOUT_BEARBEITER", "AMBIGUOUS", "UNKNOWN"],
+          `${path}.personStructureHint`,
+          errors
+        )
+      : undefined;
+    const safety = optional(valueAt(row, "legacySafetyLevel"));
+    const legacySafetyLevel = safety
+      ? enumValue<LegacySafetyLevel>(
+          safety,
+          ["PROBABLE", "UNCERTAIN"],
+          `${path}.legacySafetyLevel`,
+          errors
+        )
+      : undefined;
+    const legacyAutoCorrectionAllowed = optionalBoolean(
+      valueAt(row, "legacyAutoCorrectionAllowed"),
+      `${path}.legacyAutoCorrectionAllowed`,
+      errors
+    );
+    if (sourceActive === undefined || aliasActive === undefined || wholeWord === undefined) return;
+
+    const existing = sourcesById.get(canonicalSourceId);
+    if (
+      existing &&
+      (existing.kind !== kind ||
+        existing.legalArea !== area ||
+        existing.preferredName !== preferredName)
+    ) {
+      errors.push(`${path} conflicts with another row for ${canonicalSourceId}`);
+      return;
+    }
+    if (!existing) {
+      sourcesById.set(canonicalSourceId, {
+        schemaVersion: 1,
+        canonicalSourceId,
+        kind,
+        preferredName,
+        legalArea: area,
+        ...(optional(valueAt(row, "commentedLaw"))
+          ? { commentedLaw: valueAt(row, "commentedLaw") }
+          : {}),
+        applicableCitationTypes:
+          kind === "COMMENTARY" ? ["COMMENTARY"] : ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE"],
+        active: sourceActive,
+        ...(optional(valueAt(row, "examplePattern"))
+          ? { examplePattern: valueAt(row, "examplePattern") }
+          : {}),
+        ...(optional(valueAt(row, "notes")) ? { notes: valueAt(row, "notes") } : {}),
+        ...(personHint ? { personStructureHint: personHint } : {}),
+        workOverride: {
+          canonicalWorkId: canonicalSourceId,
+          citationType: kind === "COMMENTARY" ? "COMMENTARY" : "JOURNAL_ARTICLE",
+          preferredName,
+        },
+      });
+    }
+
+    aliases.push({
+      ...(optional(valueAt(row, "legacyMappingId"))
+        ? { legacyMappingId: valueAt(row, "legacyMappingId") }
+        : {}),
+      canonicalSourceId,
+      alias: aliasText,
+      matchMode,
+      wholeWord,
+      active: aliasActive,
+      ...(legacySafetyLevel ? { legacySafetyLevel } : {}),
+      ...(legacyAutoCorrectionAllowed !== undefined ? { legacyAutoCorrectionAllowed } : {}),
+      ...(optional(valueAt(row, "legacyCommentCode"))
+        ? { legacyCommentCode: valueAt(row, "legacyCommentCode") }
+        : {}),
+      legacyActions: {
+        ...(optional(valueAt(row, "legacyAnalysisAction"))
+          ? { analysis: valueAt(row, "legacyAnalysisAction") }
+          : {}),
+        ...(optional(valueAt(row, "legacyReviewAction"))
+          ? { review: valueAt(row, "legacyReviewAction") }
+          : {}),
+        ...(optional(valueAt(row, "legacyCorrectionAction"))
+          ? { correction: valueAt(row, "legacyCorrectionAction") }
+          : {}),
+      },
+      ...(optional(valueAt(row, "aliasNotes")) ? { notes: valueAt(row, "aliasNotes") } : {}),
+      ...(optional(valueAt(row, "legacyVersion"))
+        ? { legacyVersion: valueAt(row, "legacyVersion") }
+        : {}),
+      ...(optional(valueAt(row, "legacyDate")) ? { legacyDate: valueAt(row, "legacyDate") } : {}),
+    });
+  });
+
+  const conflicts = new Map<string, Set<string>>();
+  aliases
+    .filter((alias) => alias.active)
+    .forEach((alias) => {
+      const normalized = normalizeCitationSourceText(alias.alias);
+      const ids = conflicts.get(normalized) ?? new Set<string>();
+      ids.add(alias.canonicalSourceId);
+      conflicts.set(normalized, ids);
+    });
+  conflicts.forEach((ids, alias) => {
+    if (ids.size > 1)
+      errors.push(`Alias conflict for "${alias}": ${Array.from(ids).sort().join(", ")}`);
+  });
+
+  const sources = Array.from(sourcesById.values()).sort((left, right) =>
+    left.canonicalSourceId.localeCompare(right.canonicalSourceId)
+  );
+  sources.forEach((source) => {
+    const sourceAliases = aliases.filter(
+      (alias) => alias.canonicalSourceId === source.canonicalSourceId
+    );
+    const versions = Array.from(
+      new Set(
+        sourceAliases
+          .map((alias) => alias.legacyVersion)
+          .filter((value): value is string => Boolean(value))
+      )
+    );
+    const dates = Array.from(
+      new Set(
+        sourceAliases
+          .map((alias) => alias.legacyDate)
+          .filter((value): value is string => Boolean(value))
+      )
+    );
+    if (versions.length > 0 || dates.length > 0) {
+      source.legacyMetadata = { legacyVersions: versions, legacyDates: dates };
+    }
+  });
+
+  return {
+    success: errors.length === 0,
+    data: { schemaVersion: 1, sources, aliases },
+    errors,
+  };
+}

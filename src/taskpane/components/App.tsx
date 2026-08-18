@@ -1,6 +1,10 @@
 import * as React from "react";
 import { useMemo, useState } from "react";
 import { Button, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
+import { CITATION_SOURCE_MAPPING_DEFAULT_SOURCE } from "../../citation-mapping/default-mapping";
+import { resolveCitationSegmentSources } from "../../citation-mapping/resolver";
+import type { CitationSourceMappingResolution } from "../../citation-mapping/types";
+import { useCitationSourceMapping } from "../../citation-mapping/use-citation-source-mapping";
 import { useCitationSettings } from "../../citation-settings/use-citation-settings";
 import { analyzeFootnotes } from "../../footnote-engine/engine";
 import type {
@@ -219,6 +223,29 @@ function describeExtraction(extraction: CitationExtractionResult): string[] {
   }
 }
 
+function describeSourceMapping(resolution: CitationSourceMappingResolution): string[] {
+  if (resolution.status === "UNMATCHED") return ["Mapping: UNMATCHED"];
+  if (resolution.status === "AMBIGUOUS") {
+    return [
+      "Mapping: AMBIGUOUS",
+      `Candidates: ${resolution.candidateCanonicalSourceIds?.join(", ") ?? "–"}`,
+    ];
+  }
+  return [
+    "Mapping: MATCHED",
+    `Canonical: ${resolution.preferredName ?? "–"}`,
+    `Matched via: ${resolution.matchedAlias ?? resolution.matchedText ?? "–"}`,
+    `Match Source: ${resolution.matchSource ?? "–"}`,
+    `Kind: ${resolution.kind ?? "–"}`,
+    `Legal Area: ${resolution.legalArea ?? "–"}`,
+    ...(resolution.commentedLaw ? [`Commented Law: ${resolution.commentedLaw}`] : []),
+    ...(resolution.legacySafetyLevel ? [`Legacy Safety: ${resolution.legacySafetyLevel}`] : []),
+    ...(resolution.personStructureHint
+      ? [`Person Structure Hint: ${resolution.personStructureHint}`]
+      : []),
+  ];
+}
+
 const useStyles = makeStyles({
   root: {
     minHeight: "100vh",
@@ -333,6 +360,7 @@ const useStyles = makeStyles({
 const App: React.FC = () => {
   const styles = useStyles();
   const { activeProfile } = useCitationSettings();
+  const { mappingData, mappingIndex } = useCitationSourceMapping();
   const [footnotes, setFootnotes] = useState<FootnoteSnapshot[]>([]);
   const [documentFormatting, setDocumentFormatting] = useState<DocumentFormattingSnapshot | null>(
     null
@@ -447,6 +475,28 @@ const App: React.FC = () => {
             <p className={styles.resultText}>
               Journal: Pinpoint {activeProfile.journalArticle.pinpointStyle}
             </p>
+          </article>
+        </section>
+        <section className={styles.results} aria-label="Citation Source Mapping">
+          <article className={styles.resultItem}>
+            <h2 className={styles.resultTitle}>Citation Source Mapping</h2>
+            <p className={styles.resultText}>Schema: {mappingData.schemaVersion}</p>
+            <p className={styles.resultText}>Sources: {mappingData.sources.length}</p>
+            <p className={styles.resultText}>
+              Commentaries:{" "}
+              {mappingData.sources.filter((source) => source.kind === "COMMENTARY").length}
+              {" · "}Journals:{" "}
+              {mappingData.sources.filter((source) => source.kind === "JOURNAL").length}
+            </p>
+            <p className={styles.resultText}>Aliases: {mappingData.aliases.length}</p>
+            <p className={styles.resultText}>
+              Uncertain legacy aliases:{" "}
+              {
+                mappingData.aliases.filter((alias) => alias.legacySafetyLevel === "UNCERTAIN")
+                  .length
+              }
+            </p>
+            <p className={styles.resultText}>Source: {CITATION_SOURCE_MAPPING_DEFAULT_SOURCE}</p>
           </article>
         </section>
         <section className={styles.results} aria-label="Ergebnisse" aria-live="polite">
@@ -615,6 +665,25 @@ const App: React.FC = () => {
                                 .join(", ")}
                         </p>
                       </div>
+                    )}
+                    {resolveCitationSegmentSources(segment, mappingIndex).map(
+                      (sourceMapping, mappingIndexValue) => (
+                        <div
+                          className={styles.resultText}
+                          key={`${sourceMapping.target}-${sourceMapping.publicationIndex ?? "primary"}-${mappingIndexValue}`}
+                        >
+                          <p className={styles.resultText}>
+                            Source Mapping Target: {sourceMapping.target}
+                          </p>
+                          <ul>
+                            {describeSourceMapping(sourceMapping.resolution).map(
+                              (line, lineIndex) => (
+                                <li key={`${lineIndex}-${line}`}>{line}</li>
+                              )
+                            )}
+                          </ul>
+                        </div>
+                      )
                     )}
                   </div>
                 ))}
