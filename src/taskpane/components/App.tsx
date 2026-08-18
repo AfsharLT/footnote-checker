@@ -3,6 +3,9 @@ import { useMemo, useState } from "react";
 import { Button, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
 import { analyzeFootnotes } from "../../footnote-engine/engine";
 import type {
+  CaseLawPublicationReference,
+  CitationExtractionResult,
+  CitationLocator,
   Finding,
   FootnoteAnalysisResult,
   FootnoteEngineResult,
@@ -76,6 +79,143 @@ function describeFormattingRun(run: FormattingRun): string {
         `${characterFormatLabels[property]}: ${formatCharacterValue(property, run[property])}`
     )
     .join(" · ");
+}
+
+function describeLocator(locator: CitationLocator): string {
+  const value = locator.value ?? locator.values?.join(", ") ?? locator.rawText;
+  const range = locator.rangeEnd ? `–${locator.rangeEnd}` : "";
+  const suffix = locator.suffix ? ` [suffix: ${locator.suffix}]` : "";
+  return `${value}${range}${suffix}`;
+}
+
+function describeCasePublication(publication: CaseLawPublicationReference): string[] {
+  switch (publication.kind) {
+    case "officialCollection":
+      return [
+        `Official Collection: ${publication.collection.rawText}`,
+        ...(publication.volume ? [`Volume: ${publication.volume.rawText}`] : []),
+        ...(publication.firstPage ? [`First Page: ${describeLocator(publication.firstPage)}`] : []),
+        ...(publication.pinpointPages.length > 0
+          ? [`Pinpoints: ${publication.pinpointPages.map(describeLocator).join(", ")}`]
+          : []),
+      ];
+    case "journal":
+      return [
+        `Journal Citation: ${publication.journal.rawText}`,
+        ...(publication.year ? [`Publication Year: ${publication.year.rawText}`] : []),
+        ...(publication.firstPage ? [`First Page: ${describeLocator(publication.firstPage)}`] : []),
+        ...(publication.pinpointPages.length > 0
+          ? [`Pinpoints: ${publication.pinpointPages.map(describeLocator).join(", ")}`]
+          : []),
+      ];
+    case "database":
+      return [
+        `Database Citation: ${publication.database.rawText}`,
+        ...(publication.year ? [`Database Year: ${publication.year.rawText}`] : []),
+        ...(publication.identifier
+          ? [`Database Identifier: ${publication.identifier.rawText}`]
+          : []),
+      ];
+  }
+}
+
+function describeExtraction(extraction: CitationExtractionResult): string[] {
+  switch (extraction.type) {
+    case "STATUTE":
+      return [
+        `Sections: ${
+          extraction.data.sections
+            .map(
+              (section) =>
+                `${section.section.rawText}${section.suffix ? ` [suffix: ${section.suffix.rawText}]` : ""}`
+            )
+            .join(", ") || "–"
+        }`,
+        `Law: ${extraction.data.law?.rawText ?? "–"}`,
+        `Context: ${extraction.data.referenceContext}`,
+      ];
+    case "CASE_LAW":
+      return [
+        `Citation Form: ${extraction.data.citationForm}`,
+        ...(extraction.data.court ? [`Court: ${extraction.data.court.rawText}`] : []),
+        ...(extraction.data.derivedCourt
+          ? [
+              `Derived Court: ${extraction.data.derivedCourt.value}`,
+              `Derived Source: ${extraction.data.derivedCourt.source}`,
+            ]
+          : []),
+        ...(extraction.data.decisionType
+          ? [
+              `Decision Type: ${extraction.data.decisionType.rawText}${extraction.data.decisionTypeNormalized ? ` → ${extraction.data.decisionTypeNormalized}` : ""}`,
+            ]
+          : []),
+        ...(extraction.data.date
+          ? [
+              `Date: ${extraction.data.date.rawText}${extraction.data.normalizedDate ? ` → ${extraction.data.normalizedDate}` : ""}`,
+            ]
+          : []),
+        ...(extraction.data.docketNumber
+          ? [`Docket: ${extraction.data.docketNumber.rawText}`]
+          : []),
+        ...extraction.data.parallelCitations.flatMap(describeCasePublication),
+      ];
+    case "COMMENTARY":
+      return [
+        `Work: ${extraction.data.work?.rawText ?? "–"}`,
+        `Persons: ${extraction.data.persons.map((person) => `${person.rawText} [${person.role}]`).join(", ") || "–"}`,
+        `Margin Numbers: ${extraction.data.marginNumbers.map((locator) => locator.value).join(", ") || "–"}`,
+      ];
+    case "BOOK":
+      return [
+        `Authors: ${extraction.data.authors.map((person) => person.rawText).join(", ") || "–"}`,
+        `Title: ${extraction.data.title?.rawText ?? "–"}`,
+        `Work Section: ${extraction.data.workSection?.rawText ?? "–"}`,
+        `Margin Numbers: ${extraction.data.marginNumbers.map((locator) => locator.rawText).join(", ") || "–"}`,
+      ];
+    case "JOURNAL_ARTICLE":
+      return [
+        `Authors: ${extraction.data.authors.map((person) => person.rawText).join(", ") || "–"}`,
+        `Journal: ${extraction.data.journal?.rawText ?? "–"}`,
+        `Year: ${extraction.data.year?.rawText ?? "–"}`,
+        `First Page: ${extraction.data.firstPage ? describeLocator(extraction.data.firstPage) : "–"}`,
+        `Pinpoints: ${extraction.data.pinpointPages.map(describeLocator).join(", ") || "–"}`,
+      ];
+    case "BOOK_CHAPTER":
+      return [
+        `Authors: ${extraction.data.authors.map((person) => person.rawText).join(", ") || "–"}`,
+        `Container: ${extraction.data.containerTitle?.rawText ?? "–"}`,
+        `Pages: ${extraction.data.pinpointPages.map((locator) => locator.rawText).join(", ") || "–"}`,
+      ];
+    case "CASE_NOTE":
+      return [
+        `Authors: ${extraction.data.authors.map((person) => person.rawText).join(", ") || "–"}`,
+        `Marker: ${extraction.data.noteMarker?.rawText ?? "–"}`,
+        `Annotated Court: ${extraction.data.annotatedCase?.court?.rawText ?? "–"}`,
+      ];
+    case "LEGISLATIVE_MATERIAL":
+      return [
+        `Material: ${extraction.data.body?.rawText ?? "–"}-${extraction.data.documentType?.rawText ?? "–"} ${extraction.data.legislativeTerm?.rawText ?? "–"}/${extraction.data.documentNumber?.rawText ?? "–"}`,
+        `Pages: ${extraction.data.pages.map((locator) => locator.rawText).join(", ") || "–"}`,
+      ];
+    case "ONLINE_SOURCE":
+      return [
+        `Title: ${extraction.data.title?.rawText ?? "–"}`,
+        `URL: ${extraction.data.url?.rawText ?? "–"}`,
+        `Access Date: ${extraction.data.accessDate?.normalizedValue ?? extraction.data.accessDate?.rawText ?? "–"}`,
+      ];
+    case "ADMINISTRATIVE_MATERIAL":
+      return [
+        `Authority: ${extraction.data.authority?.rawText ?? "–"}`,
+        `Document Type: ${extraction.data.documentType?.rawText ?? "–"}`,
+        `Date: ${extraction.data.date?.normalizedValue ?? extraction.data.date?.rawText ?? "–"}`,
+        `File Number: ${extraction.data.fileNumber?.rawText ?? "–"}`,
+      ];
+    case "OTHER":
+      return [
+        `URLs: ${extraction.data.urls.length}`,
+        `Reference Candidates: ${extraction.data.referenceCandidates.length}`,
+      ];
+  }
 }
 
 const useStyles = makeStyles({
@@ -347,200 +487,223 @@ const App: React.FC = () => {
                 )}
                 key={footnote.id}
               >
-              <h2 className={styles.resultTitle}>Fußnote {footnote.ordinal}</h2>
-              <p className={findings.length > 0 ? styles.findingCount : styles.resultText}>
-                Findings: {findings.length}
-              </p>
-              {findings.map((finding) => (
-                <div className={styles.findingItem} key={finding.findingId}>
-                  <h3 className={styles.findingTitle}>Finding</h3>
-                  <p className={styles.resultText}>Rule: {finding.ruleId}</p>
-                  <p className={styles.resultText}>Category: {finding.category}</p>
-                  <p
-                    className={mergeClasses(
-                      styles.resultText,
-                      finding.severity === "error"
-                        ? styles.findingSeverityError
-                        : finding.severity === "warning"
-                          ? styles.findingSeverityWarning
-                          : styles.findingSeverityInfo
-                    )}
-                  >
-                    Severity: {finding.severity}
-                  </p>
-                  <p className={styles.resultText}>Message: {finding.message}</p>
-                  <p className={styles.resultText}>
-                    Range: [{finding.start}, {finding.end})
-                  </p>
-                  <p className={styles.resultText}>Original: {finding.originalText}</p>
-                  {finding.suggestedText !== undefined && (
-                    <p className={styles.resultText}>Vorschlag: {finding.suggestedText}</p>
-                  )}
-                </div>
-              ))}
-              <p className={styles.resultText}>Citation Segments: {citationSegments.length}</p>
-              {citationSegments.map((segment) => (
-                <div className={styles.findingItem} key={segment.segmentId}>
-                  <h3 className={styles.findingTitle}>Segment {segment.ordinal}</h3>
-                  <p className={styles.resultText}>
-                    Range: [{segment.start}, {segment.end})
-                  </p>
-                  <p className={styles.resultText}>Original: {segment.originalText}</p>
-                  <p className={styles.resultText}>
-                    Modifier: {segment.modifiers.map((modifier) => modifier.text).join(", ") || "keine"}
-                  </p>
-                  <p className={styles.resultText}>Core: {segment.coreText}</p>
-                  <p className={styles.resultText}>Type: {segment.classification.type}</p>
-                  <p className={styles.resultText}>
-                    Certainty: {segment.classification.certainty}
-                  </p>
-                  {segment.classification.caseLawForm && (
-                    <p className={styles.resultText}>
-                      Citation Form: {segment.classification.caseLawForm}
+                <h2 className={styles.resultTitle}>Fußnote {footnote.ordinal}</h2>
+                <p className={findings.length > 0 ? styles.findingCount : styles.resultText}>
+                  Findings: {findings.length}
+                </p>
+                {findings.map((finding) => (
+                  <div className={styles.findingItem} key={finding.findingId}>
+                    <h3 className={styles.findingTitle}>Finding</h3>
+                    <p className={styles.resultText}>Rule: {finding.ruleId}</p>
+                    <p className={styles.resultText}>Category: {finding.category}</p>
+                    <p
+                      className={mergeClasses(
+                        styles.resultText,
+                        finding.severity === "error"
+                          ? styles.findingSeverityError
+                          : finding.severity === "warning"
+                            ? styles.findingSeverityWarning
+                            : styles.findingSeverityInfo
+                      )}
+                    >
+                      Severity: {finding.severity}
                     </p>
-                  )}
+                    <p className={styles.resultText}>Message: {finding.message}</p>
+                    <p className={styles.resultText}>
+                      Range: [{finding.start}, {finding.end})
+                    </p>
+                    <p className={styles.resultText}>Original: {finding.originalText}</p>
+                    {finding.suggestedText !== undefined && (
+                      <p className={styles.resultText}>Vorschlag: {finding.suggestedText}</p>
+                    )}
+                  </div>
+                ))}
+                <p className={styles.resultText}>Citation Segments: {citationSegments.length}</p>
+                {citationSegments.map((segment) => (
+                  <div className={styles.findingItem} key={segment.segmentId}>
+                    <h3 className={styles.findingTitle}>Segment {segment.ordinal}</h3>
+                    <p className={styles.resultText}>
+                      Range: [{segment.start}, {segment.end})
+                    </p>
+                    <p className={styles.resultText}>Original: {segment.originalText}</p>
+                    <p className={styles.resultText}>
+                      Modifier:{" "}
+                      {segment.modifiers.map((modifier) => modifier.text).join(", ") || "keine"}
+                    </p>
+                    <p className={styles.resultText}>Core: {segment.coreText}</p>
+                    <p className={styles.resultText}>Type: {segment.classification.type}</p>
+                    <p className={styles.resultText}>
+                      Certainty: {segment.classification.certainty}
+                    </p>
+                    {segment.classification.caseLawForm && (
+                      <p className={styles.resultText}>
+                        Citation Form: {segment.classification.caseLawForm}
+                      </p>
+                    )}
+                    <div className={styles.resultText}>
+                      Signals:
+                      <ul>
+                        {segment.classification.signals.map((signal, signalIndex) => (
+                          <li key={`${signal.code}-${signal.start ?? ""}-${signalIndex}`}>
+                            {signal.code}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <p className={styles.resultText}>
+                      Reference Candidates: {segment.embeddedStatuteReferences.length}
+                    </p>
+                    {segment.embeddedStatuteReferences.length > 0 && (
+                      <ul className={styles.resultText}>
+                        {segment.embeddedStatuteReferences.map((reference) => (
+                          <li key={`${reference.start}-${reference.end}`}>
+                            {reference.originalText} [{reference.start}, {reference.end}) · section:{" "}
+                            {reference.section ?? reference.sections?.join(", ") ?? "–"} ·
+                            paragraph: {reference.paragraph ?? "–"} · sentence:{" "}
+                            {reference.sentence ?? "–"} · law: {reference.law ?? "–"} · context:{" "}
+                            {reference.referenceContext ?? "unknown"}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {segment.extraction && (
+                      <div className={styles.resultText}>
+                        <p className={styles.resultText}>
+                          Extraction Status: {segment.extraction.status}
+                        </p>
+                        <ul>
+                          {describeExtraction(segment.extraction).map((line, lineIndex) => (
+                            <li key={`${lineIndex}-${line}`}>{line}</li>
+                          ))}
+                        </ul>
+                        <p className={styles.resultText}>
+                          Unparsed:{" "}
+                          {segment.extraction.unparsedRemainder.length === 0
+                            ? "none"
+                            : segment.extraction.unparsedRemainder
+                                .map((span) => `“${span.rawText}”`)
+                                .join(", ")}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <p className={styles.resultText}>ID: {footnote.id}</p>
+                <p className={styles.resultText}>
+                  Label: {footnote.displayLabel || "Nicht verfügbar"}
+                </p>
+                <p className={styles.resultText}>Text: {footnote.contentText}</p>
+                <p className={styles.resultText}>Länge: {footnote.contentLength}</p>
+                <p className={styles.resultText}>Hash: {footnote.originalTextHash}</p>
+                <p className={styles.resultText}>Read Status: {footnote.readStatus}</p>
+                {footnote.readWarnings.length === 0 ? (
+                  <p className={styles.resultText}>Warnings: keine</p>
+                ) : (
                   <div className={styles.resultText}>
-                    Signals:
+                    Warnings:
                     <ul>
-                      {segment.classification.signals.map((signal, signalIndex) => (
-                        <li key={`${signal.code}-${signal.start ?? ""}-${signalIndex}`}>
-                          {signal.code}
+                      {footnote.readWarnings.map((warning) => (
+                        <li key={warning.code}>{warning.code}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <p className={styles.resultText}>Kontext davor: {footnote.locator.contextBefore}</p>
+                <p className={styles.resultText}>Kontext danach: {footnote.locator.contextAfter}</p>
+                {footnote.locator.paragraphIndex !== undefined && (
+                  <p className={styles.resultText}>
+                    Absatzindex: {footnote.locator.paragraphIndex}
+                  </p>
+                )}
+                <p className={styles.resultText}>Absätze: {footnote.paragraphCount}</p>
+                <div className={styles.resultText}>
+                  Geschützte Strukturen:
+                  <ul>
+                    <li>Hyperlinks: {footnote.hyperlinks.length}</li>
+                    <li>Fields: {footnote.fields.length}</li>
+                    <li>Bookmarks: {footnote.bookmarks.length}</li>
+                    <li>Content Controls: {footnote.contentControls.length}</li>
+                  </ul>
+                </div>
+                <div className={styles.resultText}>
+                  Engine-Schutzbereiche:
+                  <ul>
+                    <li>Plain-Text-URLs: {engineProtectedRanges.length}</li>
+                  </ul>
+                </div>
+                {engineProtectedRanges.map((range, rangeIndex) => (
+                  <p
+                    className={styles.resultText}
+                    key={`${range.type}-${range.start}-${range.end}-${rangeIndex}`}
+                  >
+                    {range.type} [{range.start}, {range.end}): {range.text}
+                  </p>
+                ))}
+                <p className={styles.resultText}>
+                  Gemeinsame Protected Ranges: Reader {footnote.protectedRanges.length} · Engine{" "}
+                  {engineProtectedRanges.length}
+                </p>
+                {footnote.protectedRanges.length === 0 ? (
+                  <p className={styles.resultText}>Reader Protected Ranges: keine</p>
+                ) : (
+                  <div className={styles.resultText}>
+                    Reader Protected Ranges:
+                    <ul>
+                      {footnote.protectedRanges.map((range, rangeIndex) => (
+                        <li key={`${range.type}-${range.start}-${range.end}-${rangeIndex}`}>
+                          {range.type} [{range.start}, {range.end})
                         </li>
                       ))}
                     </ul>
                   </div>
-                  <p className={styles.resultText}>
-                    Reference Candidates: {segment.embeddedStatuteReferences.length}
-                  </p>
-                  {segment.embeddedStatuteReferences.length > 0 && (
-                    <ul className={styles.resultText}>
-                      {segment.embeddedStatuteReferences.map((reference) => (
-                        <li key={`${reference.start}-${reference.end}`}>
-                          {reference.originalText} [{reference.start}, {reference.end}) · section:{" "}
-                          {reference.section ?? reference.sections?.join(", ") ?? "–"} · paragraph:{" "}
-                          {reference.paragraph ?? "–"} · sentence: {reference.sentence ?? "–"} · law:{" "}
-                          {reference.law ?? "–"} · context:{" "}
-                          {reference.referenceContext ?? "unknown"}
+                )}
+                {footnote.hyperlinks.length === 0 ? (
+                  <p className={styles.resultText}>Hyperlinks: keine</p>
+                ) : (
+                  <div className={styles.resultText}>
+                    Hyperlinks:
+                    <ul>
+                      {footnote.hyperlinks.map((hyperlink, hyperlinkIndex) => (
+                        <li key={`${hyperlink.target}-${hyperlinkIndex}`}>
+                          {hyperlink.displayText}: {hyperlink.target}
                         </li>
                       ))}
                     </ul>
-                  )}
-                </div>
-              ))}
-              <p className={styles.resultText}>ID: {footnote.id}</p>
-              <p className={styles.resultText}>
-                Label: {footnote.displayLabel || "Nicht verfügbar"}
-              </p>
-              <p className={styles.resultText}>Text: {footnote.contentText}</p>
-              <p className={styles.resultText}>Länge: {footnote.contentLength}</p>
-              <p className={styles.resultText}>Hash: {footnote.originalTextHash}</p>
-              <p className={styles.resultText}>Read Status: {footnote.readStatus}</p>
-              {footnote.readWarnings.length === 0 ? (
-                <p className={styles.resultText}>Warnings: keine</p>
-              ) : (
+                  </div>
+                )}
                 <div className={styles.resultText}>
-                  Warnings:
+                  Base Format:
                   <ul>
-                    {footnote.readWarnings.map((warning) => (
-                      <li key={warning.code}>{warning.code}</li>
-                    ))}
+                    {(Object.keys(characterFormatLabels) as Array<keyof CharacterFormat>).map(
+                      (property) => (
+                        <li key={property}>
+                          {characterFormatLabels[property]}:{" "}
+                          {formatCharacterValue(property, footnote.baseCharacterFormat?.[property])}
+                        </li>
+                      )
+                    )}
                   </ul>
                 </div>
-              )}
-              <p className={styles.resultText}>Kontext davor: {footnote.locator.contextBefore}</p>
-              <p className={styles.resultText}>Kontext danach: {footnote.locator.contextAfter}</p>
-              {footnote.locator.paragraphIndex !== undefined && (
-                <p className={styles.resultText}>Absatzindex: {footnote.locator.paragraphIndex}</p>
-              )}
-              <p className={styles.resultText}>Absätze: {footnote.paragraphCount}</p>
-              <div className={styles.resultText}>
-                Geschützte Strukturen:
-                <ul>
-                  <li>Hyperlinks: {footnote.hyperlinks.length}</li>
-                  <li>Fields: {footnote.fields.length}</li>
-                  <li>Bookmarks: {footnote.bookmarks.length}</li>
-                  <li>Content Controls: {footnote.contentControls.length}</li>
-                </ul>
-              </div>
-              <div className={styles.resultText}>
-                Engine-Schutzbereiche:
-                <ul>
-                  <li>Plain-Text-URLs: {engineProtectedRanges.length}</li>
-                </ul>
-              </div>
-              {engineProtectedRanges.map((range, rangeIndex) => (
-                <p
-                  className={styles.resultText}
-                  key={`${range.type}-${range.start}-${range.end}-${rangeIndex}`}
-                >
-                  {range.type} [{range.start}, {range.end}): {range.text}
+                <p className={styles.resultText}>
+                  {footnote.formattingRuns.length === 0
+                    ? "Formatting Runs: keine Abweichungen"
+                    : `Formatting Runs: ${footnote.formattingRuns.length}`}
                 </p>
-              ))}
-              <p className={styles.resultText}>
-                Gemeinsame Protected Ranges: Reader {footnote.protectedRanges.length} · Engine{" "}
-                {engineProtectedRanges.length}
-              </p>
-              {footnote.protectedRanges.length === 0 ? (
-                <p className={styles.resultText}>Reader Protected Ranges: keine</p>
-              ) : (
-                <div className={styles.resultText}>
-                  Reader Protected Ranges:
-                  <ul>
-                    {footnote.protectedRanges.map((range, rangeIndex) => (
-                      <li key={`${range.type}-${range.start}-${range.end}-${rangeIndex}`}>
-                        {range.type} [{range.start}, {range.end})
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {footnote.hyperlinks.length === 0 ? (
-                <p className={styles.resultText}>Hyperlinks: keine</p>
-              ) : (
-                <div className={styles.resultText}>
-                  Hyperlinks:
-                  <ul>
-                    {footnote.hyperlinks.map((hyperlink, hyperlinkIndex) => (
-                      <li key={`${hyperlink.target}-${hyperlinkIndex}`}>
-                        {hyperlink.displayText}: {hyperlink.target}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              <div className={styles.resultText}>
-                Base Format:
-                <ul>
-                  {(Object.keys(characterFormatLabels) as Array<keyof CharacterFormat>).map(
-                    (property) => (
-                      <li key={property}>
-                        {characterFormatLabels[property]}:{" "}
-                        {formatCharacterValue(property, footnote.baseCharacterFormat?.[property])}
-                      </li>
-                    )
-                  )}
-                </ul>
-              </div>
-              <p className={styles.resultText}>
-                {footnote.formattingRuns.length === 0
-                  ? "Formatting Runs: keine Abweichungen"
-                  : `Formatting Runs: ${footnote.formattingRuns.length}`}
-              </p>
-              {footnote.formattingRuns.map((run, runIndex) => (
-                <p className={styles.resultText} key={`${run.start}-${run.end}-${runIndex}`}>
-                  Run {runIndex + 1}: [{run.start}, {run.end}) · {describeFormattingRun(run)}
-                </p>
-              ))}
-              {footnote.paragraphFormats.map((paragraph) => (
-                <p className={styles.resultText} key={`paragraph-format-${paragraph.index}`}>
-                  Absatz {paragraph.index + 1}: Style {formatValue(paragraph.styleName)} ·
-                  Zeilenabstand {formatValue(paragraph.lineSpacing)} · Vor/Nach{" "}
-                  {formatValue(paragraph.spaceBefore)}/{formatValue(paragraph.spaceAfter)} · Einzüge
-                  L/R/Erste {formatValue(paragraph.leftIndent)}/{formatValue(paragraph.rightIndent)}
-                  /{formatValue(paragraph.firstLineIndent)} · Ausrichtung{" "}
-                  {formatValue(paragraph.alignment)}
-                </p>
-              ))}
+                {footnote.formattingRuns.map((run, runIndex) => (
+                  <p className={styles.resultText} key={`${run.start}-${run.end}-${runIndex}`}>
+                    Run {runIndex + 1}: [{run.start}, {run.end}) · {describeFormattingRun(run)}
+                  </p>
+                ))}
+                {footnote.paragraphFormats.map((paragraph) => (
+                  <p className={styles.resultText} key={`paragraph-format-${paragraph.index}`}>
+                    Absatz {paragraph.index + 1}: Style {formatValue(paragraph.styleName)} ·
+                    Zeilenabstand {formatValue(paragraph.lineSpacing)} · Vor/Nach{" "}
+                    {formatValue(paragraph.spaceBefore)}/{formatValue(paragraph.spaceAfter)} ·
+                    Einzüge L/R/Erste {formatValue(paragraph.leftIndent)}/
+                    {formatValue(paragraph.rightIndent)}/{formatValue(paragraph.firstLineIndent)} ·
+                    Ausrichtung {formatValue(paragraph.alignment)}
+                  </p>
+                ))}
               </article>
             );
           })}

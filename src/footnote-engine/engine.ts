@@ -2,6 +2,7 @@
 
 import type { FootnoteSnapshot } from "../taskpane/taskpane";
 import { classifyFootnoteParseResult } from "./citation-classifier";
+import { extractFootnoteParseResult } from "./citation-extractor";
 import { segmentFootnote } from "./citation-segmenter";
 import { findPlainTextUrls } from "./patterns";
 export { isRangeProtected } from "./protected-ranges";
@@ -207,11 +208,12 @@ export function analyzeFootnotes(footnotes: readonly FootnoteSnapshot[]): Footno
   for (const footnote of footnotes) {
     const analysis = createFootnoteAnalysis(footnote);
     footnoteAnalyses.push(analysis);
+    const classifiedParseResult = classifyFootnoteParseResult(
+      segmentFootnote(footnote, analysis.protectedRanges),
+      analysis.protectedRanges
+    );
     parseResults.push(
-      classifyFootnoteParseResult(
-        segmentFootnote(footnote, analysis.protectedRanges),
-        analysis.protectedRanges
-      )
+      extractFootnoteParseResult(classifiedParseResult, footnote, analysis.protectedRanges)
     );
     engineProtectedRangeCount += analysis.engineProtectedRanges.length;
 

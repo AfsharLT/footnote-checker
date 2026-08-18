@@ -71,8 +71,252 @@ export interface StatuteReferenceCandidate {
   variant?: string;
   case?: string;
   law?: string;
+  suffix?: "f." | "ff.";
   referenceContext?: "statute" | "workSection" | "unknown";
 }
+
+export interface ExtractedComponent<T = string> {
+  value: T;
+  rawText: string;
+  start: number;
+  end: number;
+  normalizedValue?: string;
+}
+
+export interface ExtractedTextSpan {
+  rawText: string;
+  start: number;
+  end: number;
+}
+
+export interface DerivedComponent<T = string> {
+  value: T;
+  source: "officialCollectionMapping" | "workMapping" | "classification" | string;
+}
+
+export type ExtractionStatus = "complete" | "partial" | "unresolved";
+
+export interface PersonReference {
+  rawText: string;
+  start: number;
+  end: number;
+  normalizedName?: string;
+  role: "author" | "bearbeiter" | "editor" | "unknown";
+  roleSignals?: string[];
+}
+
+export type CitationLocatorType =
+  | "page"
+  | "marginNumber"
+  | "section"
+  | "paragraph"
+  | "sentence"
+  | "number"
+  | "letter"
+  | "halfSentence"
+  | "alternative"
+  | "variant"
+  | "case";
+
+export interface CitationLocator {
+  type: CitationLocatorType;
+  rawText: string;
+  start: number;
+  end: number;
+  value?: string;
+  values?: string[];
+  rangeEnd?: string;
+  suffix?: "f." | "ff." | "f" | "ff";
+}
+
+export interface StatuteSectionReference {
+  section: ExtractedComponent<string>;
+  paragraph?: CitationLocator;
+  sentence?: CitationLocator;
+  number?: CitationLocator;
+  letter?: CitationLocator;
+  halfSentence?: CitationLocator;
+  alternative?: CitationLocator;
+  variant?: CitationLocator;
+  case?: CitationLocator;
+  suffix?: ExtractedComponent<"f." | "ff.">;
+}
+
+export interface StatuteExtraction {
+  referenceContext: "statute" | "workSection" | "unknown";
+  unitType?: ExtractedComponent<"§" | "§§" | "Art.">;
+  sections: StatuteSectionReference[];
+  law?: ExtractedComponent<string>;
+}
+
+export interface JournalCaseCitation {
+  kind: "journal";
+  journal: ExtractedComponent<string>;
+  year?: ExtractedComponent<string>;
+  firstPage?: CitationLocator;
+  pinpointPages: CitationLocator[];
+}
+
+export interface OfficialCollectionCitation {
+  kind: "officialCollection";
+  collection: ExtractedComponent<string>;
+  volume?: ExtractedComponent<string>;
+  firstPage?: CitationLocator;
+  pinpointPages: CitationLocator[];
+}
+
+export interface DatabaseCitation {
+  kind: "database";
+  database: ExtractedComponent<string>;
+  year?: ExtractedComponent<string>;
+  identifier?: ExtractedComponent<string>;
+}
+
+export type CaseLawPublicationReference =
+  JournalCaseCitation | OfficialCollectionCitation | DatabaseCitation;
+
+export interface CaseLawExtraction {
+  court?: ExtractedComponent<string>;
+  derivedCourt?: DerivedComponent<string>;
+  decisionType?: ExtractedComponent<string>;
+  decisionTypeNormalized?: "JUDGMENT" | "ORDER" | "DECISION" | "OTHER";
+  date?: ExtractedComponent<string>;
+  normalizedDate?: string;
+  docketNumber?: ExtractedComponent<string>;
+  panel?: ExtractedComponent<string>;
+  ecli?: ExtractedComponent<string>;
+  citationForm: CaseLawCitationForm;
+  parallelCitations: CaseLawPublicationReference[];
+  embeddedStatuteReferences: StatuteExtraction[];
+}
+
+export interface CommentaryPersonSequence {
+  persons: PersonReference[];
+  roleResolution: "resolved" | "ambiguous";
+}
+
+export interface CommentaryExtraction {
+  work?: ExtractedComponent<string>;
+  commentedLaw?: ExtractedComponent<string>;
+  persons: PersonReference[];
+  editors: PersonReference[];
+  bearbeiters: PersonReference[];
+  personSequence?: CommentaryPersonSequence;
+  volume?: ExtractedComponent<string>;
+  edition?: ExtractedComponent<string>;
+  year?: ExtractedComponent<string>;
+  asOfDate?: ExtractedComponent<string>;
+  statuteReference?: StatuteExtraction;
+  marginNumbers: CitationLocator[];
+}
+
+export interface BookExtraction {
+  authors: PersonReference[];
+  title?: ExtractedComponent<string>;
+  shortTitle?: ExtractedComponent<string>;
+  bookType?: "monograph" | "textbook" | "handbook" | "unknown";
+  volume?: ExtractedComponent<string>;
+  edition?: ExtractedComponent<string>;
+  year?: ExtractedComponent<string>;
+  place?: ExtractedComponent<string>;
+  publisher?: ExtractedComponent<string>;
+  workSection?: ExtractedComponent<string>;
+  marginNumbers: CitationLocator[];
+  pages: CitationLocator[];
+}
+
+export interface JournalArticleExtraction {
+  authors: PersonReference[];
+  title?: ExtractedComponent<string>;
+  journal?: ExtractedComponent<string>;
+  year?: ExtractedComponent<string>;
+  volume?: ExtractedComponent<string>;
+  issue?: ExtractedComponent<string>;
+  firstPage?: CitationLocator;
+  pinpointPages: CitationLocator[];
+}
+
+export interface BookChapterExtraction {
+  authors: PersonReference[];
+  chapterTitle?: ExtractedComponent<string>;
+  containerTitle?: ExtractedComponent<string>;
+  editors: PersonReference[];
+  edition?: ExtractedComponent<string>;
+  volume?: ExtractedComponent<string>;
+  year?: ExtractedComponent<string>;
+  firstPage?: ExtractedComponent<string>;
+  pinpointPages: CitationLocator[];
+  workSection?: ExtractedComponent<string>;
+  marginNumbers: CitationLocator[];
+}
+
+export interface CaseNoteExtraction {
+  authors: PersonReference[];
+  noteMarker?: ExtractedComponent<string>;
+  annotatedCase?: CaseLawExtraction;
+  journal?: ExtractedComponent<string>;
+  year?: ExtractedComponent<string>;
+  firstPage?: CitationLocator;
+  pinpointPages: CitationLocator[];
+}
+
+export interface LegislativeMaterialExtraction {
+  body?: ExtractedComponent<string>;
+  documentType?: ExtractedComponent<string>;
+  legislativeTerm?: ExtractedComponent<string>;
+  documentNumber?: ExtractedComponent<string>;
+  date?: ExtractedComponent<string>;
+  title?: ExtractedComponent<string>;
+  pages: CitationLocator[];
+}
+
+export interface OnlineSourceExtraction {
+  authors: PersonReference[];
+  organization?: ExtractedComponent<string>;
+  title?: ExtractedComponent<string>;
+  siteName?: ExtractedComponent<string>;
+  url?: ExtractedComponent<string>;
+  publicationDate?: ExtractedComponent<string>;
+  lastUpdatedDate?: ExtractedComponent<string>;
+  accessDate?: ExtractedComponent<string>;
+}
+
+export interface AdministrativeMaterialExtraction {
+  authority?: ExtractedComponent<string>;
+  documentType?: ExtractedComponent<string>;
+  date?: ExtractedComponent<string>;
+  fileNumber?: ExtractedComponent<string>;
+  title?: ExtractedComponent<string>;
+  publicationSource?: ExtractedComponent<string>;
+  year?: ExtractedComponent<string>;
+  page?: ExtractedComponent<string>;
+  url?: ExtractedComponent<string>;
+}
+
+export interface OtherExtraction {
+  urls: ExtractedComponent<string>[];
+  referenceCandidates: StatuteExtraction[];
+}
+
+interface CitationExtractionEnvelope<TType extends CitationType, TData> {
+  type: TType;
+  status: ExtractionStatus;
+  data: TData;
+  unparsedRemainder: ExtractedTextSpan[];
+}
+
+export type CitationExtractionResult =
+  | CitationExtractionEnvelope<"STATUTE", StatuteExtraction>
+  | CitationExtractionEnvelope<"CASE_LAW", CaseLawExtraction>
+  | CitationExtractionEnvelope<"COMMENTARY", CommentaryExtraction>
+  | CitationExtractionEnvelope<"BOOK", BookExtraction>
+  | CitationExtractionEnvelope<"JOURNAL_ARTICLE", JournalArticleExtraction>
+  | CitationExtractionEnvelope<"BOOK_CHAPTER", BookChapterExtraction>
+  | CitationExtractionEnvelope<"CASE_NOTE", CaseNoteExtraction>
+  | CitationExtractionEnvelope<"LEGISLATIVE_MATERIAL", LegislativeMaterialExtraction>
+  | CitationExtractionEnvelope<"ONLINE_SOURCE", OnlineSourceExtraction>
+  | CitationExtractionEnvelope<"ADMINISTRATIVE_MATERIAL", AdministrativeMaterialExtraction>
+  | CitationExtractionEnvelope<"OTHER", OtherExtraction>;
 
 export type CitationType =
   | "STATUTE"
@@ -121,6 +365,7 @@ export interface CitationSegment {
   coreText: string;
   embeddedStatuteReferences: StatuteReferenceCandidate[];
   classification: CitationClassification;
+  extraction?: CitationExtractionResult;
 }
 
 export interface FootnoteParseResult {

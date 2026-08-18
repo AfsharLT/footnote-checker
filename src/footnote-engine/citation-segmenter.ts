@@ -61,6 +61,7 @@ const ROMAN_PARAGRAPH_VALUES: Readonly<Record<string, string>> = {
 };
 const ROMAN_PARAGRAPH_PATTERN = /^(?:VIII|VII|III|VI|IV|IX|II|V|X|I)(?=$|[\s,.;:)\]])/;
 const SHORTHAND_SENTENCE_PATTERN = /^\d+(?=$|[\s,.;:)\]])/;
+const REFERENCE_SUFFIX_PATTERN = /^(ff?\.)(?=$|[\s,.;:)\]])/;
 
 const QUALIFIER_PATTERNS: ReadonlyArray<{
   property:
@@ -377,6 +378,14 @@ function findStatuteReferences(
           break;
         }
       }
+    }
+
+    const suffixStart = skipWhitespace(text, cursor, coreEnd);
+    const suffixMatch = REFERENCE_SUFFIX_PATTERN.exec(text.slice(suffixStart, coreEnd));
+    if (suffixMatch) {
+      values.suffix = suffixMatch[1] as "f." | "ff.";
+      cursor = suffixStart + suffixMatch[0].length;
+      meaningfulEnd = cursor;
     }
 
     const lawStart = skipWhitespace(text, cursor, coreEnd);
