@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useMemo, useState } from "react";
 import { Button, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
+import { useCitationSettings } from "../../citation-settings/use-citation-settings";
 import { analyzeFootnotes } from "../../footnote-engine/engine";
 import type {
   CaseLawPublicationReference,
@@ -331,6 +332,7 @@ const useStyles = makeStyles({
 
 const App: React.FC = () => {
   const styles = useStyles();
+  const { activeProfile } = useCitationSettings();
   const [footnotes, setFootnotes] = useState<FootnoteSnapshot[]>([]);
   const [documentFormatting, setDocumentFormatting] = useState<DocumentFormattingSnapshot | null>(
     null
@@ -419,6 +421,34 @@ const App: React.FC = () => {
         >
           {isLoading ? "Fußnoten werden ausgelesen …" : "Fußnoten auslesen"}
         </Button>
+        <section className={styles.results} aria-label="Citation Style Profile">
+          <article className={styles.resultItem}>
+            <h2 className={styles.resultTitle}>Citation Style Profile</h2>
+            <p className={styles.resultText}>Name: {activeProfile.name}</p>
+            <p className={styles.resultText}>Schema: {activeProfile.schemaVersion}</p>
+            <p className={styles.resultText}>
+              Case Law: Judgment {activeProfile.caseLaw.decisionTypeOutput.JUDGMENT} · Order{" "}
+              {activeProfile.caseLaw.decisionTypeOutput.ORDER} · Date{" "}
+              {activeProfile.caseLaw.dateFormat}
+              {" · "}Parallel{" "}
+              {activeProfile.caseLaw.hybridCitation.parallelCitationSeparator.trim()}
+            </p>
+            <p className={styles.resultText}>
+              Statute: Paragraph {activeProfile.abbreviations.PARAGRAPH.preferredOutput} · Sentence{" "}
+              {activeProfile.abbreviations.SENTENCE.preferredOutput} · Letter{" "}
+              {activeProfile.statute.letterStyle}
+            </p>
+            <p className={styles.resultText}>
+              Commentary: Bearbeiter italic{" "}
+              {activeProfile.commentary.bearbeiterFormatting.italic ? "yes" : "no"} · Editor italic{" "}
+              {activeProfile.commentary.editorFormatting.italic ? "yes" : "no"} · Margin{" "}
+              {activeProfile.commentary.marginNumberAbbreviation}
+            </p>
+            <p className={styles.resultText}>
+              Journal: Pinpoint {activeProfile.journalArticle.pinpointStyle}
+            </p>
+          </article>
+        </section>
         <section className={styles.results} aria-label="Ergebnisse" aria-live="polite">
           {message && <p className={hasError ? styles.error : styles.message}>{message}</p>}
           {readerMetrics && (
