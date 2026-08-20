@@ -25,5 +25,9 @@ export function migrateBundledLegacyCitationSourceMapping(): BundledLegacyMappin
 }
 
 export function createDefaultCitationSourceMapping(): CitationSourceMappingData {
-  return migrateBundledLegacyCitationSourceMapping().data;
+  const mapping = migrateBundledLegacyCitationSourceMapping().data;
+  return {
+    ...mapping,
+    sources: mapping.sources.map((source) => ({ ...source, sourceOrigin: "DEFAULT" })),
+  };
 }

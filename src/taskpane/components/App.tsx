@@ -1,7 +1,6 @@
 import * as React from "react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
-import { CITATION_SOURCE_MAPPING_DEFAULT_SOURCE } from "../../citation-mapping/default-mapping";
 import { resolveCitationSegmentSources } from "../../citation-mapping/resolver";
 import type { CitationSourceMappingResolution } from "../../citation-mapping/types";
 import { useCitationSourceMapping } from "../../citation-mapping/use-citation-source-mapping";
@@ -20,11 +19,17 @@ import { formatReaderError } from "../reader-error";
 import {
   CharacterFormat,
   DocumentFormattingSnapshot,
+  FootnoteReadProgress,
   FootnoteReadResult,
   FootnoteSnapshot,
   FormattingRun,
+  createFootnoteReadProgress,
   readFootnotes,
 } from "../taskpane";
+
+const SettingsPanel = React.lazy(() =>
+  import("./SettingsPanel").then((module) => ({ default: module.SettingsPanel }))
+);
 
 function formatBoolean(value: boolean | undefined): string {
   if (value === undefined) {
@@ -283,6 +288,32 @@ const useStyles = makeStyles({
       backgroundColor: "#091f36",
     },
   },
+  secondaryButton: {
+    width: "100%",
+    minHeight: "40px",
+    marginTop: "10px",
+  },
+  progressPanel: {
+    display: "grid",
+    gap: "6px",
+    marginTop: "10px",
+    color: tokens.colorNeutralForeground2,
+    fontSize: tokens.fontSizeBase300,
+  },
+  progressTrack: {
+    width: "100%",
+    height: "8px",
+    overflow: "hidden",
+    borderRadius: "999px",
+    backgroundColor: tokens.colorNeutralBackground4,
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#12355b",
+    transitionProperty: "width",
+    transitionDuration: "120ms",
+  },
+  progressText: { margin: 0 },
   results: {
     minHeight: "180px",
     marginTop: "24px",
@@ -359,8 +390,9 @@ const useStyles = makeStyles({
 
 const App: React.FC = () => {
   const styles = useStyles();
-  const { activeProfile } = useCitationSettings();
-  const { mappingData, mappingIndex } = useCitationSourceMapping();
+  const { activeProfile, updateProfile } = useCitationSettings();
+  const { mappingData, mappingIndex, updateMapping } = useCitationSourceMapping();
+  const [view, setView] = useState<"ANALYSIS" | "SETTINGS">("ANALYSIS");
   const [footnotes, setFootnotes] = useState<FootnoteSnapshot[]>([]);
   const [documentFormatting, setDocumentFormatting] = useState<DocumentFormattingSnapshot | null>(
     null
@@ -371,7 +403,9 @@ const App: React.FC = () => {
   const [engineResult, setEngineResult] = useState<FootnoteEngineResult | null>(null);
   const [message, setMessage] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [readProgress, setReadProgress] = useState<FootnoteReadProgress | null>(null);
   const [hasError, setHasError] = useState<boolean>(false);
+  const readInProgressRef = useRef(false);
   const findingsByFootnoteId = useMemo(() => {
     const result = new Map<string, Finding[]>();
 
@@ -407,6 +441,8 @@ const App: React.FC = () => {
   }, [engineResult]);
 
   const handleReadFootnotes = async () => {
+    if (readInProgressRef.current) return;
+    readInProgressRef.current = true;
     setIsLoading(true);
     setHasError(false);
     setMessage("");
@@ -414,11 +450,18 @@ const App: React.FC = () => {
     setEngineResult(null);
 
     try {
-      const result = await readFootnotes();
+      const result = await readFootnotes(setReadProgress);
       setFootnotes(result.footnotes);
       setDocumentFormatting(result.documentFormatting);
       setReaderMetrics(result.readerMetrics);
-      setEngineResult(analyzeFootnotes(result.footnotes));
+      setReadProgress(
+        createFootnoteReadProgress("analyzing", result.footnotes.length, result.footnotes.length)
+      );
+      const analysis = analyzeFootnotes(result.footnotes);
+      setEngineResult(analysis);
+      setReadProgress(
+        createFootnoteReadProgress("complete", result.footnotes.length, result.footnotes.length)
+      );
 
       if (result.footnotes.length === 0) {
         setMessage("Das Dokument enthält keine Fußnoten.");
@@ -430,10 +473,32 @@ const App: React.FC = () => {
       setEngineResult(null);
       setHasError(true);
       setMessage(formatReaderError(error));
+      setReadProgress(null);
     } finally {
+      readInProgressRef.current = false;
       setIsLoading(false);
     }
   };
+
+  if (view === "SETTINGS") {
+    return (
+      <main className={styles.root}>
+        <div className={styles.content}>
+          <React.Suspense
+            fallback={<p className={styles.message}>Einstellungen werden geladen …</p>}
+          >
+            <SettingsPanel
+              activeProfile={activeProfile}
+              mappingData={mappingData}
+              onSaveProfile={updateProfile}
+              onSaveMapping={updateMapping}
+              onClose={() => setView("ANALYSIS")}
+            />
+          </React.Suspense>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className={styles.root}>
@@ -449,56 +514,37 @@ const App: React.FC = () => {
         >
           {isLoading ? "Fußnoten werden ausgelesen …" : "Fußnoten auslesen"}
         </Button>
-        <section className={styles.results} aria-label="Citation Style Profile">
-          <article className={styles.resultItem}>
-            <h2 className={styles.resultTitle}>Citation Style Profile</h2>
-            <p className={styles.resultText}>Name: {activeProfile.name}</p>
-            <p className={styles.resultText}>Schema: {activeProfile.schemaVersion}</p>
-            <p className={styles.resultText}>
-              Case Law: Judgment {activeProfile.caseLaw.decisionTypeOutput.JUDGMENT} · Order{" "}
-              {activeProfile.caseLaw.decisionTypeOutput.ORDER} · Date{" "}
-              {activeProfile.caseLaw.dateFormat}
-              {" · "}Parallel{" "}
-              {activeProfile.caseLaw.hybridCitation.parallelCitationSeparator.trim()}
+        {readProgress && (
+          <div className={styles.progressPanel} aria-live="polite">
+            <span>
+              {readProgress.phase === "initializing"
+                ? "Fußnoten werden vorbereitet …"
+                : readProgress.phase === "analyzing"
+                  ? "Fußnoten werden analysiert …"
+                  : readProgress.phase === "complete"
+                    ? "Fußnotenverarbeitung abgeschlossen"
+                    : "Fußnoten werden ausgelesen …"}
+            </span>
+            <div
+              className={styles.progressTrack}
+              role="progressbar"
+              aria-label="Fortschritt der Fußnotenverarbeitung"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={readProgress.percent}
+            >
+              <div className={styles.progressFill} style={{ width: `${readProgress.percent}%` }} />
+            </div>
+            <p className={styles.progressText}>
+              {readProgress.total > 0
+                ? `${readProgress.processed.toLocaleString("de-DE")} / ${readProgress.total.toLocaleString("de-DE")} Fußnoten · ${readProgress.percent} %`
+                : `${readProgress.percent} %`}
             </p>
-            <p className={styles.resultText}>
-              Statute: Paragraph {activeProfile.abbreviations.PARAGRAPH.preferredOutput} · Sentence{" "}
-              {activeProfile.abbreviations.SENTENCE.preferredOutput} · Letter{" "}
-              {activeProfile.statute.letterStyle}
-            </p>
-            <p className={styles.resultText}>
-              Commentary: Bearbeiter italic{" "}
-              {activeProfile.commentary.bearbeiterFormatting.italic ? "yes" : "no"} · Editor italic{" "}
-              {activeProfile.commentary.editorFormatting.italic ? "yes" : "no"} · Margin{" "}
-              {activeProfile.commentary.marginNumberAbbreviation}
-            </p>
-            <p className={styles.resultText}>
-              Journal: Pinpoint {activeProfile.journalArticle.pinpointStyle}
-            </p>
-          </article>
-        </section>
-        <section className={styles.results} aria-label="Citation Source Mapping">
-          <article className={styles.resultItem}>
-            <h2 className={styles.resultTitle}>Citation Source Mapping</h2>
-            <p className={styles.resultText}>Schema: {mappingData.schemaVersion}</p>
-            <p className={styles.resultText}>Sources: {mappingData.sources.length}</p>
-            <p className={styles.resultText}>
-              Commentaries:{" "}
-              {mappingData.sources.filter((source) => source.kind === "COMMENTARY").length}
-              {" · "}Journals:{" "}
-              {mappingData.sources.filter((source) => source.kind === "JOURNAL").length}
-            </p>
-            <p className={styles.resultText}>Aliases: {mappingData.aliases.length}</p>
-            <p className={styles.resultText}>
-              Uncertain legacy aliases:{" "}
-              {
-                mappingData.aliases.filter((alias) => alias.legacySafetyLevel === "UNCERTAIN")
-                  .length
-              }
-            </p>
-            <p className={styles.resultText}>Source: {CITATION_SOURCE_MAPPING_DEFAULT_SOURCE}</p>
-          </article>
-        </section>
+          </div>
+        )}
+        <Button className={styles.secondaryButton} onClick={() => setView("SETTINGS")}>
+          Einstellungen öffnen
+        </Button>
         <section className={styles.results} aria-label="Ergebnisse" aria-live="polite">
           {message && <p className={hasError ? styles.error : styles.message}>{message}</p>}
           {readerMetrics && (

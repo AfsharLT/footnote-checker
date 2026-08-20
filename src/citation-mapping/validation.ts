@@ -1,5 +1,6 @@
 import { createDefaultCitationSourceMapping } from "./default-mapping";
 import { normalizeCitationSourceText } from "./normalization";
+import type { CharacterStylePreference, WorkCitationOverride } from "../citation-settings/types";
 import type {
   CitationSourceAlias,
   CitationSourceKind,
@@ -7,6 +8,7 @@ import type {
   CitationSourceMappingData,
   CitationSourceMappingValidationResult,
   CitationSourceMaster,
+  CitationSourceOrigin,
   CommentaryPersonStructureHint,
   LegacySafetyLevel,
 } from "./types";
@@ -41,10 +43,128 @@ function isSafety(value: unknown): value is LegacySafetyLevel {
   return value === "PROBABLE" || value === "UNCERTAIN";
 }
 
+function isSourceOrigin(value: unknown): value is CitationSourceOrigin {
+  return value === "DEFAULT" || value === "USER" || value === "IMPORTED";
+}
+
+function optionalStyle(
+  value: unknown,
+  path: string,
+  errors: string[]
+): CharacterStylePreference | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) {
+    errors.push(`${path} must be an object`);
+    return undefined;
+  }
+  const result: CharacterStylePreference = {};
+  for (const property of ["italic", "bold", "underline"] as const) {
+    if (value[property] === undefined) continue;
+    if (typeof value[property] !== "boolean") errors.push(`${path}.${property} must be a boolean`);
+    else result[property] = value[property];
+  }
+  return result;
+}
+
+function validatedWorkOverride(
+  value: unknown,
+  canonicalSourceId: string,
+  kind: CitationSourceKind,
+  preferredName: string,
+  errors: string[]
+): WorkCitationOverride {
+  const citationType = kind === "COMMENTARY" ? "COMMENTARY" : "JOURNAL_ARTICLE";
+  const fallback: WorkCitationOverride = {
+    canonicalWorkId: canonicalSourceId,
+    citationType,
+    preferredName,
+  };
+  if (value === undefined) return fallback;
+  if (!isRecord(value)) {
+    errors.push(`sources.${canonicalSourceId}.workOverride must be an object`);
+    return fallback;
+  }
+  if (value.canonicalWorkId !== canonicalSourceId) {
+    errors.push(`sources.${canonicalSourceId}.workOverride.canonicalWorkId must match the source`);
+  }
+  if (value.citationType !== citationType) {
+    errors.push(`sources.${canonicalSourceId}.workOverride.citationType is incompatible`);
+  }
+  const formatting = isRecord(value.formatting) ? value.formatting : undefined;
+  if (value.formatting !== undefined && !formatting) {
+    errors.push(`sources.${canonicalSourceId}.workOverride.formatting must be an object`);
+  }
+  const bearbeiter = optionalStyle(
+    formatting?.bearbeiter,
+    `sources.${canonicalSourceId}.workOverride.formatting.bearbeiter`,
+    errors
+  );
+  const editor = optionalStyle(
+    formatting?.editor,
+    `sources.${canonicalSourceId}.workOverride.formatting.editor`,
+    errors
+  );
+  const settings = isRecord(value.citationSettingsOverride)
+    ? value.citationSettingsOverride
+    : undefined;
+  if (value.citationSettingsOverride !== undefined && !settings) {
+    errors.push(
+      `sources.${canonicalSourceId}.workOverride.citationSettingsOverride must be an object`
+    );
+  }
+  const preferred = optionalString(value.preferredName);
+  if (value.preferredName !== undefined && !preferred) {
+    errors.push(
+      `sources.${canonicalSourceId}.workOverride.preferredName must be a non-empty string`
+    );
+  }
+
+  if (kind === "COMMENTARY") {
+    const personSeparator = optionalString(settings?.personSeparator);
+    const marginNumberAbbreviation = optionalString(settings?.marginNumberAbbreviation);
+    return {
+      canonicalWorkId: canonicalSourceId,
+      citationType: "COMMENTARY",
+      preferredName: preferred ?? preferredName,
+      ...(bearbeiter || editor
+        ? {
+            formatting: {
+              ...(bearbeiter ? { bearbeiter } : {}),
+              ...(editor ? { editor } : {}),
+            },
+          }
+        : {}),
+      ...(personSeparator || marginNumberAbbreviation
+        ? {
+            citationSettingsOverride: {
+              ...(personSeparator ? { personSeparator } : {}),
+              ...(marginNumberAbbreviation ? { marginNumberAbbreviation } : {}),
+            },
+          }
+        : {}),
+    };
+  }
+
+  const pinpointStyle =
+    settings?.pinpointStyle === "parentheses" || settings?.pinpointStyle === "comma"
+      ? settings.pinpointStyle
+      : undefined;
+  if (settings?.pinpointStyle !== undefined && !pinpointStyle) {
+    errors.push(`sources.${canonicalSourceId}.workOverride.pinpointStyle is unsupported`);
+  }
+  return {
+    canonicalWorkId: canonicalSourceId,
+    citationType: "JOURNAL_ARTICLE",
+    preferredName: preferred ?? preferredName,
+    ...(pinpointStyle ? { citationSettingsOverride: { pinpointStyle } } : {}),
+  };
+}
+
 function validateSource(
   value: unknown,
   index: number,
-  errors: string[]
+  errors: string[],
+  defaultSourceIds: ReadonlySet<string>
 ): CitationSourceMaster | undefined {
   if (!isRecord(value)) {
     errors.push(`sources[${index}] must be an object`);
@@ -56,6 +176,7 @@ function validateSource(
     !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value.canonicalSourceId) ||
     !isKind(value.kind) ||
     typeof value.preferredName !== "string" ||
+    value.preferredName.trim() === "" ||
     !isArea(value.legalArea) ||
     typeof value.active !== "boolean"
   ) {
@@ -69,6 +190,11 @@ function validateSource(
   return {
     schemaVersion: 1,
     canonicalSourceId,
+    sourceOrigin: isSourceOrigin(value.sourceOrigin)
+      ? value.sourceOrigin
+      : defaultSourceIds.has(canonicalSourceId)
+        ? "DEFAULT"
+        : "USER",
     kind,
     preferredName,
     legalArea: value.legalArea,
@@ -81,11 +207,13 @@ function validateSource(
       : {}),
     ...(optionalString(value.notes) ? { notes: value.notes as string } : {}),
     ...(hint ? { personStructureHint: hint } : {}),
-    workOverride: {
-      canonicalWorkId: canonicalSourceId,
-      citationType: kind === "COMMENTARY" ? "COMMENTARY" : "JOURNAL_ARTICLE",
+    workOverride: validatedWorkOverride(
+      value.workOverride,
+      canonicalSourceId,
+      kind,
       preferredName,
-    },
+      errors
+    ),
     ...(isRecord(value.legacyMetadata)
       ? {
           legacyMetadata: {
@@ -181,8 +309,10 @@ export function validateCitationSourceMappingData(
   }
 
   const errors: string[] = [];
+  const warnings: string[] = [];
+  const defaultSourceIds = new Set(fallback.sources.map((source) => source.canonicalSourceId));
   const sources = value.sources
-    .map((source, index) => validateSource(source, index, errors))
+    .map((source, index) => validateSource(source, index, errors, defaultSourceIds))
     .filter((source): source is CitationSourceMaster => source !== undefined);
   const aliases = value.aliases
     .map((alias, index) => validateAlias(alias, index, errors))
@@ -210,13 +340,14 @@ export function validateCitationSourceMappingData(
     });
   aliasSources.forEach((ids, alias) => {
     if (ids.size > 1)
-      errors.push(`Alias conflict for "${alias}": ${Array.from(ids).sort().join(", ")}`);
+      warnings.push(`Alias conflict for "${alias}": ${Array.from(ids).sort().join(", ")}`);
   });
 
   return {
     success: errors.length === 0,
     data: { schemaVersion: 1, sources, aliases },
     errors,
+    warnings,
   };
 }
 

@@ -10,6 +10,7 @@ import type {
   CommentaryPersonStructureHint,
   LegacySafetyLevel,
 } from "./types";
+import type { WorkCitationOverride } from "../citation-settings/types";
 
 const NORMALIZED_HEADERS = [
   "schemaVersion",
@@ -36,10 +37,43 @@ const NORMALIZED_HEADERS = [
   "legacyCorrectionAction",
   "legacyVersion",
   "legacyDate",
+  "overridePreferredName",
+  "overrideBearbeiterItalic",
+  "overrideEditorItalic",
+  "overridePersonSeparator",
+  "overrideMarginNumberAbbreviation",
+  "overridePinpointStyle",
 ] as const;
+
+const REQUIRED_NORMALIZED_HEADERS = NORMALIZED_HEADERS.filter(
+  (name) => !name.startsWith("override")
+);
 
 function csvValue(value: string | boolean | undefined): string {
   return value === undefined ? "" : String(value);
+}
+
+function overrideColumns(source: CitationSourceMaster): string[] {
+  if (source.kind === "COMMENTARY") {
+    const override = source.workOverride as WorkCitationOverride<"COMMENTARY"> | undefined;
+    return [
+      csvValue(override?.preferredName),
+      csvValue(override?.formatting?.bearbeiter?.italic),
+      csvValue(override?.formatting?.editor?.italic),
+      csvValue(override?.citationSettingsOverride?.personSeparator),
+      csvValue(override?.citationSettingsOverride?.marginNumberAbbreviation),
+      "",
+    ];
+  }
+  const override = source.workOverride as WorkCitationOverride<"JOURNAL_ARTICLE"> | undefined;
+  return [
+    csvValue(override?.preferredName),
+    "",
+    "",
+    "",
+    "",
+    csvValue(override?.citationSettingsOverride?.pinpointStyle),
+  ];
 }
 
 export function exportCitationSourceMappingCsv(data: CitationSourceMappingData): string {
@@ -81,6 +115,7 @@ export function exportCitationSourceMappingCsv(data: CitationSourceMappingData):
         csvValue(alias.legacyActions?.correction),
         csvValue(alias.legacyVersion),
         csvValue(alias.legacyDate),
+        ...overrideColumns(source),
       ]),
     ];
   });
@@ -118,6 +153,7 @@ export function parseCitationSourceMappingCsv(
 ): CitationSourceMappingValidationResult {
   const parsed = parseSemicolonCsv(csvText);
   const errors = [...parsed.errors];
+  const warnings: string[] = [];
   if (parsed.rows.length === 0) {
     return {
       success: false,
@@ -127,7 +163,7 @@ export function parseCitationSourceMappingCsv(
   }
   const header = parsed.rows[0];
   const positions = new Map(header.map((name, index) => [name, index]));
-  NORMALIZED_HEADERS.forEach((name) => {
+  REQUIRED_NORMALIZED_HEADERS.forEach((name) => {
     if (!positions.has(name)) errors.push(`Missing normalized CSV column: ${name}`);
   });
   const valueAt = (row: readonly string[], name: (typeof NORMALIZED_HEADERS)[number]): string => {
@@ -199,6 +235,24 @@ export function parseCitationSourceMappingCsv(
       `${path}.legacyAutoCorrectionAllowed`,
       errors
     );
+    const overrideBearbeiterItalic = optionalBoolean(
+      valueAt(row, "overrideBearbeiterItalic"),
+      `${path}.overrideBearbeiterItalic`,
+      errors
+    );
+    const overrideEditorItalic = optionalBoolean(
+      valueAt(row, "overrideEditorItalic"),
+      `${path}.overrideEditorItalic`,
+      errors
+    );
+    const overridePinpointStyle = valueAt(row, "overridePinpointStyle");
+    if (
+      overridePinpointStyle &&
+      overridePinpointStyle !== "parentheses" &&
+      overridePinpointStyle !== "comma"
+    ) {
+      errors.push(`${path}.overridePinpointStyle has an unsupported value`);
+    }
     if (sourceActive === undefined || aliasActive === undefined || wholeWord === undefined) return;
 
     const existing = sourcesById.get(canonicalSourceId);
@@ -215,6 +269,7 @@ export function parseCitationSourceMappingCsv(
       sourcesById.set(canonicalSourceId, {
         schemaVersion: 1,
         canonicalSourceId,
+        sourceOrigin: "IMPORTED",
         kind,
         preferredName,
         legalArea: area,
@@ -229,11 +284,55 @@ export function parseCitationSourceMappingCsv(
           : {}),
         ...(optional(valueAt(row, "notes")) ? { notes: valueAt(row, "notes") } : {}),
         ...(personHint ? { personStructureHint: personHint } : {}),
-        workOverride: {
-          canonicalWorkId: canonicalSourceId,
-          citationType: kind === "COMMENTARY" ? "COMMENTARY" : "JOURNAL_ARTICLE",
-          preferredName,
-        },
+        workOverride:
+          kind === "COMMENTARY"
+            ? {
+                canonicalWorkId: canonicalSourceId,
+                citationType: "COMMENTARY",
+                preferredName: optional(valueAt(row, "overridePreferredName")) ?? preferredName,
+                ...(overrideBearbeiterItalic !== undefined || overrideEditorItalic !== undefined
+                  ? {
+                      formatting: {
+                        ...(overrideBearbeiterItalic !== undefined
+                          ? { bearbeiter: { italic: overrideBearbeiterItalic } }
+                          : {}),
+                        ...(overrideEditorItalic !== undefined
+                          ? { editor: { italic: overrideEditorItalic } }
+                          : {}),
+                      },
+                    }
+                  : {}),
+                ...(optional(valueAt(row, "overridePersonSeparator")) ||
+                optional(valueAt(row, "overrideMarginNumberAbbreviation"))
+                  ? {
+                      citationSettingsOverride: {
+                        ...(optional(valueAt(row, "overridePersonSeparator"))
+                          ? { personSeparator: valueAt(row, "overridePersonSeparator") }
+                          : {}),
+                        ...(optional(valueAt(row, "overrideMarginNumberAbbreviation"))
+                          ? {
+                              marginNumberAbbreviation: valueAt(
+                                row,
+                                "overrideMarginNumberAbbreviation"
+                              ),
+                            }
+                          : {}),
+                      },
+                    }
+                  : {}),
+              }
+            : {
+                canonicalWorkId: canonicalSourceId,
+                citationType: "JOURNAL_ARTICLE",
+                preferredName: optional(valueAt(row, "overridePreferredName")) ?? preferredName,
+                ...(overridePinpointStyle === "parentheses" || overridePinpointStyle === "comma"
+                  ? {
+                      citationSettingsOverride: {
+                        pinpointStyle: overridePinpointStyle,
+                      },
+                    }
+                  : {}),
+              },
       });
     }
 
@@ -281,7 +380,7 @@ export function parseCitationSourceMappingCsv(
     });
   conflicts.forEach((ids, alias) => {
     if (ids.size > 1)
-      errors.push(`Alias conflict for "${alias}": ${Array.from(ids).sort().join(", ")}`);
+      warnings.push(`Alias conflict for "${alias}": ${Array.from(ids).sort().join(", ")}`);
   });
 
   const sources = Array.from(sourcesById.values()).sort((left, right) =>
@@ -314,5 +413,6 @@ export function parseCitationSourceMappingCsv(
     success: errors.length === 0,
     data: { schemaVersion: 1, sources, aliases },
     errors,
+    warnings,
   };
 }

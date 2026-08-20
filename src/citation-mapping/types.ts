@@ -10,6 +10,7 @@ export type CommentaryPersonStructureHint =
   "WORK_THEN_BEARBEITER" | "WORK_WITHOUT_BEARBEITER" | "AMBIGUOUS" | "UNKNOWN";
 export type SourceMatchMode = "CASE_INSENSITIVE_TEXT";
 export type LegacySafetyLevel = "PROBABLE" | "UNCERTAIN";
+export type CitationSourceOrigin = "DEFAULT" | "USER" | "IMPORTED";
 
 export interface CitationSourceLegacyMetadata {
   legacyWorkType?: string;
@@ -21,6 +22,7 @@ export interface CitationSourceLegacyMetadata {
 export interface CitationSourceMaster {
   schemaVersion: number;
   canonicalSourceId: string;
+  sourceOrigin?: CitationSourceOrigin;
   kind: CitationSourceKind;
   preferredName: string;
   legalArea: CitationSourceLegalArea;
@@ -97,6 +99,7 @@ export interface CitationSourceMappingValidationResult {
   success: boolean;
   data: CitationSourceMappingData;
   errors: string[];
+  warnings?: string[];
 }
 
 export interface CitationSourceMigrationReport {

@@ -36,7 +36,9 @@ assert(mueko.examplePattern?.includes("§ 13"), "Roundtrip example missing");
 const futureCsv = exported.replace(/^1;/m, "2;");
 assert(!parseCitationSourceMappingCsv(futureCsv).success, "Future CSV schema must fail");
 const conflictCsv = `${exported}\n1;journal-conflict;JOURNAL;GENERAL;;Conflict;NJW.;CASE_INSENSITIVE_TEXT;true;true;true;PROBABLE;UNKNOWN;;;;;;;false;;;;;`;
-assert(!parseCitationSourceMappingCsv(conflictCsv).success, "Duplicate alias conflict must fail");
+const conflictImport = parseCitationSourceMappingCsv(conflictCsv);
+assert(conflictImport.success, "Structurally valid alias conflicts must remain importable");
+assert(conflictImport.warnings?.length === 1, "Alias conflict must be reported as a warning");
 
 class TestStorage implements CitationSourceMappingStorage {
   private values = new Map<string, string>();

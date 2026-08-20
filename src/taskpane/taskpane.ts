@@ -133,6 +133,33 @@ export interface FootnoteReadResult {
   };
 }
 
+export interface FootnoteReadProgress {
+  phase: "initializing" | "reading" | "analyzing" | "complete";
+  processed: number;
+  total: number;
+  percent: number;
+}
+
+export type FootnoteReadProgressCallback = (progress: FootnoteReadProgress) => void;
+
+export function createFootnoteReadProgress(
+  phase: FootnoteReadProgress["phase"],
+  processed: number,
+  total: number
+): FootnoteReadProgress {
+  const safeTotal = Math.max(0, total);
+  const safeProcessed = Math.min(Math.max(0, processed), safeTotal);
+  const percent =
+    phase === "complete"
+      ? 100
+      : phase === "analyzing"
+        ? 95
+        : phase === "reading" && safeTotal > 0
+          ? Math.round((safeProcessed / safeTotal) * 90)
+          : 0;
+  return { phase, processed: safeProcessed, total: safeTotal, percent };
+}
+
 const FOOTNOTE_CHUNK_SIZE = 150;
 const OOXML_STRUCTURAL_TEXT_MARKS = new Set(["\r", "\n", "\v", "\f"]);
 const CHARACTER_FORMAT_KEYS: Array<keyof CharacterFormat> = [
@@ -1053,8 +1080,11 @@ function getDocumentFormatting(
   };
 }
 
-export async function readFootnotes(): Promise<FootnoteReadResult> {
+export async function readFootnotes(
+  onProgress?: FootnoteReadProgressCallback
+): Promise<FootnoteReadResult> {
   const startedAt = performance.now();
+  onProgress?.(createFootnoteReadProgress("initializing", 0, 0));
 
   if (!Office.context.requirements.isSetSupported("WordApi", "1.5")) {
     throw new Error(
@@ -1080,6 +1110,8 @@ export async function readFootnotes(): Promise<FootnoteReadResult> {
     await context.sync();
 
     const snapshots: FootnoteSnapshot[] = [];
+    const total = footnotes.items.length;
+    onProgress?.(createFootnoteReadProgress("reading", 0, total));
 
     for (
       let chunkStart = 0;
@@ -1364,6 +1396,7 @@ export async function readFootnotes(): Promise<FootnoteReadResult> {
           });
         }
       }
+      onProgress?.(createFootnoteReadProgress("reading", chunkStart + chunk.length, total));
     }
 
     return {

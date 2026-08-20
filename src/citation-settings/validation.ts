@@ -814,12 +814,13 @@ export function serializeCitationStyleProfile(profile: CitationStyleProfile): st
 
 export function parseCitationStyleProfile(json: string): CitationStyleProfileValidationResult {
   try {
-    return sanitizeCitationStyleProfile(JSON.parse(json) as unknown);
+    const normalizedJson = json.replace(/^\uFEFF/, "");
+    return sanitizeCitationStyleProfile(JSON.parse(normalizedJson) as unknown);
   } catch {
     return {
       success: false,
       profile: createDefaultCitationStyleProfile(),
-      errors: ["Profile JSON is invalid"],
+      errors: ["Die Settings-Datei enthält kein gültiges JSON."],
     };
   }
 }
