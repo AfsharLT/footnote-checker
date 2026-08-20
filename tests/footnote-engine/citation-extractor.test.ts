@@ -44,8 +44,8 @@ function extract(
     `Invalid component offsets for ${text}`
   );
   assert(
-    result.findings.every((finding) => finding.ruleId === "FINAL_PERIOD"),
-    "Extraction must not create findings"
+    result.findings.every((finding) => finding.ruleId !== "RULE_OUTPUT_INVALID"),
+    "Extraction must not lead to invalid rule output"
   );
   return { segment, extraction: segment.extraction! };
 }

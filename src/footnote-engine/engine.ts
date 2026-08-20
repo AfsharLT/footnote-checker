@@ -1,65 +1,35 @@
 /* global performance */
 
 import type { FootnoteSnapshot } from "../taskpane/taskpane";
+import { createDefaultCitationSourceMapping } from "../citation-mapping/default-mapping";
+import {
+  createCitationSourceMappingIndex,
+  resolveCitationSegmentSources,
+  type CitationSourceMappingIndex,
+} from "../citation-mapping/resolver";
+import type { CitationSourceMappingData } from "../citation-mapping/types";
+import { createDefaultCitationStyleProfile } from "../citation-settings/defaults";
+import { resolveCitationSettings } from "../citation-settings/resolver";
+import type { CitationStyleProfile } from "../citation-settings/types";
 import { classifyFootnoteParseResult } from "./citation-classifier";
 import { extractFootnoteParseResult } from "./citation-extractor";
 import { segmentFootnote } from "./citation-segmenter";
+import { deriveEffectiveCitationClassification } from "./effective-classification";
 import { findPlainTextUrls } from "./patterns";
 export { isRangeProtected } from "./protected-ranges";
-import { finalPeriodRule } from "./rules/final-period";
-import type { FootnoteRule, RuleFindingCandidate } from "./rules/types";
+import { runRules } from "./rules/runner";
+import type { RuleContext } from "./rules/types";
 import type {
   AnalysisProtectedRange,
   EngineProtectedRange,
-  Finding,
   FootnoteAnalysisResult,
   FootnoteEngineResult,
   FootnoteParseResult,
   TextPatternMatch,
 } from "./types";
 
-const ACTIVE_RULES: readonly FootnoteRule[] = [finalPeriodRule];
-
 function getTimestamp(): number {
   return typeof performance === "undefined" ? Date.now() : performance.now();
-}
-
-function createFindingId(
-  footnote: FootnoteSnapshot,
-  ruleId: string,
-  start: number,
-  end: number
-): string {
-  return `finding:${footnote.id}:${ruleId}:${start}:${end}:${footnote.originalTextHash}`;
-}
-
-function createValidatedFinding(
-  footnote: FootnoteSnapshot,
-  ruleId: string,
-  candidate: RuleFindingCandidate
-): Finding | undefined {
-  const hasValidOffsets =
-    Number.isInteger(candidate.start) &&
-    Number.isInteger(candidate.end) &&
-    candidate.start >= 0 &&
-    candidate.start <= candidate.end &&
-    candidate.end <= footnote.contentText.length;
-
-  if (
-    !hasValidOffsets ||
-    candidate.originalText !== footnote.contentText.slice(candidate.start, candidate.end)
-  ) {
-    return undefined;
-  }
-
-  return {
-    findingId: createFindingId(footnote, ruleId, candidate.start, candidate.end),
-    footnoteId: footnote.id,
-    footnoteOrdinal: footnote.ordinal,
-    sourceTextHash: footnote.originalTextHash,
-    ruleId,
-    ...candidate,
-  };
 }
 
 function compareStrings(left: string, right: string): number {
@@ -68,15 +38,6 @@ function compareStrings(left: string, right: string): number {
   }
 
   return left > right ? 1 : 0;
-}
-
-function compareFindings(left: Finding, right: Finding): number {
-  return (
-    left.footnoteOrdinal - right.footnoteOrdinal ||
-    left.start - right.start ||
-    compareStrings(left.ruleId, right.ruleId) ||
-    compareStrings(left.findingId, right.findingId)
-  );
 }
 
 function compareProtectedRanges(
@@ -197,11 +158,25 @@ function createFootnoteAnalysis(footnote: FootnoteSnapshot): FootnoteAnalysisRes
   };
 }
 
-export function analyzeFootnotes(footnotes: readonly FootnoteSnapshot[]): FootnoteEngineResult {
+export interface AnalyzeFootnotesOptions {
+  profile?: CitationStyleProfile;
+  mappingData?: CitationSourceMappingData;
+  mappingIndex?: CitationSourceMappingIndex;
+}
+
+export function analyzeFootnotes(
+  footnotes: readonly FootnoteSnapshot[],
+  options: AnalyzeFootnotesOptions = {}
+): FootnoteEngineResult {
   const startedAt = getTimestamp();
-  const findings: Finding[] = [];
   const footnoteAnalyses: FootnoteAnalysisResult[] = [];
   const parseResults: FootnoteParseResult[] = [];
+  const segmentAnalyses: FootnoteEngineResult["segmentAnalyses"] = [];
+  const footnoteContexts: RuleContext[] = [];
+  const segmentContexts: RuleContext[] = [];
+  const profile = options.profile ?? createDefaultCitationStyleProfile();
+  const mappingData = options.mappingData ?? createDefaultCitationSourceMapping();
+  const mappingIndex = options.mappingIndex ?? createCitationSourceMappingIndex(mappingData);
   let plainTextUrlCount = 0;
   let engineProtectedRangeCount = 0;
 
@@ -212,9 +187,12 @@ export function analyzeFootnotes(footnotes: readonly FootnoteSnapshot[]): Footno
       segmentFootnote(footnote, analysis.protectedRanges),
       analysis.protectedRanges
     );
-    parseResults.push(
-      extractFootnoteParseResult(classifiedParseResult, footnote, analysis.protectedRanges)
+    const parseResult = extractFootnoteParseResult(
+      classifiedParseResult,
+      footnote,
+      analysis.protectedRanges
     );
+    parseResults.push(parseResult);
     engineProtectedRangeCount += analysis.engineProtectedRanges.length;
 
     for (const range of analysis.engineProtectedRanges) {
@@ -223,20 +201,56 @@ export function analyzeFootnotes(footnotes: readonly FootnoteSnapshot[]): Footno
       }
     }
 
-    for (const rule of ACTIVE_RULES) {
-      const candidates = rule.analyze(footnote, analysis.protectedRanges);
+    footnoteContexts.push({
+      footnote,
+      parserCitationType: "OTHER",
+      effectiveCitationType: "OTHER",
+      effectiveClassification: {
+        parserType: "OTHER",
+        effectiveType: "OTHER",
+        source: "PARSER",
+      },
+      resolvedSettings: resolveCitationSettings({ profile, citationType: "OTHER" }),
+      sourceMappings: [],
+      protectedRanges: analysis.protectedRanges,
+    });
 
-      for (const candidate of candidates) {
-        const finding = createValidatedFinding(footnote, rule.ruleId, candidate);
-
-        if (finding) {
-          findings.push(finding);
-        }
-      }
+    for (const segment of parseResult.segments) {
+      const sourceMappings = resolveCitationSegmentSources(segment, mappingIndex, false);
+      const sourceMapping =
+        sourceMappings.find((mapping) => mapping.target === "PRIMARY_SOURCE")?.resolution ??
+        sourceMappings[0]?.resolution;
+      const effectiveClassification = deriveEffectiveCitationClassification(segment, sourceMapping);
+      segmentAnalyses.push({
+        footnoteId: footnote.id,
+        segmentId: segment.segmentId,
+        sourceMappings,
+        effectiveClassification,
+      });
+      segmentContexts.push({
+        footnote,
+        segment,
+        extraction: segment.extraction,
+        parserCitationType: effectiveClassification.parserType,
+        effectiveCitationType: effectiveClassification.effectiveType,
+        effectiveClassification,
+        resolvedSettings: resolveCitationSettings({
+          profile,
+          citationType: effectiveClassification.effectiveType,
+          workOverride: sourceMapping?.workOverride,
+        }),
+        ...(sourceMapping ? { sourceMapping } : {}),
+        sourceMappings,
+        protectedRanges: analysis.protectedRanges,
+      });
     }
   }
 
-  findings.sort(compareFindings);
+  const findings = runRules(footnoteContexts, segmentContexts, {
+    footnotes,
+    profile,
+    mappingData,
+  });
 
   const findingsBySeverity = {
     info: 0,
@@ -252,6 +266,7 @@ export function analyzeFootnotes(footnotes: readonly FootnoteSnapshot[]): Footno
     findings,
     footnoteAnalyses,
     parseResults,
+    segmentAnalyses,
     analyzedFootnotes: footnotes.length,
     plainTextUrlCount,
     engineProtectedRangeCount,

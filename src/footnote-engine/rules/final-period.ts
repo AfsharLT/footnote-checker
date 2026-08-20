@@ -52,8 +52,8 @@ function createMissingPeriodCandidate(position: number): RuleFindingCandidate {
     end: position,
     originalText: "",
     suggestedText: ".",
-    severity: "warning",
-    message: "Fußnote endet nicht mit genau einem Punkt.",
+    severity: "error",
+    message: "Die Fußnote muss mit genau einem Punkt enden.",
     metadata: { violationType: "missing" },
   };
 }
@@ -70,17 +70,21 @@ function createEndClusterCandidate(
     end,
     originalText: contentText.slice(start, end),
     suggestedText: ".",
-    severity: "warning",
-    message: "Fußnote endet nicht mit genau einem Punkt.",
+    severity: "error",
+    message: "Die Fußnote muss mit genau einem Punkt enden.",
     metadata: { violationType },
   };
 }
 
 export const finalPeriodRule: FootnoteRule = {
   ruleId: "FINAL_PERIOD",
+  category: "punctuation",
+  priority: 30,
+  scope: "footnote",
 
-  analyze(snapshot, protectedRanges) {
-    const { contentText } = snapshot;
+  evaluate(context) {
+    const { contentText } = context.footnote;
+    const protectedRanges = context.protectedRanges;
     const relevantEnd = findRelevantEnd(contentText);
 
     if (relevantEnd === 0) {

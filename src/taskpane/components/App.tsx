@@ -1,7 +1,6 @@
 import * as React from "react";
 import { useMemo, useRef, useState } from "react";
 import { Button, makeStyles, mergeClasses, tokens } from "@fluentui/react-components";
-import { resolveCitationSegmentSources } from "../../citation-mapping/resolver";
 import type { CitationSourceMappingResolution } from "../../citation-mapping/types";
 import { useCitationSourceMapping } from "../../citation-mapping/use-citation-source-mapping";
 import { useCitationSettings } from "../../citation-settings/use-citation-settings";
@@ -241,6 +240,9 @@ function describeSourceMapping(resolution: CitationSourceMappingResolution): str
     `Canonical: ${resolution.preferredName ?? "–"}`,
     `Matched via: ${resolution.matchedAlias ?? resolution.matchedText ?? "–"}`,
     `Match Source: ${resolution.matchSource ?? "–"}`,
+    ...(resolution.matchedRange
+      ? [`Matched Range: [${resolution.matchedRange.start}, ${resolution.matchedRange.end})`]
+      : []),
     `Kind: ${resolution.kind ?? "–"}`,
     `Legal Area: ${resolution.legalArea ?? "–"}`,
     ...(resolution.commentedLaw ? [`Commented Law: ${resolution.commentedLaw}`] : []),
@@ -439,6 +441,13 @@ const App: React.FC = () => {
 
     return result;
   }, [engineResult]);
+  const segmentAnalysesById = useMemo(() => {
+    const result = new Map<string, FootnoteEngineResult["segmentAnalyses"][number]>();
+    for (const analysis of engineResult?.segmentAnalyses ?? []) {
+      result.set(`${analysis.footnoteId}:${analysis.segmentId}`, analysis);
+    }
+    return result;
+  }, [engineResult]);
 
   const handleReadFootnotes = async () => {
     if (readInProgressRef.current) return;
@@ -457,7 +466,11 @@ const App: React.FC = () => {
       setReadProgress(
         createFootnoteReadProgress("analyzing", result.footnotes.length, result.footnotes.length)
       );
-      const analysis = analyzeFootnotes(result.footnotes);
+      const analysis = analyzeFootnotes(result.footnotes, {
+        profile: activeProfile,
+        mappingData,
+        mappingIndex,
+      });
       setEngineResult(analysis);
       setReadProgress(
         createFootnoteReadProgress("complete", result.footnotes.length, result.footnotes.length)
@@ -645,75 +658,95 @@ const App: React.FC = () => {
                   </div>
                 ))}
                 <p className={styles.resultText}>Citation Segments: {citationSegments.length}</p>
-                {citationSegments.map((segment) => (
-                  <div className={styles.findingItem} key={segment.segmentId}>
-                    <h3 className={styles.findingTitle}>Segment {segment.ordinal}</h3>
-                    <p className={styles.resultText}>
-                      Range: [{segment.start}, {segment.end})
-                    </p>
-                    <p className={styles.resultText}>Original: {segment.originalText}</p>
-                    <p className={styles.resultText}>
-                      Modifier:{" "}
-                      {segment.modifiers.map((modifier) => modifier.text).join(", ") || "keine"}
-                    </p>
-                    <p className={styles.resultText}>Core: {segment.coreText}</p>
-                    <p className={styles.resultText}>Type: {segment.classification.type}</p>
-                    <p className={styles.resultText}>
-                      Certainty: {segment.classification.certainty}
-                    </p>
-                    {segment.classification.caseLawForm && (
+                {citationSegments.map((segment) => {
+                  const segmentAnalysis = segmentAnalysesById.get(
+                    `${footnote.id}:${segment.segmentId}`
+                  );
+                  const segmentMappings = segmentAnalysis?.sourceMappings ?? [];
+                  const effectiveClassification = segmentAnalysis?.effectiveClassification ?? {
+                    parserType: segment.classification.type,
+                    effectiveType: segment.classification.type,
+                    source: "PARSER" as const,
+                  };
+                  return (
+                    <div className={styles.findingItem} key={segment.segmentId}>
+                      <h3 className={styles.findingTitle}>Segment {segment.ordinal}</h3>
                       <p className={styles.resultText}>
-                        Citation Form: {segment.classification.caseLawForm}
+                        Range: [{segment.start}, {segment.end})
                       </p>
-                    )}
-                    <div className={styles.resultText}>
-                      Signals:
-                      <ul>
-                        {segment.classification.signals.map((signal, signalIndex) => (
-                          <li key={`${signal.code}-${signal.start ?? ""}-${signalIndex}`}>
-                            {signal.code}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                    <p className={styles.resultText}>
-                      Reference Candidates: {segment.embeddedStatuteReferences.length}
-                    </p>
-                    {segment.embeddedStatuteReferences.length > 0 && (
-                      <ul className={styles.resultText}>
-                        {segment.embeddedStatuteReferences.map((reference) => (
-                          <li key={`${reference.start}-${reference.end}`}>
-                            {reference.originalText} [{reference.start}, {reference.end}) · section:{" "}
-                            {reference.section ?? reference.sections?.join(", ") ?? "–"} ·
-                            paragraph: {reference.paragraph ?? "–"} · sentence:{" "}
-                            {reference.sentence ?? "–"} · law: {reference.law ?? "–"} · context:{" "}
-                            {reference.referenceContext ?? "unknown"}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {segment.extraction && (
-                      <div className={styles.resultText}>
+                      <p className={styles.resultText}>Original: {segment.originalText}</p>
+                      <p className={styles.resultText}>
+                        Modifier:{" "}
+                        {segment.modifiers.map((modifier) => modifier.text).join(", ") || "keine"}
+                      </p>
+                      <p className={styles.resultText}>Core: {segment.coreText}</p>
+                      <p className={styles.resultText}>
+                        Parser Type: {effectiveClassification.parserType}
+                      </p>
+                      <p className={styles.resultText}>
+                        Parser Certainty: {segment.classification.certainty}
+                      </p>
+                      <p className={styles.resultText}>
+                        Effective Type: {effectiveClassification.effectiveType}
+                      </p>
+                      <p className={styles.resultText}>
+                        Effective Type Source:{" "}
+                        {effectiveClassification.source === "SOURCE_MAPPING"
+                          ? "Source Mapping"
+                          : "Parser"}
+                      </p>
+                      {segment.classification.caseLawForm && (
                         <p className={styles.resultText}>
-                          Extraction Status: {segment.extraction.status}
+                          Citation Form: {segment.classification.caseLawForm}
                         </p>
+                      )}
+                      <div className={styles.resultText}>
+                        Signals:
                         <ul>
-                          {describeExtraction(segment.extraction).map((line, lineIndex) => (
-                            <li key={`${lineIndex}-${line}`}>{line}</li>
+                          {segment.classification.signals.map((signal, signalIndex) => (
+                            <li key={`${signal.code}-${signal.start ?? ""}-${signalIndex}`}>
+                              {signal.code}
+                            </li>
                           ))}
                         </ul>
-                        <p className={styles.resultText}>
-                          Unparsed:{" "}
-                          {segment.extraction.unparsedRemainder.length === 0
-                            ? "none"
-                            : segment.extraction.unparsedRemainder
-                                .map((span) => `“${span.rawText}”`)
-                                .join(", ")}
-                        </p>
                       </div>
-                    )}
-                    {resolveCitationSegmentSources(segment, mappingIndex).map(
-                      (sourceMapping, mappingIndexValue) => (
+                      <p className={styles.resultText}>
+                        Reference Candidates: {segment.embeddedStatuteReferences.length}
+                      </p>
+                      {segment.embeddedStatuteReferences.length > 0 && (
+                        <ul className={styles.resultText}>
+                          {segment.embeddedStatuteReferences.map((reference) => (
+                            <li key={`${reference.start}-${reference.end}`}>
+                              {reference.originalText} [{reference.start}, {reference.end}) ·
+                              section: {reference.section ?? reference.sections?.join(", ") ?? "–"}{" "}
+                              · paragraph: {reference.paragraph ?? "–"} · sentence:{" "}
+                              {reference.sentence ?? "–"} · law: {reference.law ?? "–"} · context:{" "}
+                              {reference.referenceContext ?? "unknown"}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {segment.extraction && (
+                        <div className={styles.resultText}>
+                          <p className={styles.resultText}>
+                            Extraction Status: {segment.extraction.status}
+                          </p>
+                          <ul>
+                            {describeExtraction(segment.extraction).map((line, lineIndex) => (
+                              <li key={`${lineIndex}-${line}`}>{line}</li>
+                            ))}
+                          </ul>
+                          <p className={styles.resultText}>
+                            Unparsed:{" "}
+                            {segment.extraction.unparsedRemainder.length === 0
+                              ? "none"
+                              : segment.extraction.unparsedRemainder
+                                  .map((span) => `“${span.rawText}”`)
+                                  .join(", ")}
+                          </p>
+                        </div>
+                      )}
+                      {segmentMappings.map((sourceMapping, mappingIndexValue) => (
                         <div
                           className={styles.resultText}
                           key={`${sourceMapping.target}-${sourceMapping.publicationIndex ?? "primary"}-${mappingIndexValue}`}
@@ -729,10 +762,10 @@ const App: React.FC = () => {
                             )}
                           </ul>
                         </div>
-                      )
-                    )}
-                  </div>
-                ))}
+                      ))}
+                    </div>
+                  );
+                })}
                 <p className={styles.resultText}>ID: {footnote.id}</p>
                 <p className={styles.resultText}>
                   Label: {footnote.displayLabel || "Nicht verfügbar"}

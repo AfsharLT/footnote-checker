@@ -1,3 +1,6 @@
+import type { CitationSegmentSourceMapping } from "../citation-mapping/types";
+import type { EffectiveCitationClassification } from "./effective-classification";
+
 export type FindingCategory =
   "punctuation" | "formatting" | "citation" | "structure" | "content" | "technical";
 
@@ -394,6 +397,12 @@ export interface FootnoteEngineResult {
   findings: Finding[];
   footnoteAnalyses: FootnoteAnalysisResult[];
   parseResults: FootnoteParseResult[];
+  segmentAnalyses: Array<{
+    footnoteId: string;
+    segmentId: string;
+    sourceMappings: CitationSegmentSourceMapping[];
+    effectiveClassification: EffectiveCitationClassification;
+  }>;
   analyzedFootnotes: number;
   plainTextUrlCount: number;
   engineProtectedRangeCount: number;

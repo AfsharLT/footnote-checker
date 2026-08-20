@@ -43,10 +43,11 @@ const NORMALIZED_HEADERS = [
   "overridePersonSeparator",
   "overrideMarginNumberAbbreviation",
   "overridePinpointStyle",
+  "preferredCitationText",
 ] as const;
 
 const REQUIRED_NORMALIZED_HEADERS = NORMALIZED_HEADERS.filter(
-  (name) => !name.startsWith("override")
+  (name) => !name.startsWith("override") && name !== "preferredCitationText"
 );
 
 function csvValue(value: string | boolean | undefined): string {
@@ -116,6 +117,7 @@ export function exportCitationSourceMappingCsv(data: CitationSourceMappingData):
         csvValue(alias.legacyVersion),
         csvValue(alias.legacyDate),
         ...overrideColumns(source),
+        csvValue(source.preferredCitationText),
       ]),
     ];
   });
@@ -187,7 +189,7 @@ export function parseCitationSourceMappingCsv(
     }
     const kind = enumValue<CitationSourceKind>(
       valueAt(row, "kind"),
-      ["COMMENTARY", "JOURNAL"],
+      ["COMMENTARY", "JOURNAL", "BOOK", "REPORT", "CUSTOM"],
       `${path}.kind`,
       errors
     );
@@ -201,7 +203,7 @@ export function parseCitationSourceMappingCsv(
     const aliasText = valueAt(row, "alias");
     const matchMode = enumValue(
       valueAt(row, "matchMode"),
-      ["CASE_INSENSITIVE_TEXT"] as const,
+      ["CASE_INSENSITIVE_TEXT", "WHOLE_WORD_MARKER"] as const,
       `${path}.matchMode`,
       errors
     );
@@ -254,13 +256,22 @@ export function parseCitationSourceMappingCsv(
       errors.push(`${path}.overridePinpointStyle has an unsupported value`);
     }
     if (sourceActive === undefined || aliasActive === undefined || wholeWord === undefined) return;
+    if (matchMode === "WHOLE_WORD_MARKER" && !["BOOK", "REPORT", "CUSTOM"].includes(kind)) {
+      errors.push(`${path}.matchMode WHOLE_WORD_MARKER is incompatible with ${kind}`);
+      return;
+    }
+    if (matchMode === "WHOLE_WORD_MARKER" && !wholeWord) {
+      errors.push(`${path}.wholeWord must be true for WHOLE_WORD_MARKER`);
+      return;
+    }
 
     const existing = sourcesById.get(canonicalSourceId);
     if (
       existing &&
       (existing.kind !== kind ||
         existing.legalArea !== area ||
-        existing.preferredName !== preferredName)
+        existing.preferredName !== preferredName ||
+        existing.preferredCitationText !== optional(valueAt(row, "preferredCitationText")))
     ) {
       errors.push(`${path} conflicts with another row for ${canonicalSourceId}`);
       return;
@@ -272,67 +283,84 @@ export function parseCitationSourceMappingCsv(
         sourceOrigin: "IMPORTED",
         kind,
         preferredName,
+        ...(optional(valueAt(row, "preferredCitationText"))
+          ? { preferredCitationText: valueAt(row, "preferredCitationText") }
+          : {}),
         legalArea: area,
         ...(optional(valueAt(row, "commentedLaw"))
           ? { commentedLaw: valueAt(row, "commentedLaw") }
           : {}),
         applicableCitationTypes:
-          kind === "COMMENTARY" ? ["COMMENTARY"] : ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE"],
+          kind === "COMMENTARY"
+            ? ["COMMENTARY"]
+            : kind === "JOURNAL"
+              ? ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE"]
+              : kind === "BOOK"
+                ? ["BOOK", "OTHER"]
+                : ["OTHER"],
         active: sourceActive,
         ...(optional(valueAt(row, "examplePattern"))
           ? { examplePattern: valueAt(row, "examplePattern") }
           : {}),
         ...(optional(valueAt(row, "notes")) ? { notes: valueAt(row, "notes") } : {}),
         ...(personHint ? { personStructureHint: personHint } : {}),
-        workOverride:
-          kind === "COMMENTARY"
-            ? {
-                canonicalWorkId: canonicalSourceId,
-                citationType: "COMMENTARY",
-                preferredName: optional(valueAt(row, "overridePreferredName")) ?? preferredName,
-                ...(overrideBearbeiterItalic !== undefined || overrideEditorItalic !== undefined
+        ...(kind === "COMMENTARY" || kind === "JOURNAL"
+          ? {
+              workOverride:
+                kind === "COMMENTARY"
                   ? {
-                      formatting: {
-                        ...(overrideBearbeiterItalic !== undefined
-                          ? { bearbeiter: { italic: overrideBearbeiterItalic } }
-                          : {}),
-                        ...(overrideEditorItalic !== undefined
-                          ? { editor: { italic: overrideEditorItalic } }
-                          : {}),
-                      },
+                      canonicalWorkId: canonicalSourceId,
+                      citationType: "COMMENTARY",
+                      preferredName:
+                        optional(valueAt(row, "overridePreferredName")) ?? preferredName,
+                      ...(overrideBearbeiterItalic !== undefined ||
+                      overrideEditorItalic !== undefined
+                        ? {
+                            formatting: {
+                              ...(overrideBearbeiterItalic !== undefined
+                                ? { bearbeiter: { italic: overrideBearbeiterItalic } }
+                                : {}),
+                              ...(overrideEditorItalic !== undefined
+                                ? { editor: { italic: overrideEditorItalic } }
+                                : {}),
+                            },
+                          }
+                        : {}),
+                      ...(optional(valueAt(row, "overridePersonSeparator")) ||
+                      optional(valueAt(row, "overrideMarginNumberAbbreviation"))
+                        ? {
+                            citationSettingsOverride: {
+                              ...(optional(valueAt(row, "overridePersonSeparator"))
+                                ? { personSeparator: valueAt(row, "overridePersonSeparator") }
+                                : {}),
+                              ...(optional(valueAt(row, "overrideMarginNumberAbbreviation"))
+                                ? {
+                                    marginNumberAbbreviation: valueAt(
+                                      row,
+                                      "overrideMarginNumberAbbreviation"
+                                    ),
+                                  }
+                                : {}),
+                            },
+                          }
+                        : {}),
                     }
-                  : {}),
-                ...(optional(valueAt(row, "overridePersonSeparator")) ||
-                optional(valueAt(row, "overrideMarginNumberAbbreviation"))
-                  ? {
-                      citationSettingsOverride: {
-                        ...(optional(valueAt(row, "overridePersonSeparator"))
-                          ? { personSeparator: valueAt(row, "overridePersonSeparator") }
-                          : {}),
-                        ...(optional(valueAt(row, "overrideMarginNumberAbbreviation"))
-                          ? {
-                              marginNumberAbbreviation: valueAt(
-                                row,
-                                "overrideMarginNumberAbbreviation"
-                              ),
-                            }
-                          : {}),
-                      },
-                    }
-                  : {}),
-              }
-            : {
-                canonicalWorkId: canonicalSourceId,
-                citationType: "JOURNAL_ARTICLE",
-                preferredName: optional(valueAt(row, "overridePreferredName")) ?? preferredName,
-                ...(overridePinpointStyle === "parentheses" || overridePinpointStyle === "comma"
-                  ? {
-                      citationSettingsOverride: {
-                        pinpointStyle: overridePinpointStyle,
-                      },
-                    }
-                  : {}),
-              },
+                  : {
+                      canonicalWorkId: canonicalSourceId,
+                      citationType: "JOURNAL_ARTICLE",
+                      preferredName:
+                        optional(valueAt(row, "overridePreferredName")) ?? preferredName,
+                      ...(overridePinpointStyle === "parentheses" ||
+                      overridePinpointStyle === "comma"
+                        ? {
+                            citationSettingsOverride: {
+                              pinpointStyle: overridePinpointStyle,
+                            },
+                          }
+                        : {}),
+                    },
+            }
+          : {}),
       });
     }
 

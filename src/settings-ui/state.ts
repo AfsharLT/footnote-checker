@@ -49,6 +49,7 @@ export interface AliasConflict {
 
 export interface NewCitationSourceInput {
   preferredName: string;
+  preferredCitationText?: string;
   kind: CitationSourceKind;
   legalArea: CitationSourceLegalArea;
   commentedLaw?: string;
@@ -293,9 +294,16 @@ export function findAliasConflicts(mapping: CitationSourceMappingData): AliasCon
 
 function sourceIdFor(input: NewCitationSourceInput): string {
   const slug = createCanonicalSourceSlug(input.preferredName);
-  return input.kind === "JOURNAL"
-    ? `journal-${slug}`
-    : `commentary-${input.legalArea.toLowerCase()}-${slug}`;
+  if (input.kind === "JOURNAL") return `journal-${slug}`;
+  if (input.kind === "COMMENTARY") return `commentary-${input.legalArea.toLowerCase()}-${slug}`;
+  return `${input.kind.toLowerCase()}-${slug}`;
+}
+
+function citationTypesForKind(kind: CitationSourceKind) {
+  if (kind === "COMMENTARY") return ["COMMENTARY"] as const;
+  if (kind === "JOURNAL") return ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE"] as const;
+  if (kind === "BOOK") return ["BOOK", "OTHER"] as const;
+  return ["OTHER"] as const;
 }
 
 export function addCitationSource(
@@ -307,7 +315,7 @@ export function addCitationSource(
     return { success: false, value: mapping, error: "Preferred Name darf nicht leer sein." };
   }
   const canonicalSourceId = sourceIdFor({ ...input, preferredName });
-  if (!canonicalSourceId.replace(/^(journal|commentary-[a-z]+)-/, "")) {
+  if (!canonicalSourceId.replace(/^(journal|commentary-[a-z]+|book|report|custom)-/, "")) {
     return {
       success: false,
       value: mapping,
@@ -328,19 +336,25 @@ export function addCitationSource(
     sourceOrigin: "USER",
     kind: input.kind,
     preferredName,
+    ...(input.preferredCitationText?.trim()
+      ? { preferredCitationText: input.preferredCitationText.trim() }
+      : {}),
     legalArea: input.legalArea,
     ...(input.commentedLaw?.trim() ? { commentedLaw: input.commentedLaw.trim() } : {}),
-    applicableCitationTypes:
-      input.kind === "COMMENTARY" ? ["COMMENTARY"] : ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE"],
+    applicableCitationTypes: [...citationTypesForKind(input.kind)],
     active: true,
     ...(input.personStructureHint ? { personStructureHint: input.personStructureHint } : {}),
     ...(input.examplePattern?.trim() ? { examplePattern: input.examplePattern.trim() } : {}),
     ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
-    workOverride: {
-      canonicalWorkId: canonicalSourceId,
-      citationType: input.kind === "COMMENTARY" ? "COMMENTARY" : "JOURNAL_ARTICLE",
-      preferredName,
-    },
+    ...(input.kind === "COMMENTARY" || input.kind === "JOURNAL"
+      ? {
+          workOverride: {
+            canonicalWorkId: canonicalSourceId,
+            citationType: input.kind === "COMMENTARY" ? "COMMENTARY" : "JOURNAL_ARTICLE",
+            preferredName,
+          },
+        }
+      : {}),
   });
   next.aliases.push({
     canonicalSourceId,
@@ -372,6 +386,7 @@ export function updateCitationSource(
     Pick<
       CitationSourceMaster,
       | "preferredName"
+      | "preferredCitationText"
       | "kind"
       | "legalArea"
       | "commentedLaw"
@@ -390,14 +405,16 @@ export function updateCitationSource(
   if (!source) return mapping;
   Object.assign(source, changes);
   if (changes.kind) {
-    source.applicableCitationTypes =
-      changes.kind === "COMMENTARY" ? ["COMMENTARY"] : ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE"];
-    source.workOverride = {
-      ...source.workOverride,
-      canonicalWorkId: source.canonicalSourceId,
-      citationType: changes.kind === "COMMENTARY" ? "COMMENTARY" : "JOURNAL_ARTICLE",
-      preferredName: source.workOverride?.preferredName ?? source.preferredName,
-    };
+    source.applicableCitationTypes = [...citationTypesForKind(changes.kind)];
+    source.workOverride =
+      changes.kind === "COMMENTARY" || changes.kind === "JOURNAL"
+        ? {
+            ...source.workOverride,
+            canonicalWorkId: source.canonicalSourceId,
+            citationType: changes.kind === "COMMENTARY" ? "COMMENTARY" : "JOURNAL_ARTICLE",
+            preferredName: source.workOverride?.preferredName ?? source.preferredName,
+          }
+        : undefined;
   }
   return next;
 }
@@ -441,13 +458,14 @@ export function updateCitationSourceAlias(
   mapping: CitationSourceMappingData,
   aliasIndex: number,
   changes: Partial<
-    Pick<CitationSourceAlias, "alias" | "active" | "wholeWord" | "legacySafetyLevel">
+    Pick<CitationSourceAlias, "alias" | "active" | "wholeWord" | "matchMode" | "legacySafetyLevel">
   >
 ): CitationSourceMappingData {
   const next = cloneCitationSourceMapping(mapping);
   const alias = next.aliases[aliasIndex];
   if (!alias) return mapping;
   Object.assign(alias, changes);
+  if (changes.matchMode === "WHOLE_WORD_MARKER") alias.wholeWord = true;
   return next;
 }
 

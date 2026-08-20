@@ -48,8 +48,11 @@ function assertMissingFinding(contentText: string, expectedPosition: number): vo
   assert(finding.originalText === "", `Insertion originalText must be empty for: ${contentText}`);
   assert(finding.suggestedText === ".", `Unexpected insertion suggestion for: ${contentText}`);
   assert(finding.category === "punctuation", `Unexpected category for: ${contentText}`);
-  assert(finding.severity === "warning", `Unexpected severity for: ${contentText}`);
-  assert(finding.metadata?.violationType === "missing", `Unexpected violation type: ${contentText}`);
+  assert(finding.severity === "error", `Unexpected severity for: ${contentText}`);
+  assert(
+    finding.metadata?.violationType === "missing",
+    `Unexpected violation type: ${contentText}`
+  );
   assert(
     finding.originalText === contentText.slice(finding.start, finding.end),
     `Invalid insertion offsets for: ${contentText}`
@@ -59,11 +62,7 @@ function assertMissingFinding(contentText: string, expectedPosition: number): vo
 function assertMultipleFinding(
   contentText: string,
   expectedOriginalText: string,
-  expectedViolationType:
-    | "multiple"
-    | "spacedMultiple"
-    | "ellipsis"
-    | "mixedDotCluster" = "multiple"
+  expectedViolationType: "multiple" | "spacedMultiple" | "ellipsis" | "mixedDotCluster" = "multiple"
 ): void {
   const findings = getFinalPeriodFindings(contentText);
   assert(findings.length === 1, `Expected one multiple-period finding for: ${contentText}`);
@@ -141,8 +140,14 @@ function runMassTest(): void {
   const result = analyzeFootnotes(snapshots);
 
   assert(result.analyzedFootnotes === 1200, "All mass-test snapshots must be analyzed");
-  assert(result.findings.length === 600, "Only missing final periods may create findings");
-  assert(result.findingsBySeverity.warning === 600, "All rule findings must be warnings");
+  const finalPeriodFindings = result.findings.filter(
+    (finding) => finding.ruleId === "FINAL_PERIOD"
+  );
+  assert(finalPeriodFindings.length === 600, "Exactly 600 final periods must be missing");
+  assert(
+    finalPeriodFindings.every((finding) => finding.severity === "error"),
+    "All FINAL_PERIOD findings must be errors"
+  );
   assert(
     snapshots.every((snapshot, index) => snapshot.contentText === originalTexts[index]),
     "Snapshots must remain unchanged"

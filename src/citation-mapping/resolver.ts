@@ -1,4 +1,5 @@
 import type { CitationSegment, CitationType } from "../footnote-engine/types";
+import { absoluteContentRangeFromSegment } from "../footnote-engine/offsets";
 import { normalizeCitationSourceText } from "./normalization";
 import type {
   CitationSegmentSourceMapping,
@@ -90,7 +91,7 @@ function ambiguous(sources: readonly CitationSourceMaster[]): CitationSourceMapp
 function matched(
   source: CitationSourceMaster,
   matchedText: string,
-  matchSource: "PREFERRED_NAME" | "ALIAS" | "FALLBACK_CORE_TEXT",
+  matchSource: CitationSourceMappingResolution["matchSource"],
   alias?: CitationSourceAlias
 ): CitationSourceMappingResolution {
   return {
@@ -98,6 +99,9 @@ function matched(
     canonicalSourceId: source.canonicalSourceId,
     kind: source.kind,
     preferredName: source.preferredName,
+    ...(source.preferredCitationText
+      ? { preferredCitationText: source.preferredCitationText }
+      : {}),
     matchedText,
     ...(alias ? { matchedAlias: alias.alias } : {}),
     matchSource,
@@ -109,6 +113,69 @@ function matched(
     ...((alias?.notes ?? source.notes) ? { notes: alias?.notes ?? source.notes } : {}),
     ...(source.workOverride ? { workOverride: source.workOverride } : {}),
   };
+}
+
+function withMatchSource(
+  resolution: CitationSourceMappingResolution,
+  matchSource: CitationSourceMappingResolution["matchSource"],
+  candidate?: { text: string; start?: number; end?: number }
+): CitationSourceMappingResolution {
+  return resolution.status === "MATCHED"
+    ? {
+        ...resolution,
+        matchSource,
+        ...(candidate ? { matchedText: candidate.text } : {}),
+        ...(candidate?.start !== undefined && candidate.end !== undefined
+          ? { matchedRange: { start: candidate.start, end: candidate.end } }
+          : {}),
+      }
+    : resolution;
+}
+
+function commentaryPrefix(
+  segment: CitationSegment
+): { text: string; start?: number; end?: number } | undefined {
+  const coreText = segment.coreText ?? segment.originalText ?? "";
+  const slash = coreText.indexOf("/");
+  if (slash <= 0) return undefined;
+  let startOffset = 0;
+  let endOffset = slash;
+  while (/\s/.test(coreText[startOffset] ?? "")) startOffset += 1;
+  const modifier = /^(?:vgl\.|siehe|s\.|auch|bereits|zustimmend|ablehnend)\s+/i.exec(
+    coreText.slice(startOffset, endOffset)
+  );
+  if (modifier) startOffset += modifier[0].length;
+  while (/\s/.test(coreText[startOffset] ?? "")) startOffset += 1;
+  while (endOffset > startOffset && /[\s,;:]/.test(coreText[endOffset - 1])) endOffset -= 1;
+  const text = coreText.slice(startOffset, endOffset);
+  if (!text) return undefined;
+  const absoluteRange = absoluteContentRangeFromSegment(segment, startOffset, endOffset, "core");
+  return {
+    text,
+    ...(absoluteRange ?? {}),
+  };
+}
+
+function resolveExplicitMarkers(
+  segment: CitationSegment,
+  index: CitationSourceMappingIndex
+): CitationSourceMappingResolution {
+  const normalized = normalizeCitationSourceText(segment.coreText ?? segment.originalText ?? "");
+  const entries = index.fallbackAliases.filter(
+    ({ alias, source }) =>
+      alias.matchMode === "WHOLE_WORD_MARKER" &&
+      (source.kind === "BOOK" || source.kind === "REPORT" || source.kind === "CUSTOM") &&
+      containsWholeValue(normalized, normalizeCitationSourceText(alias.alias), true)
+  );
+  const sources = uniqueSources(entries.map(({ source }) => source));
+  if (sources.length > 1) return ambiguous(sources);
+  if (sources.length === 1) {
+    const entry = entries.find(
+      ({ source }) => source.canonicalSourceId === sources[0].canonicalSourceId
+    );
+    if (entry) return matched(entry.source, entry.alias.alias, "WHOLE_WORD_MARKER", entry.alias);
+  }
+  return { status: "UNMATCHED" };
 }
 
 function isWordCharacter(value: string | undefined): boolean {
@@ -196,8 +263,9 @@ export function resolveCitationSegmentSources(
   allowCoreTextFallback = false
 ): CitationSegmentSourceMapping[] {
   const extraction = segment.extraction;
+  let structured: CitationSegmentSourceMapping[] = [];
   if (extraction?.type === "COMMENTARY") {
-    return [
+    structured = [
       {
         target: "PRIMARY_SOURCE",
         resolution: resolveCitationSource(index, {
@@ -208,9 +276,8 @@ export function resolveCitationSegmentSources(
         }),
       },
     ];
-  }
-  if (extraction?.type === "JOURNAL_ARTICLE") {
-    return [
+  } else if (extraction?.type === "JOURNAL_ARTICLE") {
+    structured = [
       {
         target: "PRIMARY_SOURCE",
         resolution: resolveCitationSource(index, {
@@ -221,9 +288,20 @@ export function resolveCitationSegmentSources(
         }),
       },
     ];
-  }
-  if (extraction?.type === "CASE_NOTE") {
-    return [
+  } else if (extraction?.type === "BOOK") {
+    if (extraction.data.title?.value) {
+      structured = [
+        {
+          target: "PRIMARY_SOURCE",
+          resolution: resolveCitationSource(index, {
+            text: extraction.data.title.value,
+            citationType: "BOOK",
+          }),
+        },
+      ];
+    }
+  } else if (extraction?.type === "CASE_NOTE") {
+    structured = [
       {
         target: "PRIMARY_SOURCE",
         resolution: resolveCitationSource(index, {
@@ -234,9 +312,8 @@ export function resolveCitationSegmentSources(
         }),
       },
     ];
-  }
-  if (extraction?.type === "CASE_LAW") {
-    return extraction.data.parallelCitations.flatMap((publication, publicationIndex) =>
+  } else if (extraction?.type === "CASE_LAW") {
+    structured = extraction.data.parallelCitations.flatMap((publication, publicationIndex) =>
       publication.kind === "journal"
         ? [
             {
@@ -251,6 +328,34 @@ export function resolveCitationSegmentSources(
         : []
     );
   }
+  if (structured.some(({ resolution }) => resolution.status !== "UNMATCHED")) return structured;
+
+  const prefix = commentaryPrefix(segment);
+  if (prefix) {
+    const resolution = withMatchSource(
+      resolveCitationSource(index, { text: prefix.text, citationType: "COMMENTARY" }),
+      "COMMENTARY_PREFIX",
+      prefix
+    );
+    if (resolution.status !== "UNMATCHED") return [{ target: "PRIMARY_SOURCE", resolution }];
+  }
+
+  const exactCustom = resolveCitationSource(index, {
+    text: (segment.coreText ?? segment.originalText ?? "").trim(),
+    citationType: segment.classification.type,
+  });
+  if (
+    exactCustom.status !== "UNMATCHED" &&
+    (exactCustom.status === "AMBIGUOUS" ||
+      ["BOOK", "REPORT", "CUSTOM"].includes(exactCustom.kind ?? ""))
+  ) {
+    return [{ target: "PRIMARY_SOURCE", resolution: exactCustom }];
+  }
+
+  const marker = resolveExplicitMarkers(segment, index);
+  if (marker.status !== "UNMATCHED") return [{ target: "PRIMARY_SOURCE", resolution: marker }];
+
+  if (structured.length > 0) return structured;
   return allowCoreTextFallback
     ? [
         {

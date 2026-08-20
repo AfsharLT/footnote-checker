@@ -3,12 +3,12 @@ import type { CitationType } from "../footnote-engine/types";
 
 export const CURRENT_CITATION_SOURCE_MAPPING_SCHEMA_VERSION = 1 as const;
 
-export type CitationSourceKind = "COMMENTARY" | "JOURNAL";
+export type CitationSourceKind = "COMMENTARY" | "JOURNAL" | "BOOK" | "REPORT" | "CUSTOM";
 export type CitationSourceLegalArea =
   "BGB" | "STGB" | "STPO" | "ZPO" | "GG" | "GENERAL" | "UNKNOWN";
 export type CommentaryPersonStructureHint =
   "WORK_THEN_BEARBEITER" | "WORK_WITHOUT_BEARBEITER" | "AMBIGUOUS" | "UNKNOWN";
-export type SourceMatchMode = "CASE_INSENSITIVE_TEXT";
+export type SourceMatchMode = "CASE_INSENSITIVE_TEXT" | "WHOLE_WORD_MARKER";
 export type LegacySafetyLevel = "PROBABLE" | "UNCERTAIN";
 export type CitationSourceOrigin = "DEFAULT" | "USER" | "IMPORTED";
 
@@ -25,6 +25,7 @@ export interface CitationSourceMaster {
   sourceOrigin?: CitationSourceOrigin;
   kind: CitationSourceKind;
   preferredName: string;
+  preferredCitationText?: string;
   legalArea: CitationSourceLegalArea;
   commentedLaw?: string;
   applicableCitationTypes: CitationType[];
@@ -125,14 +126,20 @@ export interface CitationSourceMigrationResult extends CitationSourceMappingVali
 }
 
 export type MappingResolutionStatus = "MATCHED" | "AMBIGUOUS" | "UNMATCHED";
-export type CitationSourceMatchSource = "PREFERRED_NAME" | "ALIAS" | "FALLBACK_CORE_TEXT";
+export type CitationSourceMatchSource =
+  "PREFERRED_NAME" | "ALIAS" | "FALLBACK_CORE_TEXT" | "COMMENTARY_PREFIX" | "WHOLE_WORD_MARKER";
 
 export interface CitationSourceMappingResolution {
   status: MappingResolutionStatus;
   canonicalSourceId?: string;
   kind?: CitationSourceKind;
   preferredName?: string;
+  preferredCitationText?: string;
   matchedText?: string;
+  matchedRange?: {
+    start: number;
+    end: number;
+  };
   matchedAlias?: string;
   matchSource?: CitationSourceMatchSource;
   legalArea?: CitationSourceLegalArea;

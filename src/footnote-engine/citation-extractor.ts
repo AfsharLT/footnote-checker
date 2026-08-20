@@ -49,14 +49,14 @@ const DOCKET_NUMBER_PATTERN =
 const PANEL_PATTERN = /\b\d+\.\s*(?:Strafsenat|Zivilsenat|Senat)\b/i;
 const ECLI_PATTERN = /\bECLI:[A-Z]{2}:[A-Z0-9.:-]+\b/i;
 const JOURNAL_PUBLICATION_PATTERN =
-  /\b(NJW|NStZ(?:-RR)?|JZ|JuS|JA|JR|StV|wistra|ZfIStW|KriPoZ|ZStW|GA|MDR|ZIP|NZG|GmbHR|DStR|DStZ|BB|NZWiSt)\s+(\d{4}),\s*(\d+)(?:\s*(?:\(([^)]*)\)|(ff?\.)))?/gi;
+  /\b(NJW|NStZ(?:-RR)?|JZ|JuS|JA|JR|StV|wistra|ZfIStW|KriPoZ|ZStW|GA|MDR|ZIP|NZG|GmbHR|DStR|DStZ|BB|NZWiSt)\s+(\d{4}),\s*(\d+)(?:\s*(?:\(([^)]*)\)|,\s*(\d+(?:\s*ff?\.)?)|(ff?\.)))?/gi;
 const OFFICIAL_PUBLICATION_PATTERN =
-  /\b(BVerfGE|BGHSt|BGHZ|BAGE|BFHE|BVerwGE|BSGE)\s+(\d+),\s*(\d+)(?:\s*(?:\(([^)]*)\)|(ff?\.)))?/g;
+  /\b(BVerfGE|BGHSt|BGHZ|BAGE|BFHE|BVerwGE|BSGE)\s+(\d+),\s*(\d+)(?:\s*(?:\(([^)]*)\)|,\s*(\d+(?:\s*ff?\.)?)|(ff?\.)))?/g;
 const DATABASE_PUBLICATION_PATTERN = /\b(BeckRS)\s+(\d{4}),\s*(\d+)\b|\b(juris|openJur)\b/gi;
-const PINPOINT_ITEM_PATTERN = /(\d+)(?:\s*(ff?\.))?/g;
-const MARGIN_LOCATOR_PATTERN = /\b(?:Rn\.|Rdnr\.)\s*(\d+[A-Za-z]?)(?:\s*(ff?\.))?/gi;
-const PAGE_LOCATOR_PATTERN = /\bS\.\s*(\d+)(?:\s*(ff?\.))?/gi;
-const EDITION_PATTERN = /\b(\d+)\.\s*Aufl\./i;
+const PINPOINT_ITEM_PATTERN = /(\d+)(?:\s*(ff?\.?))?/g;
+const MARGIN_LOCATOR_PATTERN = /\b(?:Rn\.|Rdnr\.|Randnummer)\s*(\d+[A-Za-z]?)(?:\s*(ff?\.?))?/gi;
+const PAGE_LOCATOR_PATTERN = /\b(?:S\.|Seite)\s*(\d+)(?:\s*(ff?\.?))?/gi;
+const EDITION_PATTERN = /\b(\d+)\.\s*(?:Aufl\.|Auflage\b)/i;
 const YEAR_PATTERN = /\b(?:19|20)\d{2}\b/;
 const VOLUME_PATTERN = /\b(?:Bd\.|Band)\s*([A-Za-z0-9.-]+)\b/i;
 const ACCESS_DATE_PATTERN =
@@ -316,13 +316,15 @@ function extractStatute(
     if (!targetSection) return;
     const match = pattern.exec(rawText);
     if (!match) return;
+    const group = match[1] !== undefined ? 1 : 2;
     const component = componentFromGroup(
       contentText,
       candidate.start,
       match,
-      1,
-      normalizedValue ?? match[1],
-      normalizedValue
+      group,
+      normalizedValue ?? match[group],
+      normalizedValue,
+      match[0].lastIndexOf(match[group])
     );
     if (component) {
       targetSection[property] = {
@@ -350,24 +352,45 @@ function extractStatute(
       );
     }
   } else {
-    if (candidate.paragraph) assignCaptured("paragraph", /\bAbs\.\s*(\d+[A-Za-z]?)/i);
-    if (candidate.sentence) assignCaptured("sentence", /\bS\.\s*(\d+[A-Za-z]?)/);
+    if (candidate.paragraph) assignCaptured("paragraph", /\b(?:Abs\.|Absatz)\s*(\d+[A-Za-z]?)/i);
+    if (candidate.sentence) assignCaptured("sentence", /\b(?:S\.|Satz)\s*(\d+[A-Za-z]?)/i);
   }
-  if (candidate.number) assignCaptured("number", /\bNr\.\s*(\d+[A-Za-z]?)/i);
-  if (candidate.letter) assignCaptured("letter", /\b(?:lit\.|Buchst\.)\s*([A-Za-z])/i);
-  if (candidate.halfSentence) assignCaptured("halfSentence", /\bHs\.\s*(\d+)/i);
-  if (candidate.alternative) assignCaptured("alternative", /\b(\d+)\.\s*Alt\./i);
-  if (candidate.variant) assignCaptured("variant", /\b(\d+)\.\s*Var\./i);
+  if (candidate.number) assignCaptured("number", /\b(?:Nr\.|Nummer)\s*(\d+[A-Za-z]?)/i);
+  if (candidate.letter) assignCaptured("letter", /\b(?:lit\.|Buchst\.|Buchstabe)\s*([A-Za-z])/i);
+  if (candidate.halfSentence) assignCaptured("halfSentence", /\b(?:Hs\.|Halbsatz)\s*(\d+)/i);
+  if (candidate.alternative) {
+    assignCaptured(
+      "alternative",
+      /(?:\b(\d+)\.\s*(?:Alt\.|Alternative)|\b(?:Alt\.|Alternative)\s*(\d+))/i,
+      candidate.alternative
+    );
+  }
+  if (candidate.variant) {
+    assignCaptured(
+      "variant",
+      /(?:\b(\d+)\.\s*(?:Var\.|Variante)|\b(?:Var\.|Variante)\s*(\d+))/i,
+      candidate.variant
+    );
+  }
   if (candidate.case) assignCaptured("case", /\b(\d+)\.\s*Fall\b/i);
 
   if (targetSection && candidate.suffix) {
-    const suffixStart = rawText.lastIndexOf(candidate.suffix);
-    const suffix = createComponent(
-      contentText,
-      candidate.start + suffixStart,
-      candidate.start + suffixStart + candidate.suffix.length,
-      candidate.suffix
-    );
+    const suffixPattern =
+      candidate.suffix === "ff." ? /\bff\.?(?=$|[\s,.;:)\]])/gi : /\bf\.?(?=$|[\s,.;:)\]])/gi;
+    let suffixMatch = suffixPattern.exec(rawText);
+    let selectedSuffix = suffixMatch;
+    while (suffixMatch) {
+      selectedSuffix = suffixMatch;
+      suffixMatch = suffixPattern.exec(rawText);
+    }
+    const suffix = selectedSuffix
+      ? createComponent(
+          contentText,
+          candidate.start + selectedSuffix.index,
+          candidate.start + selectedSuffix.index + selectedSuffix[0].length,
+          candidate.suffix
+        )
+      : undefined;
     const qualifier =
       targetSection.case ??
       targetSection.variant ??
@@ -516,21 +539,24 @@ function extractCasePublications(
         2,
         collection.end - segment.coreStart - official.index
       );
+      const pinpointGroup = official[4] ? 4 : official[5] ? 5 : undefined;
       const firstPage = publicationPage(
         contentText,
         segment,
         official,
         3,
-        official[5] ? 5 : undefined,
+        official[6] ? 6 : undefined,
         volume ? volume.end - segment.coreStart - official.index : 0
       );
-      const pinpointPages = publicationPinpoints(
-        contentText,
-        segment,
-        official,
-        4,
-        firstPage ? firstPage.end - segment.coreStart - official.index : 0
-      );
+      const pinpointPages = pinpointGroup
+        ? publicationPinpoints(
+            contentText,
+            segment,
+            official,
+            pinpointGroup,
+            firstPage ? firstPage.end - segment.coreStart - official.index : 0
+          )
+        : [];
       const citation: OfficialCollectionCitation = {
         kind: "officialCollection",
         collection,
@@ -557,21 +583,24 @@ function extractCasePublications(
         2,
         journal.end - segment.coreStart - journalMatch.index
       );
+      const pinpointGroup = journalMatch[4] ? 4 : journalMatch[5] ? 5 : undefined;
       const firstPage = publicationPage(
         contentText,
         segment,
         journalMatch,
         3,
-        journalMatch[5] ? 5 : undefined,
+        journalMatch[6] ? 6 : undefined,
         year ? year.end - segment.coreStart - journalMatch.index : 0
       );
-      const pinpointPages = publicationPinpoints(
-        contentText,
-        segment,
-        journalMatch,
-        4,
-        firstPage ? firstPage.end - segment.coreStart - journalMatch.index : 0
-      );
+      const pinpointPages = pinpointGroup
+        ? publicationPinpoints(
+            contentText,
+            segment,
+            journalMatch,
+            pinpointGroup,
+            firstPage ? firstPage.end - segment.coreStart - journalMatch.index : 0
+          )
+        : [];
       const citation: JournalCaseCitation = {
         kind: "journal",
         journal,

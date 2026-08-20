@@ -25,8 +25,8 @@ function parseOne(text: string): CitationSegment {
   const result = analyzeFootnotes([createSnapshot(text)]);
   assert(result.parseResults[0].segments.length === 1, `Expected one segment for ${text}`);
   assert(
-    result.findings.every((finding) => finding.ruleId === "FINAL_PERIOD"),
-    "Shorthand and reference context must not create findings"
+    result.findings.every((finding) => finding.ruleId !== "RULE_OUTPUT_INVALID"),
+    "Shorthand parsing must not lead to invalid rule output"
   );
   return result.parseResults[0].segments[0];
 }

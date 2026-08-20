@@ -26,8 +26,8 @@ function classify(text: string): CitationClassification {
   assert(result.parseResults.length === 1, `Missing parse result for ${text}`);
   assert(result.parseResults[0].segments.length === 1, `Expected one segment for ${text}`);
   assert(
-    result.findings.every((finding) => finding.ruleId === "FINAL_PERIOD"),
-    "Classification must not create findings"
+    result.findings.every((finding) => finding.ruleId !== "RULE_OUTPUT_INVALID"),
+    "Classification must not lead to invalid rule output"
   );
   const classification = result.parseResults[0].segments[0].classification;
   for (const signal of classification.signals) {
@@ -76,11 +76,7 @@ function runRequiredClassificationCases(): void {
   assertType("BGH, Urt. v. 07.08.2025 – 3 StR 123/25", "CASE_LAW", "DIRECT");
   assertType("BGHSt 47, 45 (49)", "CASE_LAW", "OFFICIAL_COLLECTION");
   assertType("BGH NJW 2025, 1234 (1236)", "CASE_LAW", "JOURNAL");
-  assertType(
-    "BGH, Beschl. v. 01.02.2025 – 1 StR 10/25, BeckRS 2025, 12345",
-    "CASE_LAW",
-    "HYBRID"
-  );
+  assertType("BGH, Beschl. v. 01.02.2025 – 1 StR 10/25, BeckRS 2025, 12345", "CASE_LAW", "HYBRID");
   assertType(
     "BGH, Urt. v. 07.08.2025 – 3 StR 123/25 = NJW 2025, 1234 = BeckRS 2025, 12345",
     "CASE_LAW",
@@ -95,10 +91,7 @@ function runRequiredClassificationCases(): void {
   assertType("BT-Drs. 18/9525, 66", "LEGISLATIVE_MATERIAL");
 
   assertType("https://example.com", "ONLINE_SOURCE");
-  assertType(
-    "https://support.tiktok.com/... (letzter Aufruf am 31.03.2026)",
-    "ONLINE_SOURCE"
-  );
+  assertType("https://support.tiktok.com/... (letzter Aufruf am 31.03.2026)", "ONLINE_SOURCE");
   assertType("BMF-Schreiben v. 01.01.2025, IV A 1 – ...", "ADMINISTRATIVE_MATERIAL");
   assertType("Müller, in: Festschrift für X, 2025, S. 123", "BOOK_CHAPTER");
   assertType("Müller, Anm. zu BGH, Urt. v. ..., NJW 2025, 100", "CASE_NOTE");
@@ -116,20 +109,15 @@ function runRequiredClassificationCases(): void {
 }
 
 function runStructuralSafetyCases(): void {
-  const commentaryResult = analyzeFootnotes([
-    createSnapshot("MüKo-StGB/Schneider, § 263 Rn. 4"),
-  ]).parseResults[0].segments[0];
+  const commentaryResult = analyzeFootnotes([createSnapshot("MüKo-StGB/Schneider, § 263 Rn. 4")])
+    .parseResults[0].segments[0];
   assert(commentaryResult.classification.type === "COMMENTARY", "Commentary must win over statute");
   assert(
     commentaryResult.embeddedStatuteReferences[0].originalText === "§ 263",
     "Classification must retain embedded statute data"
   );
 
-  assertType(
-    "BGH, Urt. v. 01.01.2025 – 1 StR 1/25, zu § 263 StGB",
-    "CASE_LAW",
-    "DIRECT"
-  );
+  assertType("BGH, Urt. v. 01.01.2025 – 1 StR 1/25, zu § 263 StGB", "CASE_LAW", "DIRECT");
   assertType("Müller, NJW 2025, 1234, https://example.com", "JOURNAL_ARTICLE");
   assertType("BGH NJW 2025, 1234, https://example.com", "CASE_LAW", "JOURNAL");
   assertType(
@@ -144,10 +132,19 @@ function runRealDocumentCase(): void {
   const result = analyzeFootnotes([createSnapshot(text)]).parseResults[0];
   assert(result.segments.length === 3, "Real document case must retain three segments");
   assert(result.segments[0].classification.type === "COMMENTARY", "Real segment 1 must classify");
-  assert(result.segments[0].classification.certainty === "high", "Segment 1 must be high certainty");
+  assert(
+    result.segments[0].classification.certainty === "high",
+    "Segment 1 must be high certainty"
+  );
   assert(result.segments[1].classification.type === "COMMENTARY", "Real segment 2 must classify");
-  assert(result.segments[1].classification.certainty === "high", "Segment 2 must be high certainty");
-  assert(result.segments[2].classification.type === "CASE_LAW", "Narrative segment must be case law");
+  assert(
+    result.segments[1].classification.certainty === "high",
+    "Segment 2 must be high certainty"
+  );
+  assert(
+    result.segments[2].classification.type === "CASE_LAW",
+    "Narrative segment must be case law"
+  );
   assert(
     result.segments[2].classification.caseLawForm === "DIRECT",
     "Narrative case citation must have DIRECT form"

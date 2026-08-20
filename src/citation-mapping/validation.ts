@@ -24,7 +24,16 @@ function optionalString(value: unknown): string | undefined {
 }
 
 function isKind(value: unknown): value is CitationSourceKind {
-  return value === "COMMENTARY" || value === "JOURNAL";
+  return ["COMMENTARY", "JOURNAL", "BOOK", "REPORT", "CUSTOM"].includes(
+    value as CitationSourceKind
+  );
+}
+
+function applicableCitationTypes(kind: CitationSourceKind) {
+  if (kind === "COMMENTARY") return ["COMMENTARY"] as const;
+  if (kind === "JOURNAL") return ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE"] as const;
+  if (kind === "BOOK") return ["BOOK", "OTHER"] as const;
+  return ["OTHER"] as const;
 }
 
 function isArea(value: unknown): value is CitationSourceLegalArea {
@@ -72,7 +81,8 @@ function validatedWorkOverride(
   kind: CitationSourceKind,
   preferredName: string,
   errors: string[]
-): WorkCitationOverride {
+): WorkCitationOverride | undefined {
+  if (kind !== "COMMENTARY" && kind !== "JOURNAL") return undefined;
   const citationType = kind === "COMMENTARY" ? "COMMENTARY" : "JOURNAL_ARTICLE";
   const fallback: WorkCitationOverride = {
     canonicalWorkId: canonicalSourceId,
@@ -187,6 +197,13 @@ function validateSource(
   const canonicalSourceId = value.canonicalSourceId;
   const preferredName = value.preferredName;
   const hint = isHint(value.personStructureHint) ? value.personStructureHint : undefined;
+  const workOverride = validatedWorkOverride(
+    value.workOverride,
+    canonicalSourceId,
+    kind,
+    preferredName,
+    errors
+  );
   return {
     schemaVersion: 1,
     canonicalSourceId,
@@ -197,23 +214,19 @@ function validateSource(
         : "USER",
     kind,
     preferredName,
+    ...(optionalString(value.preferredCitationText)
+      ? { preferredCitationText: value.preferredCitationText as string }
+      : {}),
     legalArea: value.legalArea,
     ...(optionalString(value.commentedLaw) ? { commentedLaw: value.commentedLaw as string } : {}),
-    applicableCitationTypes:
-      kind === "COMMENTARY" ? ["COMMENTARY"] : ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE"],
+    applicableCitationTypes: [...applicableCitationTypes(kind)],
     active: value.active,
     ...(optionalString(value.examplePattern)
       ? { examplePattern: value.examplePattern as string }
       : {}),
     ...(optionalString(value.notes) ? { notes: value.notes as string } : {}),
     ...(hint ? { personStructureHint: hint } : {}),
-    workOverride: validatedWorkOverride(
-      value.workOverride,
-      canonicalSourceId,
-      kind,
-      preferredName,
-      errors
-    ),
+    ...(workOverride ? { workOverride } : {}),
     ...(isRecord(value.legacyMetadata)
       ? {
           legacyMetadata: {
@@ -252,7 +265,7 @@ function validateAlias(
     typeof value.canonicalSourceId !== "string" ||
     typeof value.alias !== "string" ||
     value.alias.trim() === "" ||
-    value.matchMode !== "CASE_INSENSITIVE_TEXT" ||
+    (value.matchMode !== "CASE_INSENSITIVE_TEXT" && value.matchMode !== "WHOLE_WORD_MARKER") ||
     typeof value.wholeWord !== "boolean" ||
     typeof value.active !== "boolean"
   ) {
@@ -266,7 +279,7 @@ function validateAlias(
       : {}),
     canonicalSourceId: value.canonicalSourceId,
     alias: value.alias,
-    matchMode: "CASE_INSENSITIVE_TEXT",
+    matchMode: value.matchMode,
     wholeWord: value.wholeWord,
     active: value.active,
     ...(isSafety(value.legacySafetyLevel) ? { legacySafetyLevel: value.legacySafetyLevel } : {}),
@@ -327,6 +340,19 @@ export function validateCitationSourceMappingData(
   aliases.forEach((alias) => {
     if (!sourceIds.has(alias.canonicalSourceId)) {
       errors.push(`Alias references missing source: ${alias.canonicalSourceId}`);
+    }
+    const source = sources.find(
+      (candidate) => candidate.canonicalSourceId === alias.canonicalSourceId
+    );
+    if (
+      alias.matchMode === "WHOLE_WORD_MARKER" &&
+      source &&
+      !["BOOK", "REPORT", "CUSTOM"].includes(source.kind)
+    ) {
+      errors.push(`WHOLE_WORD_MARKER is not allowed for source: ${alias.canonicalSourceId}`);
+    }
+    if (alias.matchMode === "WHOLE_WORD_MARKER" && !alias.wholeWord) {
+      errors.push(`WHOLE_WORD_MARKER must use wholeWord for source: ${alias.canonicalSourceId}`);
     }
   });
   const aliasSources = new Map<string, Set<string>>();

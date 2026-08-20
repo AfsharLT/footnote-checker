@@ -100,6 +100,22 @@ const PERSON_HINT_OPTIONS: Array<Option<CommentaryPersonStructureHint>> = [
   { value: "UNKNOWN", label: "Unbekannt" },
 ];
 
+const SOURCE_KIND_OPTIONS: Array<Option<CitationSourceKind>> = [
+  { value: "COMMENTARY", label: "Kommentar" },
+  { value: "JOURNAL", label: "Zeitschrift" },
+  { value: "BOOK", label: "Buch / Lehrbuch" },
+  { value: "REPORT", label: "Forschungsbericht" },
+  { value: "CUSTOM", label: "Sonstige benutzerdefinierte Quelle" },
+];
+
+function sourceKindLabel(kind: CitationSourceKind): string {
+  return SOURCE_KIND_OPTIONS.find((option) => option.value === kind)?.label ?? kind;
+}
+
+function isCustomSourceKind(kind: CitationSourceKind): boolean {
+  return kind === "BOOK" || kind === "REPORT" || kind === "CUSTOM";
+}
+
 const ABBREVIATION_LABELS: Record<CitationAbbreviationConcept, string> = {
   JUDGMENT: "Urteil",
   ORDER: "Beschluss",
@@ -1346,9 +1362,7 @@ function SourceEditor(props: {
     <details className={styles.card}>
       <summary>
         <span className={styles.cardTitle}>{props.source.preferredName}</span>
-        <span className={styles.badge}>
-          {props.source.kind === "COMMENTARY" ? "Kommentar" : "Zeitschrift"}
-        </span>
+        <span className={styles.badge}>{sourceKindLabel(props.source.kind)}</span>
         <span className={styles.badge}>{props.source.legalArea}</span>
         <span className={styles.badge}>{aliases.length} Aliase</span>
         <span className={styles.badge}>
@@ -1388,10 +1402,7 @@ function SourceEditor(props: {
           <SelectField
             label="Art"
             value={props.source.kind}
-            options={[
-              { value: "COMMENTARY", label: "Kommentar" },
-              { value: "JOURNAL", label: "Zeitschrift" },
-            ]}
+            options={SOURCE_KIND_OPTIONS}
             onChange={(kind) => update({ kind })}
           />
           <SelectField
@@ -1405,26 +1416,50 @@ function SourceEditor(props: {
             onChange={(legalArea) => update({ legalArea })}
           />
         </div>
-        <TextField
-          label="Kommentiertes Gesetz"
-          value={props.source.commentedLaw ?? ""}
-          onChange={(commentedLaw) => update({ commentedLaw: commentedLaw || undefined })}
-        />
+        {props.source.kind === "COMMENTARY" && (
+          <TextField
+            label="Kommentiertes Gesetz"
+            value={props.source.commentedLaw ?? ""}
+            onChange={(commentedLaw) => update({ commentedLaw: commentedLaw || undefined })}
+          />
+        )}
         <CheckField
           label="Quelle aktiv"
           checked={props.source.active}
           onChange={(active) => update({ active })}
         />
-        <SelectField
-          label="Personenstruktur-Hinweis"
-          value={props.source.personStructureHint ?? "UNKNOWN"}
-          options={PERSON_HINT_OPTIONS}
-          onChange={(personStructureHint) => update({ personStructureHint })}
-        />
-        <p className={styles.help}>
-          Der Hinweis unterstützt spätere Regeln, entscheidet aber nicht automatisch über die
-          tatsächliche Personenrolle im Zitat.
-        </p>
+        {props.source.kind === "COMMENTARY" && (
+          <SelectField
+            label="Personenstruktur-Hinweis"
+            value={props.source.personStructureHint ?? "UNKNOWN"}
+            options={PERSON_HINT_OPTIONS}
+            onChange={(personStructureHint) => update({ personStructureHint })}
+          />
+        )}
+        {props.source.kind === "COMMENTARY" && (
+          <p className={styles.help}>
+            Der Hinweis unterstützt spätere Regeln, entscheidet aber nicht automatisch über die
+            tatsächliche Personenrolle im Zitat.
+          </p>
+        )}
+        {isCustomSourceKind(props.source.kind) && (
+          <>
+            <p className={styles.help}>
+              Benutzerdefinierte Quellen können über einen eindeutigen Namen oder Marker erkannt
+              werden. Verwenden Sie möglichst spezifische Bezeichnungen, um Fehlzuordnungen zu
+              vermeiden.
+            </p>
+            <TextField
+              label="Bevorzugte vollständige Zitierform"
+              value={props.source.preferredCitationText ?? ""}
+              placeholder="z. B. Gabriel, Digitale Plattformen: Grundlagen und Erscheinungsformen, Forschungsbericht Nr. 16, S. 40."
+              helpText="Optional. Wenn angegeben, kann die vollständige Zitierform direkt mit dem Zitat verglichen werden."
+              onChange={(preferredCitationText) =>
+                update({ preferredCitationText: preferredCitationText || undefined })
+              }
+            />
+          </>
+        )}
         <TextField
           label="Beispiel-Sollmuster"
           value={props.source.examplePattern ?? ""}
@@ -1442,10 +1477,12 @@ function SourceEditor(props: {
           multiline
           onChange={(notes) => update({ notes: notes || undefined })}
         />
-        <WorkOverrideEditor
-          source={props.source}
-          onChange={(workOverride) => update({ workOverride })}
-        />
+        {(props.source.kind === "COMMENTARY" || props.source.kind === "JOURNAL") && (
+          <WorkOverrideEditor
+            source={props.source}
+            onChange={(workOverride) => update({ workOverride })}
+          />
+        )}
         <div className={styles.subsection}>
           <h4 className={styles.subsectionTitle}>Aliase</h4>
           {aliases.map(({ alias, index }) => (
@@ -1480,6 +1517,19 @@ function SourceEditor(props: {
                   );
                 })}
               <div className={styles.grid}>
+                <SelectField
+                  label="Match-Modus"
+                  value={alias.matchMode}
+                  options={[
+                    { value: "CASE_INSENSITIVE_TEXT", label: "Exakter Alias" },
+                    ...(isCustomSourceKind(props.source.kind)
+                      ? [{ value: "WHOLE_WORD_MARKER" as const, label: "Ganzwort-Marker im Zitat" }]
+                      : []),
+                  ]}
+                  onChange={(matchMode) =>
+                    props.onChange(updateCitationSourceAlias(props.mapping, index, { matchMode }))
+                  }
+                />
                 <CheckField
                   label="Aktiv"
                   checked={alias.active}
@@ -1509,8 +1559,11 @@ function SourceEditor(props: {
                 />
               </div>
               <p className={styles.help}>
-                Match Mode: Groß-/Kleinschreibung ignorierender Textvergleich · Ursprung:{" "}
-                {alias.legacyMappingId ? "Legacy" : "Benutzer"}
+                Match Mode:{" "}
+                {alias.matchMode === "WHOLE_WORD_MARKER"
+                  ? "Ganzwort-Marker im Zitat"
+                  : "Exakter Alias"}{" "}
+                · Ursprung: {alias.legacyMappingId ? "Legacy" : "Benutzer"}
               </p>
               {alias.legacyMappingId && (
                 <p className={styles.help}>Legacy Mapping ID: {alias.legacyMappingId}</p>
@@ -1636,10 +1689,7 @@ function NewSourceEditor(props: {
       <SelectField
         label="Art"
         value={input.kind}
-        options={[
-          { value: "COMMENTARY", label: "Kommentar" },
-          { value: "JOURNAL", label: "Zeitschrift" },
-        ]}
+        options={SOURCE_KIND_OPTIONS}
         onChange={(kind) => setInput({ ...input, kind })}
       />
       <SelectField
@@ -1652,17 +1702,37 @@ function NewSourceEditor(props: {
         }
         onChange={(legalArea) => setInput({ ...input, legalArea })}
       />
-      <TextField
-        label="Kommentiertes Gesetz"
-        value={input.commentedLaw ?? ""}
-        onChange={(commentedLaw) => setInput({ ...input, commentedLaw })}
-      />
-      <SelectField
-        label="Personenstruktur-Hinweis"
-        value={input.personStructureHint ?? "UNKNOWN"}
-        options={PERSON_HINT_OPTIONS}
-        onChange={(personStructureHint) => setInput({ ...input, personStructureHint })}
-      />
+      {input.kind === "COMMENTARY" && (
+        <TextField
+          label="Kommentiertes Gesetz"
+          value={input.commentedLaw ?? ""}
+          onChange={(commentedLaw) => setInput({ ...input, commentedLaw })}
+        />
+      )}
+      {input.kind === "COMMENTARY" && (
+        <SelectField
+          label="Personenstruktur-Hinweis"
+          value={input.personStructureHint ?? "UNKNOWN"}
+          options={PERSON_HINT_OPTIONS}
+          onChange={(personStructureHint) => setInput({ ...input, personStructureHint })}
+        />
+      )}
+      {isCustomSourceKind(input.kind) && (
+        <>
+          <p className={styles.help}>
+            Benutzerdefinierte Quellen können über einen eindeutigen Namen oder Marker erkannt
+            werden. Verwenden Sie möglichst spezifische Bezeichnungen, um Fehlzuordnungen zu
+            vermeiden.
+          </p>
+          <TextField
+            label="Bevorzugte vollständige Zitierform"
+            value={input.preferredCitationText ?? ""}
+            placeholder="z. B. Gabriel, Digitale Plattformen: Grundlagen und Erscheinungsformen, Forschungsbericht Nr. 16, S. 40."
+            helpText="Optional. Wenn angegeben, kann die vollständige Zitierform direkt mit dem Zitat verglichen werden."
+            onChange={(preferredCitationText) => setInput({ ...input, preferredCitationText })}
+          />
+        </>
+      )}
       <TextField
         label="Beispiel-Sollmuster"
         value={input.examplePattern ?? ""}
@@ -1752,6 +1822,9 @@ function MappingEditor(props: {
             { value: "ALL", label: "Alle Arten" },
             { value: "COMMENTARY", label: "Kommentar" },
             { value: "JOURNAL", label: "Zeitschrift" },
+            { value: "BOOK", label: "Buch / Lehrbuch" },
+            { value: "REPORT", label: "Forschungsbericht" },
+            { value: "CUSTOM", label: "Sonstige benutzerdefinierte Quelle" },
           ]}
           onChange={(kind) => setFilters({ ...filters, kind })}
         />

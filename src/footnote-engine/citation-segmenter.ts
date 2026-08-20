@@ -61,7 +61,7 @@ const ROMAN_PARAGRAPH_VALUES: Readonly<Record<string, string>> = {
 };
 const ROMAN_PARAGRAPH_PATTERN = /^(?:VIII|VII|III|VI|IV|IX|II|V|X|I)(?=$|[\s,.;:)\]])/;
 const SHORTHAND_SENTENCE_PATTERN = /^\d+(?=$|[\s,.;:)\]])/;
-const REFERENCE_SUFFIX_PATTERN = /^(ff?\.)(?=$|[\s,.;:)\]])/;
+const REFERENCE_SUFFIX_PATTERN = /^(ff?\.?)(?=$|[\s,.;:)\]])/;
 
 const QUALIFIER_PATTERNS: ReadonlyArray<{
   property:
@@ -75,13 +75,19 @@ const QUALIFIER_PATTERNS: ReadonlyArray<{
     | "case";
   pattern: RegExp;
 }> = [
-  { property: "paragraph", pattern: /^Abs\.\s*(\d+[A-Za-z]?)/i },
-  { property: "sentence", pattern: /^S\.\s*(\d+[A-Za-z]?)/ },
-  { property: "number", pattern: /^Nr\.\s*(\d+[A-Za-z]?)/i },
-  { property: "letter", pattern: /^(?:lit\.|Buchst\.)\s*([A-Za-z])/i },
-  { property: "halfSentence", pattern: /^Hs\.\s*(\d+)/i },
-  { property: "alternative", pattern: /^(\d+)\.\s*Alt\./i },
-  { property: "variant", pattern: /^(\d+)\.\s*Var\./i },
+  { property: "paragraph", pattern: /^(?:Abs\.|Absatz)\s*(\d+[A-Za-z]?)/i },
+  { property: "sentence", pattern: /^(?:S\.|Satz)\s*(\d+[A-Za-z]?)/i },
+  { property: "number", pattern: /^(?:Nr\.|Nummer)\s*(\d+[A-Za-z]?)/i },
+  { property: "letter", pattern: /^(?:lit\.|Buchst\.|Buchstabe)\s*([A-Za-z])/i },
+  { property: "halfSentence", pattern: /^(?:Hs\.|Halbsatz)\s*(\d+)/i },
+  {
+    property: "alternative",
+    pattern: /^(?:(\d+)\.\s*(?:Alt\.|Alternative)|(?:Alt\.|Alternative)\s*(\d+))/i,
+  },
+  {
+    property: "variant",
+    pattern: /^(?:(\d+)\.\s*(?:Var\.|Variante)|(?:Var\.|Variante)\s*(\d+))/i,
+  },
   { property: "case", pattern: /^(\d+)\.\s*Fall\b/i },
 ];
 
@@ -371,7 +377,7 @@ function findStatuteReferences(
       for (const qualifier of QUALIFIER_PATTERNS) {
         const match = qualifier.pattern.exec(remainder);
         if (match) {
-          values[qualifier.property] = match[1];
+          values[qualifier.property] = match[1] ?? match[2];
           cursor = qualifierStart + match[0].length;
           meaningfulEnd = cursor;
           qualifierFound = true;
@@ -383,7 +389,7 @@ function findStatuteReferences(
     const suffixStart = skipWhitespace(text, cursor, coreEnd);
     const suffixMatch = REFERENCE_SUFFIX_PATTERN.exec(text.slice(suffixStart, coreEnd));
     if (suffixMatch) {
-      values.suffix = suffixMatch[1] as "f." | "ff.";
+      values.suffix = suffixMatch[1].toLocaleLowerCase("de-DE").startsWith("ff") ? "ff." : "f.";
       cursor = suffixStart + suffixMatch[0].length;
       meaningfulEnd = cursor;
     }
