@@ -4,6 +4,7 @@ import {
   formattingCandidates,
   fullLocatorRange,
   informationalCandidate,
+  mappedCommentaryBearbeiterCandidates,
   replacementCandidate,
   separatorBetween,
 } from "./helpers";
@@ -160,14 +161,9 @@ export const commentaryFormattingRule: FootnoteRule = {
   supportedCitationTypes: ["COMMENTARY"],
   evaluate(context) {
     const extraction = data(context);
-    if (!extraction) return [];
     const findings: RuleFindingCandidate[] = [];
-    for (const person of extraction.persons) {
-      if (
-        person.role === "bearbeiter" ||
-        (person.role === "unknown" &&
-          context.sourceMapping?.personStructureHint === "WORK_THEN_BEARBEITER")
-      ) {
+    for (const person of extraction?.persons ?? []) {
+      if (person.role === "bearbeiter") {
         findings.push(
           ...formattingCandidates(
             context,
@@ -187,7 +183,25 @@ export const commentaryFormattingRule: FootnoteRule = {
         );
       }
     }
-    if (extraction.work) {
+    for (const mappedBearbeiter of mappedCommentaryBearbeiterCandidates(context)) {
+      findings.push(
+        ...formattingCandidates(
+          context,
+          mappedBearbeiter,
+          settings(context).bearbeiterFormatting,
+          "Der Bearbeiter",
+          "bearbeiter"
+        ).map((candidate) => ({
+          ...candidate,
+          metadata: {
+            ...candidate.metadata,
+            roleResolutionSource: "SOURCE_MAPPING_HINT",
+            requiresManualReview: true,
+          },
+        }))
+      );
+    }
+    if (extraction?.work) {
       findings.push(
         ...formattingCandidates(
           context,

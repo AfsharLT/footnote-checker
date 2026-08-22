@@ -1,6 +1,11 @@
 import type { CaseLawCitationSettings, PinpointStyle } from "../../citation-settings/types";
 import type { CaseLawPublicationReference, CitationLocator } from "../types";
-import { formatNormalizedDate, replacementCandidate, separatorBetween } from "./helpers";
+import {
+  formatNormalizedDate,
+  informationalCandidate,
+  replacementCandidate,
+  separatorBetween,
+} from "./helpers";
 import type { FootnoteRule, RuleContext, RuleFindingCandidate } from "./types";
 
 function settings(context: RuleContext): CaseLawCitationSettings {
@@ -67,8 +72,20 @@ export const caseLawDateFormatRule: FootnoteRule = {
   supportedCitationTypes: ["CASE_LAW"],
   evaluate(context) {
     const data = caseData(context);
-    if (!data?.date || !data.normalizedDate) return [];
+    if (!data?.date) return [];
     const expectedFormat = settings(context).dateFormat;
+    if (!data.normalizedDate) {
+      return informationalCandidate(
+        context,
+        data.date,
+        "Das zweistellige Jahr kann nicht ohne fachliche Annahme auf ein vierstelliges Jahr normalisiert werden.",
+        {
+          expectedFormat,
+          requiresManualReview: true,
+          uncertainty: "TWO_DIGIT_YEAR",
+        }
+      ).map((candidate) => ({ ...candidate, severity: "warning" as const }));
+    }
     const preferred = formatNormalizedDate(data.normalizedDate, expectedFormat);
     if (!preferred) return [];
     return replacementCandidate(

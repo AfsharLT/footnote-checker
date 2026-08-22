@@ -14,6 +14,12 @@ import type {
   FootnoteEngineResult,
   FootnoteParseResult,
 } from "../../footnote-engine/types";
+import {
+  REVIEW_CLASS_LABELS,
+  REVIEW_REASON_LABELS,
+  REVIEW_STATUS_LABELS,
+  runReviewEngine,
+} from "../../review-engine";
 import { formatReaderError } from "../reader-error";
 import {
   CharacterFormat,
@@ -408,6 +414,25 @@ const App: React.FC = () => {
   const [readProgress, setReadProgress] = useState<FootnoteReadProgress | null>(null);
   const [hasError, setHasError] = useState<boolean>(false);
   const readInProgressRef = useRef(false);
+  const reviewResult = useMemo(() => {
+    if (!engineResult) return null;
+    return runReviewEngine({
+      findings: engineResult.findings,
+      footnotes,
+      mode: "ANALYSIS",
+      protectedRangesByFootnoteId: new Map(
+        engineResult.footnoteAnalyses.map((analysis) => [
+          analysis.footnoteId,
+          analysis.protectedRanges,
+        ])
+      ),
+    });
+  }, [engineResult, footnotes]);
+  const reviewItemsByFindingId = useMemo(
+    () =>
+      new Map((reviewResult?.items ?? []).map((item) => [item.finding.findingId, item] as const)),
+    [reviewResult]
+  );
   const findingsByFootnoteId = useMemo(() => {
     const result = new Map<string, Finding[]>();
 
@@ -594,6 +619,22 @@ const App: React.FC = () => {
               )}
             </article>
           )}
+          {reviewResult && (
+            <article className={styles.resultItem}>
+              <h2 className={styles.resultTitle}>Review</h2>
+              <p className={styles.resultText}>
+                Automatisch: {reviewResult.summary.byClass.automatic}
+              </p>
+              <p className={styles.resultText}>Prüfen: {reviewResult.summary.byClass.manual}</p>
+              <p className={styles.resultText}>
+                Technisch: {reviewResult.summary.byClass.technical}
+              </p>
+              <p className={styles.resultText}>Hinweise: {reviewResult.summary.byClass.info}</p>
+              <p className={styles.resultText}>
+                Für Korrektur vorgemerkt: {reviewResult.summary.correctionReady}
+              </p>
+            </article>
+          )}
           {documentFormatting && (
             <article className={styles.resultItem}>
               <h2 className={styles.resultTitle}>Dokumentformatierung</h2>
@@ -630,33 +671,56 @@ const App: React.FC = () => {
                 <p className={findings.length > 0 ? styles.findingCount : styles.resultText}>
                   Findings: {findings.length}
                 </p>
-                {findings.map((finding) => (
-                  <div className={styles.findingItem} key={finding.findingId}>
-                    <h3 className={styles.findingTitle}>Finding</h3>
-                    <p className={styles.resultText}>Rule: {finding.ruleId}</p>
-                    <p className={styles.resultText}>Category: {finding.category}</p>
-                    <p
-                      className={mergeClasses(
-                        styles.resultText,
-                        finding.severity === "error"
-                          ? styles.findingSeverityError
-                          : finding.severity === "warning"
-                            ? styles.findingSeverityWarning
-                            : styles.findingSeverityInfo
+                {findings.map((finding) => {
+                  const reviewItem = reviewItemsByFindingId.get(finding.findingId);
+                  return (
+                    <div className={styles.findingItem} key={finding.findingId}>
+                      <h3 className={styles.findingTitle}>Finding</h3>
+                      <p className={styles.resultText}>Rule: {finding.ruleId}</p>
+                      <p className={styles.resultText}>Category: {finding.category}</p>
+                      <p
+                        className={mergeClasses(
+                          styles.resultText,
+                          finding.severity === "error"
+                            ? styles.findingSeverityError
+                            : finding.severity === "warning"
+                              ? styles.findingSeverityWarning
+                              : styles.findingSeverityInfo
+                        )}
+                      >
+                        Severity: {finding.severity}
+                      </p>
+                      <p className={styles.resultText}>Message: {finding.message}</p>
+                      <p className={styles.resultText}>
+                        Range: [{finding.start}, {finding.end})
+                      </p>
+                      <p className={styles.resultText}>Original: {finding.originalText}</p>
+                      {finding.suggestedText !== undefined && (
+                        <p className={styles.resultText}>Vorschlag: {finding.suggestedText}</p>
                       )}
-                    >
-                      Severity: {finding.severity}
-                    </p>
-                    <p className={styles.resultText}>Message: {finding.message}</p>
-                    <p className={styles.resultText}>
-                      Range: [{finding.start}, {finding.end})
-                    </p>
-                    <p className={styles.resultText}>Original: {finding.originalText}</p>
-                    {finding.suggestedText !== undefined && (
-                      <p className={styles.resultText}>Vorschlag: {finding.suggestedText}</p>
-                    )}
-                  </div>
-                ))}
+                      {reviewItem && (
+                        <>
+                          <p className={styles.resultText}>
+                            Review: {REVIEW_CLASS_LABELS[reviewItem.reviewClass]}
+                          </p>
+                          <p className={styles.resultText}>
+                            Status: {REVIEW_STATUS_LABELS[reviewItem.decision.effectiveStatus]}
+                          </p>
+                          <p className={styles.resultText}>
+                            Reason: {REVIEW_REASON_LABELS[reviewItem.classificationReason]}
+                          </p>
+                          {reviewItem.decision.effectiveStatus === "ACCEPTED" &&
+                            reviewItem.reviewClass === "AUTO" &&
+                            reviewItem.technicalEligibility.eligible &&
+                            reviewItem.proposedAction &&
+                            reviewItem.conflicts.length === 0 && (
+                              <p className={styles.resultText}>Für Korrektur vorgemerkt</p>
+                            )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
                 <p className={styles.resultText}>Citation Segments: {citationSegments.length}</p>
                 {citationSegments.map((segment) => {
                   const segmentAnalysis = segmentAnalysesById.get(

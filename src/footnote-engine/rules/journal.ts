@@ -138,9 +138,29 @@ export const journalFormattingRule: FootnoteRule = {
   scope: "segment",
   supportedCitationTypes: ["JOURNAL_ARTICLE"],
   evaluate(context) {
-    return (data(context)?.authors ?? []).flatMap((author) =>
-      formattingCandidates(context, author, settings(context).authorFormatting, "Der Autor")
-    );
+    const findings: RuleFindingCandidate[] = [];
+    for (const author of data(context)?.authors ?? []) {
+      if (
+        author.start < 0 ||
+        author.end <= author.start ||
+        author.end > context.footnote.contentText.length ||
+        context.footnote.contentText.slice(author.start, author.end) !== author.rawText
+      ) {
+        continue;
+      }
+      findings.push(
+        ...formattingCandidates(
+          context,
+          author,
+          settings(context).authorFormatting,
+          "Der Autor"
+        ).map((candidate) => ({
+          ...candidate,
+          metadata: { ...candidate.metadata, roleResolutionSource: "PARSER" },
+        }))
+      );
+    }
+    return findings;
   },
 };
 

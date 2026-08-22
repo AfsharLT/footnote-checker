@@ -25,7 +25,7 @@ const OFFICIAL_COLLECTION_PATTERN =
   /\b(?:BVerfGE|BGHSt|BGHZ|BAGE|BFHE|BVerwGE|BSGE)\s+\d+,\s*\d+\b/;
 const DECISION_TYPE_PATTERN =
   /(?:\b(?:Urteil|Beschluss)\b|\b(?:Urt|U|Beschl|B|Entsch)\.(?=$|[\s,;:–—-]))/i;
-const DECISION_DATE_PATTERN = /\b(?:v\.|vom)\s*\d{1,2}\.\d{1,2}\.\d{4}\b/i;
+const DECISION_DATE_PATTERN = /\b(?:v\.|vom)\s*\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})\b/i;
 const DOCKET_NUMBER_PATTERN =
   /\b(?:(?:\d+|[IVXLCDM]+)\s+)?(?:StR|BvR|BvL|ZR|ZB|AZR|ABR|R|C|U|K|L|B|A)\s+\d+\/\d{2,4}\b/i;
 const JOURNAL_REFERENCE_PATTERN =

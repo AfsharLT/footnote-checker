@@ -20,6 +20,32 @@ import type {
 } from "../types";
 import type { EffectiveCitationClassification } from "../effective-classification";
 
+export type FormattingBaselineProperty =
+  | "fontName"
+  | "fontSize"
+  | "bold"
+  | "italic"
+  | "underline"
+  | "strikeThrough"
+  | "superscript"
+  | "subscript"
+  | "characterSpacing";
+
+export type FormattingBaselineValue = string | number | boolean;
+
+export interface DocumentFormattingBaselineProperty {
+  value: FormattingBaselineValue;
+  confidence: "HIGH";
+  characterCoverage: number;
+  footnoteCoverage: number;
+  knownCharacterCoverage: number;
+  knownFootnoteCoverage: number;
+}
+
+export type DocumentFootnoteFormattingBaseline = Partial<
+  Record<FormattingBaselineProperty, DocumentFormattingBaselineProperty>
+>;
+
 export interface RuleFindingCandidate {
   category: FindingCategory;
   start: number;
@@ -42,6 +68,7 @@ export interface RuleContext {
   sourceMapping?: CitationSourceMappingResolution;
   sourceMappings: CitationSegmentSourceMapping[];
   protectedRanges: readonly AnalysisProtectedRange[];
+  documentFormattingBaseline: DocumentFootnoteFormattingBaseline;
 }
 
 export interface FootnoteRule {

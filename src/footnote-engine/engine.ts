@@ -17,6 +17,7 @@ import { segmentFootnote } from "./citation-segmenter";
 import { deriveEffectiveCitationClassification } from "./effective-classification";
 import { findPlainTextUrls } from "./patterns";
 export { isRangeProtected } from "./protected-ranges";
+import { deriveDocumentFootnoteFormattingBaseline } from "./rules/formatting";
 import { runRules } from "./rules/runner";
 import type { RuleContext } from "./rules/types";
 import type {
@@ -177,6 +178,7 @@ export function analyzeFootnotes(
   const profile = options.profile ?? createDefaultCitationStyleProfile();
   const mappingData = options.mappingData ?? createDefaultCitationSourceMapping();
   const mappingIndex = options.mappingIndex ?? createCitationSourceMappingIndex(mappingData);
+  const documentFormattingBaseline = deriveDocumentFootnoteFormattingBaseline(footnotes);
   let plainTextUrlCount = 0;
   let engineProtectedRangeCount = 0;
 
@@ -213,6 +215,7 @@ export function analyzeFootnotes(
       resolvedSettings: resolveCitationSettings({ profile, citationType: "OTHER" }),
       sourceMappings: [],
       protectedRanges: analysis.protectedRanges,
+      documentFormattingBaseline,
     });
 
     for (const segment of parseResult.segments) {
@@ -242,6 +245,7 @@ export function analyzeFootnotes(
         ...(sourceMapping ? { sourceMapping } : {}),
         sourceMappings,
         protectedRanges: analysis.protectedRanges,
+        documentFormattingBaseline,
       });
     }
   }

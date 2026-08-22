@@ -5,6 +5,7 @@ import { COMMENTARY_RULES } from "./commentary";
 import { DOCUMENT_RULES } from "./document";
 import { emptyFootnoteRule } from "./empty-footnote";
 import { finalPeriodRule } from "./final-period";
+export { REGISTERED_FORMATTING_RULES } from "./formatting";
 import { GENERIC_RULES } from "./generic";
 import { JOURNAL_RULES } from "./journal";
 import { citationPinpointBracketsRule } from "./pinpoint-brackets";

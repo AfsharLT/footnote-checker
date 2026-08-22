@@ -177,6 +177,32 @@ function runCaseLawCases(): void {
   assertReplacement(direct, "CASE_LAW_DATE_FORMAT", "5.7.2025", "05.07.2025");
   assertReplacement(direct, "CASE_LAW_DOCKET_SEPARATOR", " - ", " – ");
 
+  const multiFinding = findingsFor(
+    "BGH, Urteil vom 5.7.2025 – 3 StR 123/25 = NJW 2025, 1234 = BeckRS 2025, 12345."
+  );
+  for (const ruleId of [
+    "CASE_LAW_DECISION_TYPE",
+    "CASE_LAW_DATE_INTRODUCER",
+    "CASE_LAW_DATE_FORMAT",
+  ]) {
+    assert(byRule(multiFinding, ruleId).length === 1, `${ruleId} must run independently`);
+  }
+  assert(
+    byRule(multiFinding, "RULE_OUTPUT_INVALID").length === 0,
+    "Independent case-law findings must remain valid"
+  );
+
+  const shortYear = findingsFor("BGH, Urteil vom 5.7.25 – 3 StR 123/25.");
+  assertReplacement(shortYear, "CASE_LAW_DECISION_TYPE", "Urteil", "Urt.");
+  assertReplacement(shortYear, "CASE_LAW_DATE_INTRODUCER", "vom", "v.");
+  const shortYearDate = byRule(shortYear, "CASE_LAW_DATE_FORMAT")[0];
+  assert(
+    shortYearDate?.originalText === "5.7.25" &&
+      shortYearDate.suggestedText === undefined &&
+      shortYearDate.metadata?.requiresManualReview === true,
+    "A two-digit year must be found but never expanded by assumption"
+  );
+
   const official = findingsFor("BGHSt 47, 45 (49).");
   for (const ruleId of [
     "CASE_LAW_DECISION_TYPE",
@@ -399,6 +425,286 @@ function runFormattingAndReviewCases(): void {
     byRule(unknownRole, "COMMENTARY_FORMATTING").length === 0,
     "Unknown commentary roles must not create formatting findings"
   );
+
+  const technicalText = "0123456789abcdefghij-rest.";
+  const technicalFootnote = snapshot(technicalText, 20, [
+    { start: 10, end: 20, fontName: "Arial", fontSize: 10, bold: true },
+  ]);
+  technicalFootnote.baseCharacterFormat = {
+    fontName: "Aptos Serif",
+    fontSize: 8,
+    bold: false,
+  };
+  const technicalFindings = analyzeFootnotes([technicalFootnote]).findings;
+  const fontName = byRule(technicalFindings, "FORMAT_FONT_NAME")[0];
+  const fontSize = byRule(technicalFindings, "FORMAT_FONT_SIZE")[0];
+  const boldReview = byRule(technicalFindings, "FORMAT_BOLD")[0];
+  assert(
+    fontName?.start === 10 &&
+      fontName.end === 20 &&
+      fontName.metadata?.actual === "Arial" &&
+      fontName.metadata?.expected === "Aptos Serif",
+    "A safe local font-name outlier needs an exact finding"
+  );
+  assert(
+    fontSize?.start === 10 &&
+      fontSize.end === 20 &&
+      fontSize.metadata?.actual === 10 &&
+      fontSize.metadata?.expected === 8,
+    "A safe local font-size outlier needs an independent finding"
+  );
+  assert(
+    boldReview?.start === 10 &&
+      boldReview.end === 20 &&
+      boldReview.metadata?.actual === true &&
+      boldReview.metadata?.expected === false,
+    "A semantically unclear bold outlier must remain an independent finding"
+  );
+
+  const unknownItalicFootnote = snapshot("Unbekannte Quelle XYZ.", 21, [
+    { start: 11, end: 17, italic: true },
+  ]);
+  unknownItalicFootnote.baseCharacterFormat = { italic: false };
+  const italicReview = byRule(
+    analyzeFootnotes([unknownItalicFootnote]).findings,
+    "FORMAT_ITALIC_REVIEW"
+  )[0];
+  assert(
+    italicReview?.start === 11 &&
+      italicReview.end === 17 &&
+      italicReview.metadata?.role === "unknown",
+    "Unknown italic semantics must remain visible as a conservative finding"
+  );
+
+  const bearbeiterText = "MüKo-StGB/Fischer, § 263 Rn. 4.";
+  const unformattedBearbeiter = snapshot(bearbeiterText, 22, [
+    { start: 0, end: bearbeiterText.length, italic: false },
+  ]);
+  unformattedBearbeiter.baseCharacterFormat = { italic: false };
+  assert(
+    byRule(analyzeFootnotes([unformattedBearbeiter]).findings, "COMMENTARY_FORMATTING").some(
+      (finding) =>
+        finding.metadata?.role === "bearbeiter" &&
+        finding.metadata?.formattingProperty === "italic" &&
+        finding.metadata?.expected === true
+    ),
+    "A safely identified bearbeiter must use the role-specific italic rule"
+  );
+
+  const formattedBearbeiter = snapshot(bearbeiterText, 23, [
+    { start: bearbeiterText.indexOf("Fischer"), end: bearbeiterText.indexOf("Fischer") + 7, italic: true },
+  ]);
+  formattedBearbeiter.baseCharacterFormat = { italic: false };
+  const legitimateFindings = analyzeFootnotes([formattedBearbeiter]).findings;
+  assert(
+    byRule(legitimateFindings, "COMMENTARY_FORMATTING").every(
+      (finding) => finding.metadata?.formattingProperty !== "italic"
+    ) && byRule(legitimateFindings, "FORMAT_ITALIC_REVIEW").length === 0,
+    "A legitimate role-specific italic run must not become a generic outlier"
+  );
+
+  const ambiguousBaseline = snapshot("Uneinheitlich.", 24, [
+    { start: 0, end: 3, fontName: "Arial" },
+  ]);
+  ambiguousBaseline.baseCharacterFormat = { fontName: null };
+  assert(
+    byRule(analyzeFootnotes([ambiguousBaseline]).findings, "FORMAT_FONT_NAME").length === 0,
+    "An incompletely covered mixed baseline must not create an automatic finding"
+  );
+
+  const normalOne = snapshot("Erste Fußnote.", 30);
+  normalOne.baseCharacterFormat = {
+    fontName: "Aptos Serif",
+    fontSize: 8,
+    bold: false,
+    italic: false,
+    underline: "None",
+  };
+  normalOne.paragraphs = [{ index: 0, start: 0, end: normalOne.contentText.length }];
+  const normalTwo = snapshot("Zweite Fußnote.", 31);
+  normalTwo.baseCharacterFormat = { ...normalOne.baseCharacterFormat };
+  normalTwo.paragraphs = [{ index: 0, start: 0, end: normalTwo.contentText.length }];
+  const wholeOutlier = snapshot("Falsch formatierte Fußnote.", 32);
+  wholeOutlier.baseCharacterFormat = {
+    ...normalOne.baseCharacterFormat,
+    fontName: "Arial",
+    fontSize: 10,
+  };
+  wholeOutlier.paragraphs = [{ index: 0, start: 0, end: wholeOutlier.contentText.length }];
+  const documentFindings = analyzeFootnotes([normalOne, normalTwo, wholeOutlier]).findings.filter(
+    (finding) => finding.footnoteId === wholeOutlier.id && finding.category === "formatting"
+  );
+  assert(
+    byRule(documentFindings, "FORMAT_FONT_NAME").length === 1 &&
+      byRule(documentFindings, "FORMAT_FONT_SIZE").length === 1 &&
+      documentFindings.every(
+        (finding) =>
+          finding.start === 0 &&
+          finding.end === wholeOutlier.contentText.length &&
+          finding.originalText === wholeOutlier.contentText &&
+          finding.metadata?.baselineSource === "DOCUMENT_FOOTNOTE_FORMAT"
+      ),
+    "A complete wrong-font footnote must be compared with the document baseline"
+  );
+
+  const mixedPropertyTarget = snapshot("0123456789abcdefghij-rest.", 33, [
+    { start: 10, end: 20, fontName: "Arial", fontSize: 10, italic: true },
+  ]);
+  mixedPropertyTarget.baseCharacterFormat = {
+    fontName: "Aptos Serif",
+    fontSize: 8,
+    italic: null,
+  };
+  const mixedPropertyFindings = analyzeFootnotes([
+    normalOne,
+    normalTwo,
+    mixedPropertyTarget,
+  ]).findings.filter((finding) => finding.footnoteId === mixedPropertyTarget.id);
+  assert(
+    byRule(mixedPropertyFindings, "FORMAT_FONT_NAME").length === 1 &&
+      byRule(mixedPropertyFindings, "FORMAT_FONT_SIZE").length === 1 &&
+      byRule(mixedPropertyFindings, "FORMAT_ITALIC_REVIEW").length === 1,
+    "A mixed italic base must not block concrete font and size findings"
+  );
+
+  const mappedText = "MüKo-StGB/Fischer Rn. 4.";
+  const mappedFootnote = snapshot(mappedText, 34);
+  mappedFootnote.baseCharacterFormat = { italic: null };
+  const mappedResult = analyzeFootnotes([normalOne, normalTwo, mappedFootnote], {
+    mappingData,
+  });
+  const mappedFormatting = mappedResult.findings.find(
+    (finding) =>
+      finding.ruleId === "COMMENTARY_FORMATTING" &&
+      finding.metadata?.roleResolutionSource === "SOURCE_MAPPING_HINT"
+  );
+  assert(
+    mappedFormatting?.originalText === "Fischer" &&
+      mappedFormatting.start === mappedText.indexOf("Fischer") &&
+      mappedFormatting.metadata?.requiresManualReview === true,
+    "A mapped MüKo bearbeiter candidate must create an exact conservative formatting finding"
+  );
+
+  const multiBearbeiterText = "MüKo-StGB/Regge/Pegel, § 185 Rn. 39.";
+  const multiBearbeiter = snapshot(multiBearbeiterText, 35);
+  multiBearbeiter.baseCharacterFormat = { italic: false };
+  const multiBearbeiterFindings = analyzeFootnotes([multiBearbeiter], { mappingData }).findings.filter(
+    (finding) =>
+      finding.ruleId === "COMMENTARY_FORMATTING" &&
+      finding.metadata?.roleResolutionSource === "SOURCE_MAPPING_HINT"
+  );
+  assert(
+    multiBearbeiterFindings.length === 2 &&
+      multiBearbeiterFindings.map((finding) => finding.originalText).join("/") === "Regge/Pegel",
+    "Every safely delimited mapping-hint bearbeiter must receive an independent finding"
+  );
+
+  const partlyFormattedBearbeiter = snapshot(multiBearbeiterText, 36, [
+    {
+      start: multiBearbeiterText.indexOf("Regge"),
+      end: multiBearbeiterText.indexOf("Regge") + "Regge".length,
+      italic: true,
+    },
+  ]);
+  partlyFormattedBearbeiter.baseCharacterFormat = { italic: false };
+  const partlyFormattedFindings = analyzeFootnotes([partlyFormattedBearbeiter], {
+    mappingData,
+  }).findings.filter(
+    (finding) =>
+      finding.ruleId === "COMMENTARY_FORMATTING" &&
+      finding.metadata?.roleResolutionSource === "SOURCE_MAPPING_HINT"
+  );
+  assert(
+    partlyFormattedFindings.length === 1 && partlyFormattedFindings[0].originalText === "Pegel",
+    "A correctly italic mapping candidate must pass while the second candidate remains visible"
+  );
+
+  const journalText = "Tenckhoff, JuS 1988, 787 (788).";
+  const journalExpectedPlain = createDefaultCitationStyleProfile();
+  journalExpectedPlain.journalArticle.authorFormatting.italic = false;
+  const italicJournalAuthor = snapshot(journalText, 37, [
+    { start: 0, end: "Tenckhoff".length, italic: true },
+  ]);
+  italicJournalAuthor.baseCharacterFormat = { italic: false };
+  const unexpectedJournalItalic = analyzeFootnotes([italicJournalAuthor], {
+    profile: journalExpectedPlain,
+  }).findings.filter((finding) => finding.ruleId === "JOURNAL_AUTHOR_FORMATTING");
+  assert(
+    unexpectedJournalItalic.length === 1 &&
+      unexpectedJournalItalic[0].originalText === "Tenckhoff" &&
+      unexpectedJournalItalic[0].metadata?.expected === false,
+    "An author italicized against the active journal setting must create one finding"
+  );
+
+  const correctJournalItalic = analyzeFootnotes([italicJournalAuthor]).findings.filter(
+    (finding) => finding.ruleId === "JOURNAL_AUTHOR_FORMATTING"
+  );
+  assert(
+    correctJournalItalic.length === 0,
+    "An italic author matching the active journal setting must not create a finding"
+  );
+
+  const plainJournalAuthor = snapshot(journalText, 38);
+  plainJournalAuthor.baseCharacterFormat = { italic: false };
+  const missingJournalItalic = analyzeFootnotes([plainJournalAuthor]).findings.filter(
+    (finding) => finding.ruleId === "JOURNAL_AUTHOR_FORMATTING"
+  );
+  assert(
+    missingJournalItalic.length === 1 &&
+      missingJournalItalic[0].originalText === "Tenckhoff" &&
+      missingJournalItalic[0].metadata?.expected === true,
+    "A non-italic author against an italic journal setting must create one finding"
+  );
+
+  const journalAuthorsText = "Müller/Meier, NJW 2025, 100 (105).";
+  const journalAuthors = snapshot(journalAuthorsText, 39);
+  journalAuthors.baseCharacterFormat = { italic: false };
+  const journalAuthorFindings = analyzeFootnotes([journalAuthors]).findings.filter(
+    (finding) => finding.ruleId === "JOURNAL_AUTHOR_FORMATTING"
+  );
+  assert(
+    journalAuthorFindings.length === 2 &&
+      journalAuthorFindings.map((finding) => finding.originalText).join("/") === "Müller/Meier",
+    "All safely extracted journal authors must be checked independently"
+  );
+
+  const formattingOwners = [
+    technicalFootnote,
+    normalOne,
+    normalTwo,
+    wholeOutlier,
+    mixedPropertyTarget,
+    mappedFootnote,
+    multiBearbeiter,
+    partlyFormattedBearbeiter,
+    italicJournalAuthor,
+    plainJournalAuthor,
+    journalAuthors,
+  ];
+  const formattingIntegrity = [
+    ...technicalFindings,
+    ...documentFindings,
+    ...mixedPropertyFindings,
+    ...mappedResult.findings,
+    ...multiBearbeiterFindings,
+    ...partlyFormattedFindings,
+    ...unexpectedJournalItalic,
+    ...missingJournalItalic,
+    ...journalAuthorFindings,
+  ].filter((finding) => finding.category === "formatting");
+  assert(
+    formattingIntegrity.every((finding) => {
+      const owner = formattingOwners.find((footnote) => footnote.id === finding.footnoteId);
+      return (
+        owner !== undefined &&
+        finding.start >= 0 &&
+        finding.start < finding.end &&
+        finding.end <= owner.contentText.length &&
+        finding.originalText === owner.contentText.slice(finding.start, finding.end)
+      );
+    }) && !mappedResult.findings.some((finding) => finding.ruleId === "RULE_OUTPUT_INVALID"),
+    "Every formatting finding must retain absolute valid contentText offsets"
+  );
 }
 
 function runAdditionalCitationTypeCases(): void {
@@ -461,6 +767,54 @@ function runDeterminismAndPerformanceCases(): void {
   );
   assert(elapsed < 10_000, `Rule Engine mass test too slow: ${elapsed} ms`);
   console.log(`POC 11 performance: 1200 footnotes in ${elapsed} ms`);
+
+  const formattingMass = Array.from({ length: 1200 }, (_, index) => {
+    const footnote = snapshot("0123456789abcdefghij-rest.", index + 2000, [
+      { start: 10, end: 20, fontName: "Arial", fontSize: 10 },
+    ]);
+    footnote.baseCharacterFormat = { fontName: "Aptos Serif", fontSize: 8 };
+    return footnote;
+  });
+  const formattingStartedAt = Date.now();
+  const formattingResult = analyzeFootnotes(formattingMass);
+  const formattingElapsed = Date.now() - formattingStartedAt;
+  assert(
+    byRule(formattingResult.findings, "FORMAT_FONT_NAME").length === 1200 &&
+      byRule(formattingResult.findings, "FORMAT_FONT_SIZE").length === 1200,
+    "Formatting mass test must preserve both independent findings per footnote"
+  );
+  assert(
+    formattingElapsed < 10_000,
+    `Formatting mass test too slow: ${formattingElapsed} ms`
+  );
+  console.log(`POC 12.3 formatting performance: 1200 footnotes in ${formattingElapsed} ms`);
+
+  const multiPersonMass = Array.from({ length: 1200 }, (_, index) => {
+    const footnote = snapshot(
+      `MüKo-StGB/Regge/Pegel, § 185 Rn. ${index + 1}.`,
+      index + 4000
+    );
+    footnote.baseCharacterFormat = { italic: false };
+    return footnote;
+  });
+  const multiPersonStartedAt = Date.now();
+  const multiPersonResult = analyzeFootnotes(multiPersonMass, { mappingData });
+  const multiPersonElapsed = Date.now() - multiPersonStartedAt;
+  assert(
+    multiPersonResult.findings.filter(
+      (finding) =>
+        finding.ruleId === "COMMENTARY_FORMATTING" &&
+        finding.metadata?.roleResolutionSource === "SOURCE_MAPPING_HINT"
+    ).length === 2400,
+    "Formatting mass test must retain both mapping-hint persons per footnote"
+  );
+  assert(
+    multiPersonElapsed < 10_000,
+    `Multi-person formatting mass test too slow: ${multiPersonElapsed} ms`
+  );
+  console.log(
+    `POC 12.3 multi-person performance: 1200 footnotes in ${multiPersonElapsed} ms`
+  );
 }
 
 function runProfilePrecedenceCase(): void {

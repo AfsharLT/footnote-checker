@@ -42,7 +42,7 @@ const COURT_PATTERN =
   /\b(?:BVerfG|BGH|BAG|BFH|BVerwG|BSG|OLG(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+)?|KG|LG|AG)\b/;
 const DECISION_TYPE_PATTERN =
   /(?:\b(?:Urteil|Beschluss)\b|\b(?:Urt|U|Beschl|B|Entsch)\.(?=$|[\s,;:–—-]))/i;
-const DATE_WITH_MARKER_PATTERN = /\b(?:v\.|vom)\s*(\d{1,2}\.\d{1,2}\.\d{4})\b/i;
+const DATE_WITH_MARKER_PATTERN = /\b(?:v\.|vom)\s*(\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2}))\b/i;
 const DATE_PATTERN = /\b(\d{1,2}\.\d{1,2}\.\d{4})\b/;
 const DOCKET_NUMBER_PATTERN =
   /\b(?:(?:\d+|[IVXLCDM]+)\s+)?(?:StR|BvR|BvL|ZR|ZB|AZR|ABR|R|C|U|K|L|B|A)\s+\d+\/\d{2,4}\b/i;

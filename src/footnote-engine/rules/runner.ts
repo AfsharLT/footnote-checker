@@ -1,5 +1,6 @@
 import { isRangeProtected } from "../protected-ranges";
 import type { Finding } from "../types";
+import { createFormattingRuleOutputs } from "./formatting";
 import { REGISTERED_DOCUMENT_RULES, LOCAL_RULES } from "./registry";
 import type {
   DocumentRuleContext,
@@ -17,6 +18,15 @@ function stableHash(value: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
+function candidateActionIdentity(candidate: RuleFindingCandidate): string {
+  if (candidate.suggestedText !== undefined) return `text:${candidate.suggestedText}`;
+  const property = candidate.metadata?.formattingProperty;
+  const expected = candidate.metadata?.expected;
+  return property === undefined
+    ? "no-action"
+    : `format:${String(property)}:${JSON.stringify(expected)}`;
+}
+
 function findingId(context: RuleContext, ruleId: string, candidate: RuleFindingCandidate): string {
   return [
     "finding",
@@ -25,7 +35,7 @@ function findingId(context: RuleContext, ruleId: string, candidate: RuleFindingC
     candidate.start,
     candidate.end,
     context.footnote.originalTextHash,
-    stableHash(candidate.suggestedText ?? ""),
+    stableHash(candidateActionIdentity(candidate)),
   ].join(":");
 }
 
@@ -153,6 +163,8 @@ function deduplicateAndResolve(findings: readonly PrioritizedFinding[]): Finding
       finding.start,
       finding.end,
       finding.suggestedText ?? "",
+      finding.metadata?.formattingProperty ?? "",
+      JSON.stringify(finding.metadata?.expected ?? null),
     ].join("\u0000");
     const previous = exact.get(key);
     if (!previous || finding.priority < previous.priority) exact.set(key, finding);
@@ -244,6 +256,38 @@ export function runRules(
         continue;
       }
       findings.push(...evaluateRule(context, rule));
+    }
+  }
+
+  const segmentsByFootnote = new Map<string, RuleContext[]>();
+  for (const context of segmentContexts) {
+    const contexts = segmentsByFootnote.get(context.footnote.id);
+    if (contexts) contexts.push(context);
+    else segmentsByFootnote.set(context.footnote.id, [context]);
+  }
+  for (const context of footnoteContexts) {
+    const outputs = createFormattingRuleOutputs(
+      context,
+      segmentsByFootnote.get(context.footnote.id) ?? [],
+      context.documentFormattingBaseline
+    );
+    for (const output of outputs) {
+      const finding = validateCandidate(
+        output.context,
+        output.ruleId,
+        output.priority,
+        output.candidate
+      );
+      findings.push(
+        finding ??
+          technicalFinding(
+            output.context,
+            output.ruleId,
+            output.priority,
+            "validation",
+            output.candidate
+          )
+      );
     }
   }
 
