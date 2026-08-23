@@ -1,6 +1,9 @@
 import * as React from "react";
 import { useMemo, useState } from "react";
 import { Button, makeStyles, tokens } from "@fluentui/react-components";
+import { ChevronDown, ChevronRight, Download, RotateCcw, Upload } from "lucide-react";
+import { NeonButton } from "@/components/ui/neon-button";
+import { BrandLogo } from "@/taskpane/components/BrandLogo";
 import {
   exportCitationSourceMappingCsv,
   parseCitationSourceMappingCsv,
@@ -145,28 +148,96 @@ const MODIFIER_LABELS: Record<CitationModifierConcept, string> = {
 };
 
 const useStyles = makeStyles({
-  panel: { display: "grid", gap: "16px" },
+  panel: { display: "grid", gap: "16px", paddingBottom: "20px" },
   header: {
-    paddingBottom: "16px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    paddingBottom: "14px",
     borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
   },
-  title: { margin: "0 0 6px", color: "#12355b", fontSize: "24px", lineHeight: "30px" },
+  identity: { display: "flex", alignItems: "center", gap: "10px", minWidth: 0 },
+  logo: { width: "36px", height: "36px", objectFit: "contain", flexShrink: 0 },
+  title: { margin: 0, color: "#003381", fontSize: "21px", lineHeight: "26px" },
   subtitle: { margin: "4px 0", color: tokens.colorNeutralForeground2 },
-  nav: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))",
-    gap: "6px",
+  stickyActionBar: {
+    position: "sticky",
+    top: "0px",
+    zIndex: 20,
+    alignSelf: "start",
+    display: "flex",
+    width: "100%",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: "8px",
+    padding: "10px",
+    border: "1px solid #c8d8ee",
+    borderRadius: "10px",
+    backgroundColor: "rgba(255, 255, 255, 0.96)",
+    boxShadow: "0 5px 18px rgba(0, 51, 129, 0.08)",
   },
-  navButton: { minHeight: "36px", whiteSpace: "normal" },
+  hiddenInput: { display: "none" },
+  fileAction: {
+    display: "inline-flex",
+    minHeight: "32px",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "6px",
+    padding: "6px 10px",
+    border: "1px solid #c8d8ee",
+    borderRadius: "8px",
+    backgroundColor: "#fff",
+    color: "#003381",
+    cursor: "pointer",
+    fontSize: "12px",
+    fontWeight: 600,
+  },
+  profileCard: {
+    display: "grid",
+    gap: "10px",
+    padding: "14px",
+    border: "1px solid #d8e2ef",
+    borderRadius: "10px",
+    backgroundColor: "#f8fafc",
+  },
+  accordion: { display: "grid", gap: "8px" },
+  accordionItem: {
+    overflow: "hidden",
+    border: "1px solid #d8e2ef",
+    borderRadius: "10px",
+    backgroundColor: "#fff",
+  },
+  accordionTrigger: {
+    display: "flex",
+    width: "100%",
+    minHeight: "44px",
+    alignItems: "center",
+    gap: "8px",
+    padding: "10px 12px",
+    border: 0,
+    backgroundColor: "#fff",
+    color: "#003381",
+    cursor: "pointer",
+    fontFamily: "inherit",
+    fontSize: "14px",
+    fontWeight: 650,
+    textAlign: "left",
+  },
+  accordionContent: {
+    padding: "0 10px 10px",
+    borderTop: "1px solid #e8eef6",
+    backgroundColor: "#fbfcfe",
+  },
   section: {
     display: "grid",
     gap: "14px",
     padding: "16px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
-    borderRadius: tokens.borderRadiusMedium,
+    borderRadius: "10px",
     backgroundColor: tokens.colorNeutralBackground1,
   },
-  sectionTitle: { margin: 0, color: "#12355b", fontSize: "18px" },
+  sectionTitle: { margin: 0, color: "#003381", fontSize: "18px" },
   subsection: {
     display: "grid",
     gap: "10px",
@@ -220,10 +291,10 @@ const useStyles = makeStyles({
   card: {
     padding: "12px",
     border: `1px solid ${tokens.colorNeutralStroke2}`,
-    borderRadius: tokens.borderRadiusMedium,
+    borderRadius: "10px",
     backgroundColor: tokens.colorNeutralBackground2,
   },
-  cardTitle: { fontWeight: tokens.fontWeightSemibold, color: "#12355b" },
+  cardTitle: { fontWeight: tokens.fontWeightSemibold, color: "#003381" },
   summary: { display: "flex", flexWrap: "wrap", gap: "8px 16px", fontSize: tokens.fontSizeBase300 },
   badge: {
     display: "inline-block",
@@ -1129,7 +1200,7 @@ function ProfileEditor(props: {
           }
         )}
         <div className={styles.subsection}>
-          <h2 className={styles.sectionTitle}>Citation Modifier</h2>
+          <h2 className={styles.sectionTitle}>Zitationszusätze</h2>
           <p className={styles.help}>
             Modifier bleiben getrennt von f. und ff.; diese gehören weiterhin zu den Abkürzungen.
           </p>
@@ -1380,22 +1451,22 @@ function SourceEditor(props: {
         )}
         {!props.source.active && <span className={styles.badge}>Inaktiv</span>}
         {aliases.some(({ alias }) => alias.legacySafetyLevel === "UNCERTAIN") && (
-          <span className={styles.badge}>Legacy: Unsicher</span>
+          <span className={styles.badge}>Altdaten: Unsicher</span>
         )}
       </summary>
       <div className={styles.subsection}>
         <TextField
-          label="Canonical Source ID"
+          label="Kanonische Quellen-ID"
           value={props.source.canonicalSourceId}
           readOnly
           onChange={() => undefined}
         />
         <TextField
-          label="Preferred Name"
+          label="Bevorzugter Name"
           value={props.source.preferredName}
           onChange={(preferredName) => update({ preferredName })}
           error={
-            props.source.preferredName.trim() ? undefined : "Preferred Name darf nicht leer sein."
+            props.source.preferredName.trim() ? undefined : "Bevorzugter Name darf nicht leer sein."
           }
         />
         <div className={styles.grid}>
@@ -1518,7 +1589,7 @@ function SourceEditor(props: {
                 })}
               <div className={styles.grid}>
                 <SelectField
-                  label="Match-Modus"
+                  label="Abgleichsmodus"
                   value={alias.matchMode}
                   options={[
                     { value: "CASE_INSENSITIVE_TEXT", label: "Exakter Alias" },
@@ -1545,7 +1616,7 @@ function SourceEditor(props: {
                   }
                 />
                 <SelectField
-                  label="Legacy Safety"
+                  label="Altdaten-Sicherheit"
                   value={alias.legacySafetyLevel ?? "PROBABLE"}
                   options={[
                     { value: "PROBABLE", label: "Wahrscheinlich" },
@@ -1563,10 +1634,10 @@ function SourceEditor(props: {
                 {alias.matchMode === "WHOLE_WORD_MARKER"
                   ? "Ganzwort-Marker im Zitat"
                   : "Exakter Alias"}{" "}
-                · Ursprung: {alias.legacyMappingId ? "Legacy" : "Benutzer"}
+                · Ursprung: {alias.legacyMappingId ? "Altdaten" : "Benutzer"}
               </p>
               {alias.legacyMappingId && (
-                <p className={styles.help}>Legacy Mapping ID: {alias.legacyMappingId}</p>
+                <p className={styles.help}>Altdaten-Mapping-ID: {alias.legacyMappingId}</p>
               )}
               {alias.notes && <p className={styles.help}>{alias.notes}</p>}
               {alias.legacyMappingId ? (
@@ -1578,7 +1649,7 @@ function SourceEditor(props: {
                     )
                   }
                 >
-                  Legacy-Alias deaktivieren
+                  Altdaten-Alias deaktivieren
                 </Button>
               ) : (
                 <Button
@@ -1612,7 +1683,7 @@ function SourceEditor(props: {
               <strong>Quelle wirklich entfernen?</strong>
               <p className={styles.help}>
                 {props.source.preferredName} mit {aliases.length}{" "}
-                {aliases.length === 1 ? "Alias" : "Aliasen"} wird dauerhaft aus der Working Copy
+                {aliases.length === 1 ? "Alias" : "Aliasen"} wird dauerhaft aus der Arbeitskopie
                 entfernt.
               </p>
               {props.source.sourceOrigin === "DEFAULT" && (
@@ -1641,7 +1712,7 @@ function SourceEditor(props: {
         </div>
         {props.source.legacyMetadata && (
           <details>
-            <summary>Legacy-Metadaten</summary>
+            <summary>Altdaten-Metadaten</summary>
             <p className={styles.help}>
               Werktyp: {props.source.legacyMetadata.legacyWorkType ?? "–"}
             </p>
@@ -1679,11 +1750,11 @@ function NewSourceEditor(props: {
     <div className={styles.card}>
       <h3 className={styles.subsectionTitle}>Neue Quelle</h3>
       <TextField
-        label="Preferred Name"
+        label="Bevorzugter Name"
         value={input.preferredName}
         onChange={(preferredName) => setInput({ ...input, preferredName })}
         error={
-          error && !input.preferredName.trim() ? "Preferred Name darf nicht leer sein." : undefined
+          error && !input.preferredName.trim() ? "Bevorzugter Name darf nicht leer sein." : undefined
         }
       />
       <SelectField
@@ -1804,7 +1875,7 @@ function MappingEditor(props: {
         </span>
         <span>Aliase: {props.mapping.aliases.length}</span>
         <span>
-          Legacy unsicher:{" "}
+          Altdaten unsicher:{" "}
           {props.mapping.aliases.filter((alias) => alias.legacySafetyLevel === "UNCERTAIN").length}
         </span>
       </div>
@@ -1845,7 +1916,7 @@ function MappingEditor(props: {
           onChange={(status) => setFilters({ ...filters, status })}
         />
         <SelectField
-          label="Legacy Safety"
+          label="Altdaten-Sicherheit"
           value={filters.safety}
           options={[
             { value: "ALL", label: "Alle" },
@@ -1884,7 +1955,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   onClose,
 }) => {
   const styles = useStyles();
-  const [section, setSection] = useState<SettingsSection>("GENERAL");
+  const [section, setSection] = useState<SettingsSection | null>("GENERAL");
   const [profile, setProfile] = useState(() => cloneCitationStyleProfile(activeProfile));
   const [mapping, setMapping] = useState(() => cloneCitationSourceMapping(mappingData));
   const [profileMessage, setProfileMessage] = useState("");
@@ -1909,7 +1980,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     const result = onSaveProfile(profile);
     setProfileMessage(
       result.success
-        ? "Citation Settings wurden gespeichert."
+        ? "Zitiereinstellungen wurden gespeichert."
         : (result.error ?? "Speichern fehlgeschlagen.")
     );
     return result.success;
@@ -1932,10 +2003,85 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   };
 
   return (
-    <div className={styles.panel}>
+    <div className={`${styles.panel} fc-settings-shell`}>
       <header className={styles.header}>
-        <Button onClick={requestClose}>← Zurück zur Analyse</Button>
-        <h1 className={styles.title}>Einstellungen</h1>
+        <div className={styles.identity}>
+          <BrandLogo className={styles.logo} size={36} />
+          <div>
+            <h1 className={styles.title}>Footnote Checker</h1>
+            <p className={styles.subtitle}>Zitiereinstellungen</p>
+          </div>
+        </div>
+        <NeonButton variant="ghost" size="sm" onClick={requestClose}>
+          ← Analyse
+        </NeonButton>
+      </header>
+
+      <div className={styles.stickyActionBar} aria-label="Aktionen für Zitiereinstellungen">
+        <NeonButton
+          variant="primary"
+          size="sm"
+          disabled={!profileDirty && !mappingDirty}
+          onClick={() => {
+            if (profileDirty) saveProfile();
+            if (mappingDirty) saveMapping();
+          }}
+        >
+          Einstellungen speichern
+        </NeonButton>
+        <NeonButton
+          variant="secondary"
+          size="sm"
+          onClick={() =>
+            downloadText(
+              "footnote-checker-citation-settings.json",
+              serializeCitationStyleProfile(profile),
+              "application/json;charset=utf-8"
+            )
+          }
+        >
+          <Download size={14} aria-hidden="true" /> Exportieren
+        </NeonButton>
+        <label className={styles.fileAction}>
+          <Upload size={14} aria-hidden="true" /> Importieren
+          <input
+            className={styles.hiddenInput}
+            type="file"
+            accept=".json,application/json"
+            onChange={async (event) => {
+              const file = event.target.files?.[0];
+              if (!file) return;
+              try {
+                setProfileImport(parseCitationStyleProfile(await readTextFile(file)));
+                setSection("GENERAL");
+              } catch (error) {
+                setProfileMessage(
+                  error instanceof Error ? error.message : "Datei konnte nicht gelesen werden."
+                );
+              }
+              event.target.value = "";
+            }}
+          />
+        </label>
+        <NeonButton
+          variant="secondary"
+          size="sm"
+          disabled={!profileDirty && !mappingDirty}
+          onClick={() => {
+            setProfile(cloneCitationStyleProfile(activeProfile));
+            setMapping(cloneCitationSourceMapping(mappingData));
+            setProfileMessage("Ungespeicherte Änderungen wurden verworfen.");
+            setMappingMessage("");
+          }}
+        >
+          Änderungen verwerfen
+        </NeonButton>
+        <NeonButton variant="ghost" size="sm" onClick={() => setResetTarget("PROFILE")}>
+          <RotateCcw size={14} aria-hidden="true" /> Standard wiederherstellen
+        </NeonButton>
+      </div>
+
+      <section className={styles.profileCard} aria-label="Aktives Zitierprofil">
         <TextField
           label="Profilname"
           value={profile.name}
@@ -1947,13 +2093,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </p>
         <p className={profileDirty ? styles.statusDirty : styles.statusSaved}>
           {profileDirty
-            ? "Citation Settings: Ungespeicherte Änderungen"
-            : "Citation Settings: Gespeichert"}
+            ? "Zitiereinstellungen: Ungespeicherte Änderungen"
+            : "Zitiereinstellungen: Gespeichert"}
         </p>
         <p className={mappingDirty ? styles.statusDirty : styles.statusSaved}>
-          {mappingDirty ? "Mapping: Ungespeicherte Änderungen" : "Mapping: Gespeichert"}
+          {mappingDirty
+            ? "Werk- & Zeitschriften-Mapping: Ungespeicherte Änderungen"
+            : "Werk- & Zeitschriften-Mapping: Gespeichert"}
         </p>
-      </header>
+      </section>
 
       {leaveWarning && (
         <div className={styles.dialog} role="dialog" aria-label="Ungespeicherte Änderungen">
@@ -1975,41 +2123,56 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
       )}
 
-      <nav className={styles.nav} aria-label="Settings-Navigation">
-        {SECTION_OPTIONS.map((option) => (
-          <Button
-            className={styles.navButton}
-            key={option.value}
-            appearance={section === option.value ? "primary" : "secondary"}
-            onClick={() => setSection(option.value)}
-          >
-            {option.label}
-          </Button>
-        ))}
-      </nav>
-
-      {section === "MAPPING" ? (
-        <MappingEditor
-          mapping={mapping}
-          onChange={(next) => {
-            setMapping(next);
-            setMappingMessage("");
-          }}
-        />
-      ) : (
-        <ProfileEditor
-          section={section}
-          profile={profile}
-          onChange={(next) => {
-            setProfile(next);
-            setProfileMessage("");
-          }}
-        />
-      )}
+      <div className={styles.accordion} aria-label="Einstellungsbereiche">
+        {SECTION_OPTIONS.map((option) => {
+          const isOpen = section === option.value;
+          return (
+            <section className={styles.accordionItem} key={option.value}>
+              <button
+                className={styles.accordionTrigger}
+                type="button"
+                aria-expanded={isOpen}
+                onClick={() => setSection((current) => (current === option.value ? null : option.value))}
+              >
+                {isOpen ? (
+                  <ChevronDown size={17} aria-hidden="true" />
+                ) : (
+                  <ChevronRight size={17} aria-hidden="true" />
+                )}
+                <span>{option.label}</span>
+              </button>
+              {isOpen && (
+                <div className={styles.accordionContent}>
+                  {option.value === "MAPPING" ? (
+                    <MappingEditor
+                      mapping={mapping}
+                      onChange={(next) => {
+                        setMapping(next);
+                        setMappingMessage("");
+                      }}
+                    />
+                  ) : (
+                    <ProfileEditor
+                      section={option.value}
+                      profile={profile}
+                      onChange={(next) => {
+                        setProfile(next);
+                        setProfileMessage("");
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+            </section>
+          );
+        })}
+      </div>
 
       {section === "MAPPING" ? (
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>Mapping speichern, importieren und exportieren</h2>
+          <h2 className={styles.sectionTitle}>
+            Werk- &amp; Zeitschriften-Mapping verwalten
+          </h2>
           <div className={styles.actionBar}>
             <Button appearance="primary" disabled={!mappingDirty} onClick={saveMapping}>
               Mapping speichern
@@ -2035,10 +2198,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 )
               }
             >
-              Mapping exportieren
+              Exportieren
             </Button>
             <label>
-              <span className={styles.label}>Mapping importieren</span>
+              <span className={styles.label}>Importieren</span>
               <input
                 type="file"
                 accept=".csv,text/csv"
@@ -2095,7 +2258,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     if (mappingImport.success) {
                       setMapping(cloneCitationSourceMapping(mappingImport.data));
                       setMappingImport(null);
-                      setMappingMessage("Import wurde als ungespeicherte Working Copy übernommen.");
+                      setMappingMessage("Import wurde als ungespeicherte Arbeitskopie übernommen.");
                     }
                   }}
                 >
@@ -2106,10 +2269,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </div>
           )}
         </section>
-      ) : (
+      ) : section ? (
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>
-            Citation Settings speichern, importieren und exportieren
+            Zitiereinstellungen verwalten
           </h2>
           <div className={styles.actionBar}>
             <Button appearance="primary" disabled={!profileDirty} onClick={saveProfile}>
@@ -2119,7 +2282,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               disabled={!profileDirty}
               onClick={() => {
                 setProfile(cloneCitationStyleProfile(activeProfile));
-                setProfileMessage("Ungespeicherte Citation Settings wurden verworfen.");
+                setProfileMessage("Ungespeicherte Zitiereinstellungen wurden verworfen.");
               }}
             >
               Änderungen verwerfen
@@ -2134,10 +2297,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 )
               }
             >
-              Settings exportieren
+              Exportieren
             </Button>
             <label>
-              <span className={styles.label}>Settings importieren</span>
+              <span className={styles.label}>Importieren</span>
               <input
                 type="file"
                 accept=".json,application/json"
@@ -2164,7 +2327,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 Profil: {profileImport.profile.name} · Schema: {profileImport.profile.schemaVersion}
               </p>
               <p className={profileImport.success ? styles.statusSaved : styles.error}>
-                {profileImport.success ? "Datei ist gültig." : "Die Settings-Datei ist ungültig."}
+                {profileImport.success
+                  ? "Datei ist gültig."
+                  : "Die Datei mit Zitiereinstellungen ist ungültig."}
               </p>
               {formatCitationStyleImportErrors(profileImport.errors).map((error) => (
                 <p className={styles.error} key={error}>
@@ -2179,7 +2344,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     if (profileImport.success) {
                       setProfile(cloneCitationStyleProfile(profileImport.profile));
                       setProfileImport(null);
-                      setProfileMessage("Import wurde als ungespeicherte Working Copy übernommen.");
+                      setProfileMessage("Import wurde als ungespeicherte Arbeitskopie übernommen.");
                     }
                   }}
                 >
@@ -2190,13 +2355,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
             </div>
           )}
         </section>
-      )}
+      ) : null}
 
       {resetTarget && (
         <div className={styles.dialog} role="dialog" aria-label="Standard wiederherstellen">
           <strong>
             {resetTarget === "PROFILE"
-              ? "Citation Settings wirklich als Working Copy auf Standard zurücksetzen?"
+              ? "Zitiereinstellungen wirklich als Arbeitskopie auf Standard zurücksetzen?"
               : "Standardquellen wirklich wiederherstellen?"}
           </strong>
           <p className={styles.help}>

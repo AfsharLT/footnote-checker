@@ -7,6 +7,10 @@
     "jsx": "react",
     "module": "ES2020",
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
     "noImplicitReturns": true,
     "noUnusedParameters": true,
     "outDir": "dist",
@@ -14,7 +18,8 @@
     "target": "es6",
     "lib": [
       "es7",
-      "dom"
+      "dom",
+      "ES2022.Intl"
     ],
   },
   "exclude": [

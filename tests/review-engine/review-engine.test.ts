@@ -199,6 +199,24 @@ assert(
     ?.reviewClass === "AUTO",
   "Safe margin-number normalization must be automatic"
 );
+const muekoFormatted = snapshot("MüKo-StGB/Fischer Rn. 4.", 51, [
+  { start: 0, end: 9, fontName: "Arial", fontSize: 10 },
+]);
+muekoFormatted.baseCharacterFormat = { fontName: "Aptos Serif", fontSize: 8 };
+const muekoFormattedReview = engineReview([muekoFormatted], "CORRECTION");
+const muekoCompatibleItems = muekoFormattedReview.items.filter((item) =>
+  [
+    "COMMENTARY_WORK_NAME",
+    "FORMAT_FONT_NAME",
+    "FORMAT_FONT_SIZE",
+  ].includes(item.finding.ruleId)
+);
+assert(
+  muekoCompatibleItems.length === 3 &&
+    muekoCompatibleItems.every((item) => item.reviewClass === "AUTO") &&
+    muekoFormattedReview.conflicts.length === 0,
+  "Overlapping MüKo text replacement and formatting correction must remain compatible"
+);
 const palandtReview = engineReview([snapshot("Palandt/Reiter § 464 BGB Rn. 2.", 6)]);
 assert(
   palandtReview.items.length === 1 &&
@@ -598,6 +616,33 @@ assert(
     ) &&
     conflictReview.summary.correctionReady === 0,
   "Conflicting replacements must form a technical conflict group"
+);
+
+const formatConflictLeft = finding(conflictFootnote, {
+  findingId: "format-conflict-left",
+  ruleId: "FORMAT_FONT_NAME",
+  category: "formatting",
+  start: 0,
+  end: 5,
+  metadata: { formattingProperty: "fontName", expected: "Aptos Serif", actual: "Arial" },
+});
+const formatConflictRight = finding(conflictFootnote, {
+  findingId: "format-conflict-right",
+  ruleId: "FORMAT_FONT_NAME",
+  category: "formatting",
+  start: 0,
+  end: 5,
+  metadata: { formattingProperty: "fontName", expected: "Times New Roman", actual: "Arial" },
+});
+const formatConflictReview = review(
+  [formatConflictLeft, formatConflictRight],
+  [conflictFootnote],
+  "CORRECTION"
+);
+assert(
+  formatConflictReview.conflicts.length === 1 &&
+    formatConflictReview.items.every((item) => item.reviewClass === "TECHNICAL"),
+  "Contradictory formatting values for the same property must remain a technical conflict"
 );
 
 const consistencyFinding = finding(conflictFootnote, {

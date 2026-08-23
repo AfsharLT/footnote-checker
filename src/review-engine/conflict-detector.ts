@@ -58,6 +58,12 @@ function actionsConflict(left: ActionEntry, right: ActionEntry): boolean {
       left.action.replacementText === right.action.replacementText
     );
   }
+  if (
+    (left.action.type === "TEXT_REPLACE" && right.action.type === "FORMAT_CHANGE") ||
+    (left.action.type === "FORMAT_CHANGE" && right.action.type === "TEXT_REPLACE")
+  ) {
+    return false;
+  }
   return true;
 }
 

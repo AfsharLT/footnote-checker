@@ -4,6 +4,7 @@ const devCerts = require("office-addin-dev-certs");
 const CopyWebpackPlugin = require("copy-webpack-plugin");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 const webpack = require("webpack");
+const path = require("path");
 
 const urlDev = "https://localhost:3000/";
 const urlProd = "https://www.contoso.com/"; // CHANGE THIS TO YOUR PRODUCTION DEPLOYMENT LOCATION
@@ -30,7 +31,10 @@ module.exports = async (env, options) => {
       clean: true,
     },
     resolve: {
-      extensions: [".ts", ".tsx", ".html", ".js"],
+      extensions: [".ts", ".tsx", ".js", ".jsx", ".html"],
+      alias: {
+        "@": path.resolve(__dirname, "src"),
+      },
     },
     module: {
       rules: [
@@ -50,6 +54,10 @@ module.exports = async (env, options) => {
           test: /\.html$/,
           exclude: /node_modules/,
           use: "html-loader",
+        },
+        {
+          test: /\.css$/,
+          use: ["style-loader", "css-loader", "postcss-loader"],
         },
         {
           test: /\.(png|jpg|jpeg|ttf|woff|woff2|gif|ico)$/,
