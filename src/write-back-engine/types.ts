@@ -91,6 +91,7 @@ export interface WriteBackResult {
   reason?: WriteBackResultReason;
   reasons?: WriteBackBlockReason[];
   message?: string;
+  fatal?: boolean;
   localRevalidation?: LocalRevalidationResult;
   mutation?: AppliedMutationRecord;
 }
@@ -103,6 +104,51 @@ export interface ApplySingleReviewItemInput {
   appliedMutations?: readonly AppliedMutationRecord[];
 }
 
+export interface BatchPerformanceMetrics {
+  totalDurationMs: number;
+  planningDurationMs: number;
+  readDurationMs: number;
+  localValidationDurationMs: number;
+  writeDurationMs: number;
+  finalizationDurationMs: number;
+  affectedFootnotes: number;
+  plannedActions: number;
+  appliedActions: number;
+  contextSyncCount: number;
+  wordRunCount: number;
+  readChunkCount: number;
+  writeChunkCount: number;
+}
+
+export interface ApplyBatchReviewItemEntry {
+  reviewItem: ReviewItem;
+  footnote: FootnoteSnapshot;
+}
+
+export interface WriteBackBatchChunkUpdate {
+  results: WriteBackResult[];
+  mutations: AppliedMutationRecord[];
+  processed: number;
+  currentFootnoteOrdinal?: number;
+  performance: BatchPerformanceMetrics;
+}
+
+export interface ApplyBatchReviewItemsInput {
+  entries: readonly ApplyBatchReviewItemEntry[];
+  appliedMutations?: readonly AppliedMutationRecord[];
+  chunkSize: number;
+  planningDurationMs: number;
+  onChunk?(update: WriteBackBatchChunkUpdate): void;
+}
+
+export interface WriteBackBatchAdapterResult {
+  results: WriteBackResult[];
+  mutations: AppliedMutationRecord[];
+  performance: BatchPerformanceMetrics;
+  fatalError?: string;
+}
+
 export interface WriteBackDocumentAdapter {
   applySingle(input: ApplySingleReviewItemInput): Promise<WriteBackResult>;
+  applyBatch?(input: ApplyBatchReviewItemsInput): Promise<WriteBackBatchAdapterResult>;
 }

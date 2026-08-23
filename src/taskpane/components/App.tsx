@@ -27,9 +27,17 @@ import {
 } from "@/taskpane/taskpane";
 import {
   applySingleReviewItem,
+  buildWriteBackReportRows,
+  createWriteBackPlan,
   createPendingWriteBackResult,
-  runCorrectionAutoApply,
+  runWriteBackBatch,
+  serializeWriteBackReportCsv,
+  writeBackReportFileName,
   type AppliedMutationRecord,
+  type BatchProgress,
+  type BatchRunStatus,
+  type BatchWriteBackResult,
+  type WriteBackPlan,
   type WriteBackResult,
   type WriteBackState,
 } from "@/write-back-engine";
@@ -48,8 +56,12 @@ const App: React.FC = () => {
   const [view, setView] = useState<"WORKSPACE" | "SETTINGS">("WORKSPACE");
   const [mode, setMode] = useState<ReviewMode>("ANALYSIS");
   const [footnotes, setFootnotes] = useState<FootnoteSnapshot[]>([]);
-  const [documentFormatting, setDocumentFormatting] = useState<DocumentFormattingSnapshot | null>(null);
-  const [readerMetrics, setReaderMetrics] = useState<FootnoteReadResult["readerMetrics"] | null>(null);
+  const [documentFormatting, setDocumentFormatting] = useState<DocumentFormattingSnapshot | null>(
+    null
+  );
+  const [readerMetrics, setReaderMetrics] = useState<FootnoteReadResult["readerMetrics"] | null>(
+    null
+  );
   const [engineResult, setEngineResult] = useState<FootnoteEngineResult | null>(null);
   const [decisionState, setDecisionState] = useState<ReviewDecisionState>({});
   const [message, setMessage] = useState("");
@@ -58,7 +70,14 @@ const App: React.FC = () => {
   const [hasError, setHasError] = useState(false);
   const [confirmReanalysis, setConfirmReanalysis] = useState(false);
   const [writeBackState, setWriteBackState] = useState<WriteBackState>({});
+  const [analysisTimestamp, setAnalysisTimestamp] = useState("");
+  const [writeBackPlan, setWriteBackPlan] = useState<WriteBackPlan | null>(null);
+  const [batchResult, setBatchResult] = useState<BatchWriteBackResult | null>(null);
+  const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
+  const [batchRunStatus, setBatchRunStatus] = useState<BatchRunStatus>("IDLE");
+  const [reportError, setReportError] = useState("");
   const readInProgressRef = useRef(false);
+  const batchInFlightRef = useRef(false);
   const writeBackInFlightRef = useRef(new Set<string>());
   const appliedMutationsRef = useRef<AppliedMutationRecord[]>([]);
 
@@ -87,7 +106,12 @@ const App: React.FC = () => {
   );
 
   const analyzeCurrentDocument = async () => {
-    if (readInProgressRef.current) return;
+    if (
+      readInProgressRef.current ||
+      batchInFlightRef.current ||
+      writeBackInFlightRef.current.size > 0
+    )
+      return;
     readInProgressRef.current = true;
     setIsLoading(true);
     setHasError(false);
@@ -95,7 +119,9 @@ const App: React.FC = () => {
     setReadProgress(createFootnoteReadProgress("initializing", 0, 0));
     try {
       const result = await readFootnotes(setReadProgress);
-      setReadProgress(createFootnoteReadProgress("analyzing", result.footnotes.length, result.footnotes.length));
+      setReadProgress(
+        createFootnoteReadProgress("analyzing", result.footnotes.length, result.footnotes.length)
+      );
       const analysis = analyzeFootnotes(result.footnotes, {
         profile: activeProfile,
         mappingData,
@@ -105,9 +131,16 @@ const App: React.FC = () => {
       setDocumentFormatting(result.documentFormatting);
       setReaderMetrics(result.readerMetrics);
       setEngineResult(analysis);
+      const analyzedAt = new Date().toISOString();
+      setAnalysisTimestamp(analyzedAt);
       const reconciledDecisions = reconcileReviewDecisions(decisionState, analysis.findings);
       setDecisionState(reconciledDecisions);
       setWriteBackState({});
+      setWriteBackPlan(null);
+      setBatchResult(null);
+      setBatchProgress(null);
+      setBatchRunStatus("IDLE");
+      setReportError("");
       appliedMutationsRef.current = [];
       if (mode === "CORRECTION") {
         const analyzedReview = runReviewEngine({
@@ -122,37 +155,48 @@ const App: React.FC = () => {
             ])
           ),
         });
-        const autoApply = await runCorrectionAutoApply({
+        const plan = createWriteBackPlan({ mode, items: analyzedReview.items });
+        setWriteBackPlan(plan);
+        batchInFlightRef.current = true;
+        setBatchRunStatus("PLANNING");
+        const batch = await runWriteBackBatch(plan, {
           items: analyzedReview.items,
           footnotes: result.footnotes,
-          onProgress: ({ processed, total }) =>
-            setReadProgress(createFootnoteReadProgress("correcting", processed, total)),
-          onResult: (writeBackResult) =>
-            setWriteBackState((current) => ({
-              ...current,
-              [writeBackResult.reviewItemId]: writeBackResult,
-            })),
+          onProgress: (progress) => {
+            setBatchProgress(progress);
+            setBatchRunStatus(progress.phase === "PLANNING" ? "PLANNING" : "RUNNING");
+          },
+          onResults: (writeBackResults) =>
+            setWriteBackState((current) => {
+              const next = { ...current };
+              for (const result of writeBackResults) next[result.reviewItemId] = result;
+              return next;
+            }),
         });
-        setWriteBackState(autoApply.state);
-        appliedMutationsRef.current = autoApply.mutations;
-        setMessage(
-          `${autoApply.summary.applied} Korrekturen durchgeführt · ${autoApply.summary.stale} erneut prüfen · ${analyzedReview.summary.byClass.manual} müssen manuell geprüft werden${autoApply.summary.failed > 0 ? ` · ${autoApply.summary.failed} fehlgeschlagen` : ""}`
-        );
+        setWriteBackState(batch.state);
+        appliedMutationsRef.current = batch.mutations;
+        setBatchResult(batch);
+        setBatchRunStatus(batch.status);
+        setMessage("");
       } else if (result.footnotes.length === 0) {
         setMessage("Das Dokument enthält keine Fußnoten.");
       }
-      setReadProgress(createFootnoteReadProgress("complete", result.footnotes.length, result.footnotes.length));
+      setReadProgress(
+        createFootnoteReadProgress("complete", result.footnotes.length, result.footnotes.length)
+      );
     } catch (error) {
       setHasError(true);
       setMessage(formatReaderError(error));
       setReadProgress(null);
     } finally {
+      batchInFlightRef.current = false;
       readInProgressRef.current = false;
       setIsLoading(false);
     }
   };
 
   const requestAnalysis = () => {
+    if (batchInFlightRef.current || writeBackInFlightRef.current.size > 0) return;
     if (Object.keys(decisionState).length > 0 && engineResult) {
       setConfirmReanalysis(true);
       return;
@@ -170,10 +214,11 @@ const App: React.FC = () => {
   const handleClearStatus = (item: ReviewItem) =>
     setDecisionState((current) => clearExplicitReviewStatus(current, item.finding.findingId));
   const handleAcceptAllAutomatic = () => {
-    if (reviewResult) setDecisionState((current) => acceptAllAutomatic(current, reviewResult.items));
+    if (reviewResult)
+      setDecisionState((current) => acceptAllAutomatic(current, reviewResult.items));
   };
   const handleApplySingle = async (item: ReviewItem) => {
-    if (writeBackInFlightRef.current.has(item.reviewItemId)) return;
+    if (batchInFlightRef.current || writeBackInFlightRef.current.has(item.reviewItemId)) return;
     const footnote = footnotes.find((candidate) => candidate.id === item.finding.footnoteId);
     if (!footnote) {
       const result: WriteBackResult = {
@@ -182,7 +227,8 @@ const App: React.FC = () => {
         actionKind: item.proposedAction?.type,
         reason: "FOOTNOTE_NOT_FOUND",
         reasons: ["FOOTNOTE_NOT_FOUND"],
-        message: "Die Fußnote wurde seit der Analyse verändert. Bitte prüfen Sie die Fußnote erneut.",
+        message:
+          "Die Fußnote wurde seit der Analyse verändert. Bitte prüfen Sie die Fußnote erneut.",
       };
       setWriteBackState((current) => ({ ...current, [item.reviewItemId]: result }));
       return;
@@ -200,15 +246,94 @@ const App: React.FC = () => {
       });
       if (
         result.mutation &&
-        !appliedMutationsRef.current.some(
-          (record) => record.reviewItemId === result.reviewItemId
-        )
+        !appliedMutationsRef.current.some((record) => record.reviewItemId === result.reviewItemId)
       ) {
         appliedMutationsRef.current = [...appliedMutationsRef.current, result.mutation];
       }
       setWriteBackState((current) => ({ ...current, [item.reviewItemId]: result }));
     } finally {
       writeBackInFlightRef.current.delete(item.reviewItemId);
+    }
+  };
+
+  const runReviewBatch = async () => {
+    if (
+      !reviewResult ||
+      batchInFlightRef.current ||
+      readInProgressRef.current ||
+      writeBackInFlightRef.current.size > 0
+    )
+      return;
+    const plan = createWriteBackPlan({
+      mode: "REVIEW",
+      items: reviewResult.items,
+      state: writeBackState,
+    });
+    if (plan.totals.eligible === 0) return;
+    batchInFlightRef.current = true;
+    setWriteBackPlan(plan);
+    setBatchResult(null);
+    setBatchRunStatus("PLANNING");
+    setBatchProgress(null);
+    setReportError("");
+    try {
+      const batch = await runWriteBackBatch(plan, {
+        items: reviewResult.items,
+        footnotes,
+        initialState: writeBackState,
+        initialMutations: appliedMutationsRef.current,
+        onProgress: (progress) => {
+          setBatchProgress(progress);
+          setBatchRunStatus(progress.phase === "PLANNING" ? "PLANNING" : "RUNNING");
+        },
+        onResults: (writeBackResults) =>
+          setWriteBackState((current) => {
+            const next = { ...current };
+            for (const result of writeBackResults) next[result.reviewItemId] = result;
+            return next;
+          }),
+      });
+      setWriteBackState(batch.state);
+      appliedMutationsRef.current = batch.mutations;
+      setBatchResult(batch);
+      setBatchRunStatus(batch.status);
+    } catch {
+      setBatchRunStatus("FAILED");
+      setReportError("Der Korrekturlauf konnte technisch nicht abgeschlossen werden.");
+    } finally {
+      batchInFlightRef.current = false;
+    }
+  };
+
+  const exportDetailReport = () => {
+    if (!reviewResult || !engineResult) return;
+    setReportError("");
+    try {
+      const reportPlan =
+        writeBackPlan ??
+        createWriteBackPlan({ mode, items: reviewResult.items, state: writeBackState });
+      const rows = buildWriteBackReportRows({
+        items: reviewResult.items,
+        footnotes,
+        analysisTimestamp: analysisTimestamp || new Date().toISOString(),
+        plan: reportPlan,
+        batchResult: batchResult ?? undefined,
+        writeBackState,
+        engineResult,
+      });
+      const url = URL.createObjectURL(
+        new Blob([serializeWriteBackReportCsv(rows)], { type: "text/csv;charset=utf-8" })
+      );
+      const link = document.createElement("a");
+      try {
+        link.href = url;
+        link.download = writeBackReportFileName();
+        link.click();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    } catch {
+      setReportError("Der Detailbericht konnte nicht exportiert werden.");
     }
   };
 
@@ -231,14 +356,26 @@ const App: React.FC = () => {
   }
 
   return (
-    <React.Suspense fallback={<main className="fc-app"><div className="fc-shell"><p className="fc-notice">Oberfläche wird geladen …</p></div></main>}>
+    <React.Suspense
+      fallback={
+        <main className="fc-app">
+          <div className="fc-shell">
+            <p className="fc-notice">Oberfläche wird geladen …</p>
+          </div>
+        </main>
+      }
+    >
       <ReviewWorkspace
         mode={mode}
-        onModeChange={setMode}
+        onModeChange={(nextMode) => {
+          if (!batchInFlightRef.current) setMode(nextMode);
+        }}
         isLoading={isLoading}
         progress={readProgress}
         onAnalyze={requestAnalysis}
-        onOpenSettings={() => setView("SETTINGS")}
+        onOpenSettings={() => {
+          if (!batchInFlightRef.current) setView("SETTINGS");
+        }}
         footnotes={footnotes}
         engineResult={engineResult}
         reviewResult={reviewResult}
@@ -249,6 +386,17 @@ const App: React.FC = () => {
         onResetDecisions={() => setDecisionState(resetAllDecisions())}
         writeBackState={writeBackState}
         onApplySingle={handleApplySingle}
+        onRunReviewBatch={() => void runReviewBatch()}
+        onExportDetailReport={exportDetailReport}
+        batchRunStatus={batchRunStatus}
+        batchProgress={batchProgress}
+        batchResult={batchResult}
+        currentPlan={
+          reviewResult
+            ? createWriteBackPlan({ mode, items: reviewResult.items, state: writeBackState })
+            : null
+        }
+        reportError={reportError}
         message={message}
         hasError={hasError}
         readerMetrics={readerMetrics}

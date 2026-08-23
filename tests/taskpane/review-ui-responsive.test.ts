@@ -37,6 +37,14 @@ const correctionAutoApply = readFileSync(
   join(process.cwd(), "src/write-back-engine/correction-auto-apply.ts"),
   "utf8"
 );
+const batchRunner = readFileSync(
+  join(process.cwd(), "src/write-back-engine/batch-runner.ts"),
+  "utf8"
+);
+const batchPlanner = readFileSync(
+  join(process.cwd(), "src/write-back-engine/batch-planner.ts"),
+  "utf8"
+);
 
 function cssRule(selector: string): string {
   const start = css.indexOf(`${selector} {`);
@@ -122,8 +130,9 @@ assert(
   workspace.includes("if (!action) return null") &&
     workspace.includes('"Datumsformat prüfen"') &&
     workspace.includes('"Durchführen"') &&
-    !workspace.includes("Alle durchführen"),
-  "Manual dates must render one explanation without an action preview, and write-back must remain single-item only"
+    workspace.includes("Ausgewählte Änderungen durchführen") &&
+    !workspace.includes("Alle Findings durchführen"),
+  "Manual dates must render one explanation and review write-back must use the selected-items batch action"
 );
 assert(
   writeBackStatus.includes('PENDING: "Ausstehend"') &&
@@ -144,15 +153,31 @@ assert(
   "React must delegate one guarded write-back to the central engine and never access Word directly"
 );
 assert(
-  app.includes("runCorrectionAutoApply") &&
+  app.includes("runWriteBackBatch") &&
+    app.includes("createWriteBackPlan") &&
     app.includes('mode === "CORRECTION"') &&
     workspace.includes("Sichere Korrekturen werden durchgeführt …") &&
-    workspace.includes("Durchgeführt: {appliedCount}") &&
-    correctionAutoApply.includes('item.reviewClass === "AUTO"') &&
-    correctionAutoApply.includes("canApplySingleReviewItem") &&
-    correctionAutoApply.includes("await applySingleReviewItem") &&
-    !correctionAutoApply.includes("Word.run"),
-  "Correction mode must visibly auto-apply only safe AUTO items through the central sequential engine"
+    workspace.includes("batchSummary?.applied") &&
+    batchPlanner.includes('mode === "CORRECTION"') &&
+    batchPlanner.includes('item.reviewClass === "AUTO"') &&
+    batchRunner.includes("await applySingleReviewItem") &&
+    correctionAutoApply.includes("runWriteBackBatch") &&
+    !batchRunner.includes("Word.run"),
+  "Correction mode and its compatibility wrapper must use the central guarded batch engine"
+);
+assert(
+  workspace.includes("Detailbericht exportieren") &&
+    workspace.includes("Korrekturlauf abgeschlossen") &&
+    app.includes("serializeWriteBackReportCsv") &&
+    app.includes("new Blob") &&
+    !app.includes("fetch("),
+  "The local CSV report and compact batch completion summary must remain available without networking"
+);
+assert(
+  workspace.includes("(props.currentPlan?.totals.eligible ?? 0) === 0") &&
+    workspace.includes("disabled={isMutationRunning") &&
+    workspace.includes("Änderungen werden durchgeführt …"),
+  "The review batch action must be disabled without eligible selections and during mutations"
 );
 assert(
   writeBackStatus.includes('"Bereits erledigt"') &&

@@ -1,7 +1,7 @@
 import type { ReviewItem } from "@/review-engine";
 import type { FootnoteSnapshot } from "@/taskpane/taskpane";
-import { applySingleReviewItem } from "./runner";
-import { canApplySingleReviewItem, createPendingWriteBackResult } from "./status";
+import { createWriteBackPlan } from "./batch-planner";
+import { runWriteBackBatch } from "./batch-runner";
 import type {
   AppliedMutationRecord,
   WriteBackDocumentAdapter,
@@ -41,13 +41,12 @@ export function isCorrectionAutoApplyCandidate(
   item: ReviewItem,
   existing?: WriteBackResult
 ): boolean {
-  return (
-    item.reviewClass === "AUTO" &&
-    item.decision.effectiveStatus === "ACCEPTED" &&
-    item.decision.explicitStatus !== "REJECTED" &&
-    item.decision.explicitStatus !== "DEFERRED" &&
-    canApplySingleReviewItem(item, existing)
-  );
+  return createWriteBackPlan({
+    mode: "CORRECTION",
+    items: [item],
+    state: existing ? { [item.reviewItemId]: existing } : {},
+    createdAt: "selection",
+  }).items[0].planned;
 }
 
 export function selectCorrectionAutoApplyItems(
@@ -77,55 +76,32 @@ export async function runCorrectionAutoApply(input: {
   adapter?: WriteBackDocumentAdapter;
   onProgress?(progress: CorrectionAutoApplyProgress): void;
   onResult?(result: WriteBackResult): void;
+  onResults?(results: readonly WriteBackResult[]): void;
 }): Promise<CorrectionAutoApplyResult> {
-  const footnotes = new Map(input.footnotes.map((footnote) => [footnote.id, footnote]));
-  const state: Record<string, WriteBackResult> = { ...(input.initialState ?? {}) };
-  const mutations = [...(input.initialMutations ?? [])];
-  const selected = selectCorrectionAutoApplyItems(input.items, state);
-  const summary: CorrectionAutoApplySummary = {
-    total: selected.length,
-    applied: 0,
-    stale: 0,
-    failed: 0,
+  const plan = createWriteBackPlan({
+    mode: "CORRECTION",
+    items: input.items,
+    state: input.initialState,
+  });
+  const result = await runWriteBackBatch(plan, {
+    items: input.items,
+    footnotes: input.footnotes,
+    initialState: input.initialState,
+    initialMutations: input.initialMutations,
+    adapter: input.adapter,
+    onResult: input.onResult,
+    onResults: input.onResults,
+    onProgress: (progress) =>
+      input.onProgress?.({ processed: progress.processed, total: progress.total }),
+  });
+  return {
+    state: result.state,
+    mutations: result.mutations,
+    summary: {
+      total: result.summary.planned,
+      applied: result.summary.applied + result.summary.alreadyResolved,
+      stale: result.summary.stale,
+      failed: result.summary.failed,
+    },
   };
-  input.onProgress?.({ processed: 0, total: selected.length });
-
-  for (let index = 0; index < selected.length; index += 1) {
-    const item = selected[index];
-    const pending = createPendingWriteBackResult(item, "Wird durchgeführt …");
-    state[item.reviewItemId] = pending;
-    input.onResult?.(pending);
-    const footnote = footnotes.get(item.finding.footnoteId);
-    let result: WriteBackResult;
-    if (!footnote) {
-      result = {
-        reviewItemId: item.reviewItemId,
-        status: "STALE",
-        actionKind: item.proposedAction?.type,
-        reason: "FOOTNOTE_NOT_FOUND",
-        reasons: ["FOOTNOTE_NOT_FOUND"],
-        message:
-          "Die Fußnote wurde seit der Analyse verändert. Bitte prüfen Sie die Fußnote erneut.",
-      };
-    } else {
-      result = await applySingleReviewItem(
-        { reviewItem: item, footnote, appliedMutations: mutations },
-        input.adapter
-      );
-    }
-    state[item.reviewItemId] = result;
-    if (
-      result.mutation &&
-      !mutations.some((record) => record.reviewItemId === result.reviewItemId)
-    ) {
-      mutations.push(result.mutation);
-    }
-    if (result.status === "APPLIED") summary.applied += 1;
-    else if (result.status === "STALE") summary.stale += 1;
-    else summary.failed += 1;
-    input.onResult?.(result);
-    input.onProgress?.({ processed: index + 1, total: selected.length });
-  }
-
-  return { state, mutations, summary };
 }

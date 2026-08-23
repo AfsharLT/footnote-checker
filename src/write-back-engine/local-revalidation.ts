@@ -11,6 +11,37 @@ interface RebasedTarget {
   safelyTransformed: boolean;
 }
 
+export function rebaseResolvedRangeThroughMutations(
+  target: { start: number; end: number; matchedText: string },
+  mutations: readonly AppliedMutationRecord[]
+): RebasedTarget {
+  let { start, end, matchedText } = target;
+  let safelyTransformed = true;
+  for (const mutation of mutations) {
+    if (mutation.actionKind === "FORMAT_CHANGE") continue;
+    if (mutation.oldEnd <= start) {
+      start += mutation.newTextLengthDelta;
+      end += mutation.newTextLengthDelta;
+      continue;
+    }
+    if (mutation.oldStart >= end) continue;
+    if (mutation.newText === undefined) {
+      safelyTransformed = false;
+      continue;
+    }
+    const relativeStart = mutation.oldStart - start;
+    const relativeEnd = mutation.oldEnd - start;
+    if (relativeStart < 0 || relativeEnd > matchedText.length || relativeStart > relativeEnd) {
+      safelyTransformed = false;
+      continue;
+    }
+    matchedText =
+      matchedText.slice(0, relativeStart) + mutation.newText + matchedText.slice(relativeEnd);
+    end += mutation.newTextLengthDelta;
+  }
+  return { start, end, matchedText, safelyTransformed };
+}
+
 interface Candidate {
   start: number;
   end: number;
@@ -98,41 +129,13 @@ function rebasedTarget(
   item: ReviewItem,
   mutations: readonly AppliedMutationRecord[]
 ): RebasedTarget {
-  let start = item.finding.start;
-  let end = item.finding.end;
-  let matchedText = item.finding.originalText;
-  let safelyTransformed = true;
-
-  for (const mutation of mutations) {
-    if (
-      mutation.footnoteId !== footnote.id ||
-      mutation.reviewItemId === item.reviewItemId ||
-      mutation.actionKind === "FORMAT_CHANGE"
-    ) {
-      continue;
-    }
-    if (mutation.oldEnd <= start) {
-      start += mutation.newTextLengthDelta;
-      end += mutation.newTextLengthDelta;
-      continue;
-    }
-    if (mutation.oldStart >= end) continue;
-    if (mutation.newText === undefined) {
-      safelyTransformed = false;
-      continue;
-    }
-    const relativeStart = mutation.oldStart - start;
-    const relativeEnd = mutation.oldEnd - start;
-    if (relativeStart < 0 || relativeEnd > matchedText.length || relativeStart > relativeEnd) {
-      safelyTransformed = false;
-      continue;
-    }
-    matchedText =
-      matchedText.slice(0, relativeStart) + mutation.newText + matchedText.slice(relativeEnd);
-    end += mutation.newTextLengthDelta;
-  }
-
-  return { start, end, matchedText, safelyTransformed };
+  return rebaseResolvedRangeThroughMutations(
+    { start: item.finding.start, end: item.finding.end, matchedText: item.finding.originalText },
+    mutations.filter(
+      (mutation) =>
+        mutation.footnoteId === footnote.id && mutation.reviewItemId !== item.reviewItemId
+    )
+  );
 }
 
 function textAfterKnownMutations(

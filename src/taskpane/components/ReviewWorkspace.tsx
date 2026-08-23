@@ -1,17 +1,13 @@
 import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
-import {
-  Dialog as AriaDialog,
-  Heading,
-  Modal,
-  ModalOverlay,
-} from "react-aria-components";
+import { Dialog as AriaDialog, Heading, Modal, ModalOverlay } from "react-aria-components";
 import {
   AlertTriangle,
   Check,
   CheckCheck,
   CircleAlert,
   Clock3,
+  Download,
   Filter,
   Info,
   LoaderCircle,
@@ -62,8 +58,13 @@ import type {
 } from "@/taskpane/taskpane";
 import {
   canApplySingleReviewItem,
+  batchProgressPercent,
   writeBackResultLabel,
   writeBackResultForItem,
+  type BatchProgress,
+  type BatchRunStatus,
+  type BatchWriteBackResult,
+  type WriteBackPlan,
   type WriteBackResult,
   type WriteBackState,
   type WriteBackStatus,
@@ -117,6 +118,13 @@ interface ReviewWorkspaceProps {
   onResetDecisions(): void;
   writeBackState: WriteBackState;
   onApplySingle(item: ReviewItem): void;
+  onRunReviewBatch(): void;
+  onExportDetailReport(): void;
+  batchRunStatus: BatchRunStatus;
+  batchProgress: BatchProgress | null;
+  batchResult: BatchWriteBackResult | null;
+  currentPlan: WriteBackPlan | null;
+  reportError: string;
   message: string;
   hasError: boolean;
   readerMetrics: FootnoteReadResult["readerMetrics"] | null;
@@ -146,20 +154,30 @@ function severityIcon(severity: ReviewItem["finding"]["severity"]): React.ReactN
   return <Info size={14} aria-hidden="true" />;
 }
 
-function FilterFields({ filters, onChange }: { filters: ReviewFilters; onChange(filters: ReviewFilters): void }) {
+function FilterFields({
+  filters,
+  onChange,
+}: {
+  filters: ReviewFilters;
+  onChange(filters: ReviewFilters): void;
+}) {
   return (
     <div className="fc-filter-grid">
       <FilterSelect
         label="Schweregrad"
         value={filters.severity}
         options={SEVERITY_OPTIONS}
-        onChange={(severity) => onChange({ ...filters, severity: severity as ReviewFilters["severity"] })}
+        onChange={(severity) =>
+          onChange({ ...filters, severity: severity as ReviewFilters["severity"] })
+        }
       />
       <FilterSelect
         label="Review"
         value={filters.reviewClass}
         options={REVIEW_CLASS_OPTIONS}
-        onChange={(reviewClass) => onChange({ ...filters, reviewClass: reviewClass as ReviewFilters["reviewClass"] })}
+        onChange={(reviewClass) =>
+          onChange({ ...filters, reviewClass: reviewClass as ReviewFilters["reviewClass"] })
+        }
       />
       <FilterSelect
         label="Status"
@@ -171,7 +189,9 @@ function FilterFields({ filters, onChange }: { filters: ReviewFilters; onChange(
         label="Kategorie"
         value={filters.category}
         options={CATEGORY_OPTIONS}
-        onChange={(category) => onChange({ ...filters, category: category as ReviewFilters["category"] })}
+        onChange={(category) =>
+          onChange({ ...filters, category: category as ReviewFilters["category"] })
+        }
       />
     </div>
   );
@@ -184,22 +204,42 @@ function ReviewSummary({ result, mode }: { result: ReviewEngineResult; mode: Rev
       <div className="fc-summary__heading">
         <div>
           <p className="fc-eyebrow">Prüfergebnis</p>
-          <h2>{mode === "CORRECTION" ? `${summary.correctionReady} sichere Korrekturen` : `${summary.total} Findings`}</h2>
+          <h2>
+            {mode === "CORRECTION"
+              ? `${summary.correctionReady} sichere Korrekturen`
+              : `${summary.total} Findings`}
+          </h2>
         </div>
-        {summary.conflicts > 0 && <span className="fc-badge fc-badge--technical">{summary.conflicts} Konflikte</span>}
+        {summary.conflicts > 0 && (
+          <span className="fc-badge fc-badge--technical">{summary.conflicts} Konflikte</span>
+        )}
       </div>
       <div className="fc-summary__grid">
-        <div><span>Automatisch</span><strong>{summary.byClass.automatic}</strong></div>
-        <div><span>Prüfen</span><strong>{summary.byClass.manual}</strong></div>
-        <div><span>Technisch</span><strong>{summary.byClass.technical}</strong></div>
-        <div><span>Hinweise</span><strong>{summary.byClass.info}</strong></div>
+        <div>
+          <span>Automatisch</span>
+          <strong>{summary.byClass.automatic}</strong>
+        </div>
+        <div>
+          <span>Prüfen</span>
+          <strong>{summary.byClass.manual}</strong>
+        </div>
+        <div>
+          <span>Technisch</span>
+          <strong>{summary.byClass.technical}</strong>
+        </div>
+        <div>
+          <span>Hinweise</span>
+          <strong>{summary.byClass.info}</strong>
+        </div>
       </div>
       <p className="fc-summary__status">
-        {summary.byStatus.open} offen · {summary.byStatus.accepted} übernehmen · {summary.byStatus.rejected} abgelehnt · {summary.byStatus.deferred} später
+        {summary.byStatus.open} offen · {summary.byStatus.accepted} übernehmen ·{" "}
+        {summary.byStatus.rejected} abgelehnt · {summary.byStatus.deferred} später
       </p>
       {mode === "CORRECTION" && (
         <p className="fc-summary__correction">
-          {summary.byClass.manual} müssen geprüft werden · {summary.byClass.technical} technisch blockiert. Sichere AUTO-Korrekturen werden automatisch angewendet.
+          {summary.byClass.manual} müssen geprüft werden · {summary.byClass.technical} technisch
+          blockiert. Sichere AUTO-Korrekturen werden automatisch angewendet.
         </p>
       )}
     </SpotlightCard>
@@ -211,7 +251,10 @@ function ActionPreview({ item }: { item: ReviewItem }) {
   if (!action) return null;
   if (action.type === "TEXT_REPLACE") {
     return (
-      <div className="fc-change" aria-label={`Änderung von ${action.originalText} zu ${action.replacementText}`}>
+      <div
+        className="fc-change"
+        aria-label={`Änderung von ${action.originalText} zu ${action.replacementText}`}
+      >
         <span className="fc-change__before">{action.originalText || "(leer)"}</span>
         <span aria-hidden="true">→</span>
         <span className="fc-change__after">{action.replacementText || "(entfernen)"}</span>
@@ -219,7 +262,11 @@ function ActionPreview({ item }: { item: ReviewItem }) {
     );
   }
   if (action.type === "TEXT_INSERT") {
-    return <p className="fc-change fc-change--insert">Ergänzen: <span className="fc-change__after">{action.text}</span></p>;
+    return (
+      <p className="fc-change fc-change--insert">
+        Ergänzen: <span className="fc-change__after">{action.text}</span>
+      </p>
+    );
   }
   const property = Object.keys(action.changes)[0] ?? "Formatierung";
   const actual = item.finding.metadata?.actual;
@@ -240,33 +287,98 @@ function findingTitle(item: ReviewItem): string {
     : getRuleTitle(item.finding.ruleId);
 }
 
-function TechnicalDetails({ item, engineResult }: { item: ReviewItem; engineResult: FootnoteEngineResult }) {
-  const parseResult = engineResult.parseResults.find((result) => result.footnoteId === item.finding.footnoteId);
+function TechnicalDetails({
+  item,
+  engineResult,
+}: {
+  item: ReviewItem;
+  engineResult: FootnoteEngineResult;
+}) {
+  const parseResult = engineResult.parseResults.find(
+    (result) => result.footnoteId === item.finding.footnoteId
+  );
   const segment = parseResult?.segments.find(
     (candidate) => candidate.start <= item.finding.start && candidate.end >= item.finding.end
   );
   const segmentAnalysis = segment
     ? engineResult.segmentAnalyses.find(
-        (analysis) => analysis.footnoteId === item.finding.footnoteId && analysis.segmentId === segment.segmentId
+        (analysis) =>
+          analysis.footnoteId === item.finding.footnoteId &&
+          analysis.segmentId === segment.segmentId
       )
     : undefined;
   return (
     <dl className="fc-technical-grid">
-      <div><dt>Rule ID</dt><dd>{item.finding.ruleId}</dd></div>
-      <div><dt>Kategorie</dt><dd>{CATEGORY_LABELS[item.finding.category]}</dd></div>
-      <div><dt>Severity</dt><dd>{SEVERITY_LABELS[item.finding.severity]}</dd></div>
-      <div><dt>Review-Grund</dt><dd>{REVIEW_REASON_LABELS[item.classificationReason]}</dd></div>
-      <div><dt>Bereich</dt><dd>[{item.finding.start}, {item.finding.end})</dd></div>
-      <div><dt>Finding ID</dt><dd>{item.finding.findingId}</dd></div>
-      <div><dt>Quelltext-Hash</dt><dd>{item.finding.sourceTextHash}</dd></div>
-      <div><dt>Parser Type</dt><dd>{segment?.classification.type ?? "–"}</dd></div>
-      <div><dt>Effective Type</dt><dd>{segmentAnalysis?.effectiveClassification.effectiveType ?? "–"}</dd></div>
-      <div><dt>Extraction Status</dt><dd>{segment?.extraction?.status ?? "–"}</dd></div>
-      <div><dt>Source Mapping</dt><dd><pre>{JSON.stringify(segmentAnalysis?.sourceMappings ?? [], null, 2)}</pre></dd></div>
-      <div><dt>Formatting Metadata</dt><dd><pre>{JSON.stringify(item.finding.metadata ?? {}, null, 2)}</pre></dd></div>
-      <div><dt>Proposed Action</dt><dd><pre>{JSON.stringify(item.proposedAction ?? null, null, 2)}</pre></dd></div>
-      <div><dt>Technical Eligibility</dt><dd><pre>{JSON.stringify(item.technicalEligibility, null, 2)}</pre></dd></div>
-      <div><dt>Conflict IDs</dt><dd>{item.conflicts.map((conflict) => conflict.conflictId).join(", ") || "–"}</dd></div>
+      <div>
+        <dt>Rule ID</dt>
+        <dd>{item.finding.ruleId}</dd>
+      </div>
+      <div>
+        <dt>Kategorie</dt>
+        <dd>{CATEGORY_LABELS[item.finding.category]}</dd>
+      </div>
+      <div>
+        <dt>Severity</dt>
+        <dd>{SEVERITY_LABELS[item.finding.severity]}</dd>
+      </div>
+      <div>
+        <dt>Review-Grund</dt>
+        <dd>{REVIEW_REASON_LABELS[item.classificationReason]}</dd>
+      </div>
+      <div>
+        <dt>Bereich</dt>
+        <dd>
+          [{item.finding.start}, {item.finding.end})
+        </dd>
+      </div>
+      <div>
+        <dt>Finding ID</dt>
+        <dd>{item.finding.findingId}</dd>
+      </div>
+      <div>
+        <dt>Quelltext-Hash</dt>
+        <dd>{item.finding.sourceTextHash}</dd>
+      </div>
+      <div>
+        <dt>Parser Type</dt>
+        <dd>{segment?.classification.type ?? "–"}</dd>
+      </div>
+      <div>
+        <dt>Effective Type</dt>
+        <dd>{segmentAnalysis?.effectiveClassification.effectiveType ?? "–"}</dd>
+      </div>
+      <div>
+        <dt>Extraction Status</dt>
+        <dd>{segment?.extraction?.status ?? "–"}</dd>
+      </div>
+      <div>
+        <dt>Source Mapping</dt>
+        <dd>
+          <pre>{JSON.stringify(segmentAnalysis?.sourceMappings ?? [], null, 2)}</pre>
+        </dd>
+      </div>
+      <div>
+        <dt>Formatting Metadata</dt>
+        <dd>
+          <pre>{JSON.stringify(item.finding.metadata ?? {}, null, 2)}</pre>
+        </dd>
+      </div>
+      <div>
+        <dt>Proposed Action</dt>
+        <dd>
+          <pre>{JSON.stringify(item.proposedAction ?? null, null, 2)}</pre>
+        </dd>
+      </div>
+      <div>
+        <dt>Technical Eligibility</dt>
+        <dd>
+          <pre>{JSON.stringify(item.technicalEligibility, null, 2)}</pre>
+        </dd>
+      </div>
+      <div>
+        <dt>Conflict IDs</dt>
+        <dd>{item.conflicts.map((conflict) => conflict.conflictId).join(", ") || "–"}</dd>
+      </div>
     </dl>
   );
 }
@@ -279,6 +391,7 @@ function FindingCard({
   onClearStatus,
   writeBackResult,
   onApplySingle,
+  batchRunning,
 }: {
   item: ReviewItem;
   mode: ReviewMode;
@@ -287,6 +400,7 @@ function FindingCard({
   onClearStatus(item: ReviewItem): void;
   writeBackResult?: WriteBackResult;
   onApplySingle(item: ReviewItem): void;
+  batchRunning: boolean;
 }) {
   const blockedReason = REVIEW_REASON_LABELS[item.classificationReason];
   const title = findingTitle(item);
@@ -296,44 +410,116 @@ function FindingCard({
   return (
     <article className={`fc-finding fc-finding--${item.finding.severity}`}>
       <div className="fc-finding__topline">
-        <span className={`fc-badge fc-badge--severity-${item.finding.severity}`}>{severityIcon(item.finding.severity)}{SEVERITY_LABELS[item.finding.severity]}</span>
-        <span className={`fc-badge fc-badge--class-${item.reviewClass.toLowerCase()}`}>{REVIEW_CLASS_LABELS[item.reviewClass]}</span>
-        {item.conflicts.length > 0 && <span className="fc-badge fc-badge--technical"><ShieldAlert size={13} aria-hidden="true" />Konflikt</span>}
+        <span className={`fc-badge fc-badge--severity-${item.finding.severity}`}>
+          {severityIcon(item.finding.severity)}
+          {SEVERITY_LABELS[item.finding.severity]}
+        </span>
+        <span className={`fc-badge fc-badge--class-${item.reviewClass.toLowerCase()}`}>
+          {REVIEW_CLASS_LABELS[item.reviewClass]}
+        </span>
+        {item.conflicts.length > 0 && (
+          <span className="fc-badge fc-badge--technical">
+            <ShieldAlert size={13} aria-hidden="true" />
+            Konflikt
+          </span>
+        )}
       </div>
       <h3>{title}</h3>
       <ActionPreview item={item} />
       <p className="fc-finding__message">{item.finding.message}</p>
-      {item.conflicts.length > 0 && <p className="fc-finding__conflict">Diese Änderung überschneidet sich mit einer anderen vorgeschlagenen Änderung.</p>}
+      {item.conflicts.length > 0 && (
+        <p className="fc-finding__conflict">
+          Diese Änderung überschneidet sich mit einer anderen vorgeschlagenen Änderung.
+        </p>
+      )}
       <div className="fc-finding__status">
         <span>Status:</span>
-        <span className={`fc-status fc-status--${item.decision.effectiveStatus.toLowerCase()}`}>{statusIcon(item.decision.effectiveStatus)}{REVIEW_STATUS_LABELS[item.decision.effectiveStatus]}</span>
-        {item.decision.source === "MODE_DEFAULT" && mode === "CORRECTION" && <span className="fc-muted">automatisch freigegeben</span>}
+        <span className={`fc-status fc-status--${item.decision.effectiveStatus.toLowerCase()}`}>
+          {statusIcon(item.decision.effectiveStatus)}
+          {REVIEW_STATUS_LABELS[item.decision.effectiveStatus]}
+        </span>
+        {item.decision.source === "MODE_DEFAULT" && mode === "CORRECTION" && (
+          <span className="fc-muted">automatisch freigegeben</span>
+        )}
       </div>
       {writeBackResult && (
         <div className="fc-writeback-status" aria-live="polite">
           <span>Word-Änderung:</span>
-          <span className={`fc-writeback-badge fc-writeback-badge--${writeBackResult.status.toLowerCase()}`}>
+          <span
+            className={`fc-writeback-badge fc-writeback-badge--${writeBackResult.status.toLowerCase()}`}
+          >
             {writeBackStatusIcon(writeBackResult.status)}
             {isApplying ? "Wird durchgeführt …" : writeBackResultLabel(writeBackResult)}
           </span>
           {(writeBackResult.status === "FAILED" || writeBackResult.status === "STALE") &&
-            writeBackResult.message && <span className="fc-writeback-message">{writeBackResult.message}</span>}
+            writeBackResult.message && (
+              <span className="fc-writeback-message">{writeBackResult.message}</span>
+            )}
         </div>
       )}
       {mode === "REVIEW" && item.reviewClass !== "INFO" && (
         <div className="fc-finding__actions" aria-label={`Entscheidung für ${title}`}>
-          <span title={!item.canAccept ? blockedReason || "Für dieses Finding ist keine sichere Aktion verfügbar." : undefined}>
-            <NeonButton size="sm" variant="primary" disabled={!item.canAccept} onClick={() => onSetStatus(item, "ACCEPTED")}><Check size={14} aria-hidden="true" />Übernehmen</NeonButton>
+          <span
+            title={
+              !item.canAccept
+                ? blockedReason || "Für dieses Finding ist keine sichere Aktion verfügbar."
+                : undefined
+            }
+          >
+            <NeonButton
+              size="sm"
+              variant="primary"
+              disabled={!item.canAccept || batchRunning}
+              onClick={() => onSetStatus(item, "ACCEPTED")}
+            >
+              <Check size={14} aria-hidden="true" />
+              Übernehmen
+            </NeonButton>
           </span>
-          <NeonButton size="sm" variant="destructive" onClick={() => onSetStatus(item, "REJECTED")}><X size={14} aria-hidden="true" />Ablehnen</NeonButton>
-          <NeonButton size="sm" variant="subtle" onClick={() => onSetStatus(item, "DEFERRED")}><Clock3 size={14} aria-hidden="true" />Später prüfen</NeonButton>
-          {item.decision.explicitStatus && <NeonButton size="sm" variant="ghost" onClick={() => onClearStatus(item)}><RotateCcw size={14} aria-hidden="true" />Zurücksetzen</NeonButton>}
+          <NeonButton
+            size="sm"
+            variant="destructive"
+            disabled={batchRunning}
+            onClick={() => onSetStatus(item, "REJECTED")}
+          >
+            <X size={14} aria-hidden="true" />
+            Ablehnen
+          </NeonButton>
+          <NeonButton
+            size="sm"
+            variant="subtle"
+            disabled={batchRunning}
+            onClick={() => onSetStatus(item, "DEFERRED")}
+          >
+            <Clock3 size={14} aria-hidden="true" />
+            Später prüfen
+          </NeonButton>
+          {item.decision.explicitStatus && (
+            <NeonButton
+              size="sm"
+              variant="ghost"
+              disabled={batchRunning}
+              onClick={() => onClearStatus(item)}
+            >
+              <RotateCcw size={14} aria-hidden="true" />
+              Zurücksetzen
+            </NeonButton>
+          )}
         </div>
       )}
       {(mode === "REVIEW" || mode === "CORRECTION") && (canApply || isApplying) && (
         <div className="fc-writeback-actions">
-          <NeonButton size="sm" variant="primary" disabled={isApplying} onClick={() => onApplySingle(item)}>
-            {isApplying ? <LoaderCircle className="fc-spin" size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
+          <NeonButton
+            size="sm"
+            variant="primary"
+            disabled={isApplying || batchRunning}
+            onClick={() => onApplySingle(item)}
+          >
+            {isApplying ? (
+              <LoaderCircle className="fc-spin" size={14} aria-hidden="true" />
+            ) : (
+              <Play size={14} aria-hidden="true" />
+            )}
             {isApplying ? "Wird durchgeführt …" : "Durchführen"}
           </NeonButton>
         </div>
@@ -348,14 +534,50 @@ function FindingCard({
 function FootnoteTechnicalData({ footnote }: { footnote: FootnoteSnapshot }) {
   return (
     <dl className="fc-technical-grid">
-      <div><dt>Inhalt</dt><dd>{footnote.contentText || "(leer)"}</dd></div>
-      <div><dt>Hash</dt><dd>{footnote.originalTextHash}</dd></div>
-      <div><dt>Reader-Status</dt><dd>{footnote.readStatus}</dd></div>
-      <div><dt>Locator</dt><dd><pre>{JSON.stringify(footnote.locator, null, 2)}</pre></dd></div>
-      <div><dt>Base Format</dt><dd><pre>{JSON.stringify(footnote.baseCharacterFormat ?? {}, null, 2)}</pre></dd></div>
-      <div><dt>Formatting Runs</dt><dd>{footnote.formattingRuns.length}<pre>{JSON.stringify(footnote.formattingRuns, null, 2)}</pre></dd></div>
-      <div><dt>Protected Ranges</dt><dd>{footnote.protectedRanges.length}<pre>{JSON.stringify(footnote.protectedRanges, null, 2)}</pre></dd></div>
-      <div><dt>Absatzformate</dt><dd><pre>{JSON.stringify(footnote.paragraphFormats, null, 2)}</pre></dd></div>
+      <div>
+        <dt>Inhalt</dt>
+        <dd>{footnote.contentText || "(leer)"}</dd>
+      </div>
+      <div>
+        <dt>Hash</dt>
+        <dd>{footnote.originalTextHash}</dd>
+      </div>
+      <div>
+        <dt>Reader-Status</dt>
+        <dd>{footnote.readStatus}</dd>
+      </div>
+      <div>
+        <dt>Locator</dt>
+        <dd>
+          <pre>{JSON.stringify(footnote.locator, null, 2)}</pre>
+        </dd>
+      </div>
+      <div>
+        <dt>Base Format</dt>
+        <dd>
+          <pre>{JSON.stringify(footnote.baseCharacterFormat ?? {}, null, 2)}</pre>
+        </dd>
+      </div>
+      <div>
+        <dt>Formatting Runs</dt>
+        <dd>
+          {footnote.formattingRuns.length}
+          <pre>{JSON.stringify(footnote.formattingRuns, null, 2)}</pre>
+        </dd>
+      </div>
+      <div>
+        <dt>Protected Ranges</dt>
+        <dd>
+          {footnote.protectedRanges.length}
+          <pre>{JSON.stringify(footnote.protectedRanges, null, 2)}</pre>
+        </dd>
+      </div>
+      <div>
+        <dt>Absatzformate</dt>
+        <dd>
+          <pre>{JSON.stringify(footnote.paragraphFormats, null, 2)}</pre>
+        </dd>
+      </div>
     </dl>
   );
 }
@@ -368,6 +590,7 @@ function FootnoteGroup({
   onClearStatus,
   writeBackState,
   onApplySingle,
+  batchRunning,
   open,
   onOpenChange,
 }: {
@@ -378,6 +601,7 @@ function FootnoteGroup({
   onClearStatus(item: ReviewItem): void;
   writeBackState: WriteBackState;
   onApplySingle(item: ReviewItem): void;
+  batchRunning: boolean;
   open: boolean;
   onOpenChange(open: boolean): void;
 }) {
@@ -388,7 +612,12 @@ function FootnoteGroup({
         open={open}
         onOpenChange={onOpenChange}
         ariaLabel={`Fußnote ${group.footnote.ordinal}, ${problemLabel}`}
-        label={<span className="fc-footnote-group__label"><strong>Fußnote {group.footnote.ordinal}</strong><span>{problemLabel}</span></span>}
+        label={
+          <span className="fc-footnote-group__label">
+            <strong>Fußnote {group.footnote.ordinal}</strong>
+            <span>{problemLabel}</span>
+          </span>
+        }
         buttonClassName="fc-footnote-group__trigger"
         contentClassName="fc-footnote-group__content"
       >
@@ -404,9 +633,14 @@ function FootnoteGroup({
                 onClearStatus={onClearStatus}
                 writeBackResult={writeBackResultForItem(writeBackState, item)}
                 onApplySingle={onApplySingle}
+                batchRunning={batchRunning}
               />
             ))}
-            <Collapsible label="Technische Fußnotendaten" className="fc-footnote-debug" contentClassName="fc-details__content">
+            <Collapsible
+              label="Technische Fußnotendaten"
+              className="fc-footnote-debug"
+              contentClassName="fc-details__content"
+            >
               <FootnoteTechnicalData footnote={group.footnote} />
             </Collapsible>
           </>
@@ -420,17 +654,50 @@ function GlobalTechnicalData({
   readerMetrics,
   documentFormatting,
   engineResult,
+  batchResult,
 }: {
   readerMetrics: FootnoteReadResult["readerMetrics"] | null;
   documentFormatting: DocumentFormattingSnapshot | null;
   engineResult: FootnoteEngineResult;
+  batchResult: BatchWriteBackResult | null;
 }) {
   return (
-    <Collapsible label="Entwicklerdetails" className="fc-global-debug" contentClassName="fc-details__content">
+    <Collapsible
+      label="Entwicklerdetails"
+      className="fc-global-debug"
+      contentClassName="fc-details__content"
+    >
       <dl className="fc-technical-grid">
-        <div><dt>Reader</dt><dd><pre>{JSON.stringify(readerMetrics, null, 2)}</pre></dd></div>
-        <div><dt>Dokumentformatierung</dt><dd><pre>{JSON.stringify(documentFormatting, null, 2)}</pre></dd></div>
-        <div><dt>Engine</dt><dd>Analysiert: {engineResult.analyzedFootnotes}<br />Findings: {engineResult.findings.length}<br />Dauer: {engineResult.durationMs ?? "–"} ms</dd></div>
+        <div>
+          <dt>Reader</dt>
+          <dd>
+            <pre>{JSON.stringify(readerMetrics, null, 2)}</pre>
+          </dd>
+        </div>
+        <div>
+          <dt>Dokumentformatierung</dt>
+          <dd>
+            <pre>{JSON.stringify(documentFormatting, null, 2)}</pre>
+          </dd>
+        </div>
+        <div>
+          <dt>Engine</dt>
+          <dd>
+            Analysiert: {engineResult.analyzedFootnotes}
+            <br />
+            Findings: {engineResult.findings.length}
+            <br />
+            Dauer: {engineResult.durationMs ?? "–"} ms
+          </dd>
+        </div>
+        {batchResult && (
+          <div>
+            <dt>Write-back-Performance</dt>
+            <dd>
+              <pre>{JSON.stringify(batchResult.performance, null, 2)}</pre>
+            </dd>
+          </div>
+        )}
       </dl>
     </Collapsible>
   );
@@ -439,9 +706,7 @@ function GlobalTechnicalData({
 export function ReviewWorkspace(props: ReviewWorkspaceProps) {
   const [filters, setFilters] = useState<ReviewFilters>(DEFAULT_REVIEW_FILTERS);
   const [visibleGroupLimit, setVisibleGroupLimit] = useState(80);
-  const [openFootnotes, setOpenFootnotes] = useState<OpenFootnoteState>(
-    createClosedFootnoteState
-  );
+  const [openFootnotes, setOpenFootnotes] = useState<OpenFootnoteState>(createClosedFootnoteState);
   const filteredItems = useMemo(
     () => filterReviewItems(props.reviewResult?.items ?? [], props.footnotes, filters),
     [props.reviewResult, props.footnotes, filters]
@@ -456,11 +721,14 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
   const visibleGroups = groups.slice(0, visibleGroupLimit);
   const hasAnalysis = props.engineResult !== null && props.reviewResult !== null;
   const activeFilters = hasActiveFilters(filters);
-  const writeBackResults = Object.values(props.writeBackState);
-  const appliedCount = writeBackResults.filter((result) => result.status === "APPLIED").length;
-  const staleCount = writeBackResults.filter((result) => result.status === "STALE").length;
-  const failedCount = writeBackResults.filter((result) => result.status === "FAILED").length;
-  const isCorrecting = props.isLoading && props.progress?.phase === "correcting";
+  const isBatchRunning = props.batchRunStatus === "PLANNING" || props.batchRunStatus === "RUNNING";
+  const isSingleWriteBackRunning = Object.values(props.writeBackState).some(
+    (result) => result.status === "PENDING" && result.message === "Wird durchgeführt …"
+  );
+  const isMutationRunning = isBatchRunning || isSingleWriteBackRunning;
+  const isCorrecting = isBatchRunning && props.mode === "CORRECTION";
+  const batchSummary = props.batchResult?.summary;
+  const batchHasIssues = props.batchResult?.status === "COMPLETED_WITH_ISSUES";
 
   return (
     <main className="fc-app">
@@ -468,34 +736,93 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
         <header className="fc-header">
           <div className="fc-brand">
             <BrandLogo size={34} />
-            <div><h1>Footnote Checker</h1><p>Juristische Fußnoten prüfen</p></div>
+            <div>
+              <h1>Footnote Checker</h1>
+              <p>Juristische Fußnoten prüfen</p>
+            </div>
           </div>
-          <NeonButton variant="ghost" size="icon" aria-label="Einstellungen öffnen" title="Einstellungen" onClick={props.onOpenSettings}>
+          <NeonButton
+            variant="ghost"
+            size="icon"
+            disabled={isMutationRunning}
+            aria-label="Einstellungen öffnen"
+            title="Einstellungen"
+            onClick={props.onOpenSettings}
+          >
             <Settings size={19} aria-hidden="true" />
           </NeonButton>
         </header>
 
         <nav className="fc-modes" aria-label="Arbeitsmodus">
           {MODE_OPTIONS.map((option) => (
-            <button key={option.value} type="button" className={props.mode === option.value ? "is-active" : ""} aria-pressed={props.mode === option.value} onClick={() => props.onModeChange(option.value)}>
+            <button
+              key={option.value}
+              type="button"
+              disabled={isMutationRunning}
+              className={props.mode === option.value ? "is-active" : ""}
+              aria-pressed={props.mode === option.value}
+              onClick={() => props.onModeChange(option.value)}
+            >
               {option.label}
             </button>
           ))}
         </nav>
 
-        <NeonButton className="fc-primary-action" variant="primary" size="lg" disabled={props.isLoading} onClick={props.onAnalyze}>
-          <CheckCheck size={18} aria-hidden="true" />{isCorrecting ? "Sichere Korrekturen werden durchgeführt …" : props.isLoading ? "Fußnoten werden geprüft …" : "Fußnoten prüfen"}
+        <NeonButton
+          className="fc-primary-action"
+          variant="primary"
+          size="lg"
+          disabled={props.isLoading || isMutationRunning}
+          onClick={props.onAnalyze}
+        >
+          <CheckCheck size={18} aria-hidden="true" />
+          {isCorrecting
+            ? "Sichere Korrekturen werden durchgeführt …"
+            : props.isLoading
+              ? "Fußnoten werden geprüft …"
+              : "Fußnoten prüfen"}
         </NeonButton>
 
-        {props.isLoading && props.progress && (
+        {isBatchRunning && props.batchProgress ? (
           <section className="fc-progress-panel" aria-live="polite">
-            <strong>{isCorrecting ? "Sichere Korrekturen werden durchgeführt …" : "Fußnoten werden geprüft"}</strong>
-            <Progress value={props.progress.percent} label={isCorrecting ? "Fortschritt der sicheren Korrekturen" : "Fortschritt der Fußnotenprüfung"} />
-            <span>{props.progress.total > 0 ? `${props.progress.processed.toLocaleString("de-DE")} / ${props.progress.total.toLocaleString("de-DE")} ${isCorrecting ? "Korrekturen" : "Fußnoten"} · ${props.progress.percent} %` : `${props.progress.percent} %`}</span>
+            <strong>Sichere Korrekturen werden durchgeführt …</strong>
+            <Progress
+              value={batchProgressPercent(props.batchProgress)}
+              label="Fortschritt der sicheren Korrekturen"
+            />
+            <span>
+              {props.batchProgress.processed.toLocaleString("de-DE")} /{" "}
+              {props.batchProgress.total.toLocaleString("de-DE")} Korrekturen ·{" "}
+              {batchProgressPercent(props.batchProgress)} %
+            </span>
           </section>
-        )}
+        ) : props.isLoading && props.progress ? (
+          <section className="fc-progress-panel" aria-live="polite">
+            <strong>Fußnoten werden geprüft</strong>
+            <Progress value={props.progress.percent} label="Fortschritt der Fußnotenprüfung" />
+            <span>
+              {props.progress.total > 0
+                ? `${props.progress.processed.toLocaleString("de-DE")} / ${props.progress.total.toLocaleString("de-DE")} Fußnoten · ${props.progress.percent} %`
+                : `${props.progress.percent} %`}
+            </span>
+          </section>
+        ) : null}
 
-        {props.message && <div className={props.hasError ? "fc-notice fc-notice--error" : "fc-notice"} role={props.hasError ? "alert" : "status"}>{props.hasError && <CircleAlert size={18} aria-hidden="true" />}<span>{props.message}</span></div>}
+        {props.message && (
+          <div
+            className={props.hasError ? "fc-notice fc-notice--error" : "fc-notice"}
+            role={props.hasError ? "alert" : "status"}
+          >
+            {props.hasError && <CircleAlert size={18} aria-hidden="true" />}
+            <span>{props.message}</span>
+          </div>
+        )}
+        {props.reportError && (
+          <div className="fc-notice fc-notice--error" role="alert">
+            <CircleAlert size={18} aria-hidden="true" />
+            <span>{props.reportError}</span>
+          </div>
+        )}
 
         {!hasAnalysis && !props.hasError && !props.isLoading && (
           <section className="fc-empty-state">
@@ -508,46 +835,211 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
         {props.reviewResult && props.engineResult && (
           <>
             <ReviewSummary result={props.reviewResult} mode={props.mode} />
+            {!props.batchResult && (
+              <div className="fc-report-actions">
+                <NeonButton
+                  variant="secondary"
+                  size="sm"
+                  disabled={isBatchRunning}
+                  onClick={props.onExportDetailReport}
+                >
+                  <Download size={15} aria-hidden="true" />
+                  Detailbericht exportieren
+                </NeonButton>
+              </div>
+            )}
+            {props.batchResult && batchSummary && (
+              <section
+                className={`fc-batch-summary${batchHasIssues ? " fc-batch-summary--issues" : props.batchResult.status === "FAILED" ? " fc-batch-summary--failed" : ""}`}
+                role="status"
+              >
+                <div className="fc-batch-summary__heading">
+                  <div>
+                    <p className="fc-eyebrow">Abschluss</p>
+                    <h2>
+                      {props.batchResult.status === "FAILED"
+                        ? "Korrekturlauf abgebrochen"
+                        : "Korrekturlauf abgeschlossen"}
+                    </h2>
+                  </div>
+                  {batchHasIssues && (
+                    <span className="fc-badge fc-badge--warning">Mit Hinweisen</span>
+                  )}
+                </div>
+                <div className="fc-batch-summary__grid">
+                  <div>
+                    <span>Geprüfte Fußnoten</span>
+                    <strong>{props.footnotes.length}</strong>
+                  </div>
+                  <div>
+                    <span>Findings</span>
+                    <strong>{batchSummary.totalFindings}</strong>
+                  </div>
+                  <div>
+                    <span>Durchgeführt</span>
+                    <strong>{batchSummary.applied}</strong>
+                  </div>
+                  <div>
+                    <span>Manuell prüfen</span>
+                    <strong>{batchSummary.manualReview}</strong>
+                  </div>
+                  <div>
+                    <span>Technisch blockiert</span>
+                    <strong>{batchSummary.technical}</strong>
+                  </div>
+                  <div>
+                    <span>Erneut prüfen</span>
+                    <strong>{batchSummary.stale}</strong>
+                  </div>
+                  <div>
+                    <span>Fehlgeschlagen</span>
+                    <strong>{batchSummary.failed}</strong>
+                  </div>
+                </div>
+                <p>
+                  {batchSummary.applied} Korrekturen durchgeführt · {batchSummary.stale} erneut
+                  prüfen · {batchSummary.failed} fehlgeschlagen · {batchSummary.manualReview}{" "}
+                  manuell zu prüfen
+                </p>
+                <div className="fc-batch-summary__actions">
+                  <NeonButton variant="primary" size="sm" onClick={props.onExportDetailReport}>
+                    <Download size={15} aria-hidden="true" />
+                    Detailbericht exportieren
+                  </NeonButton>
+                  <NeonButton
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      document.querySelector(".fc-results")?.scrollIntoView({ behavior: "smooth" })
+                    }
+                  >
+                    Ergebnisse anzeigen
+                  </NeonButton>
+                </div>
+              </section>
+            )}
             {props.reviewResult.items.length === 0 ? (
               <section className="fc-success" role="status">
                 <Check size={22} aria-hidden="true" />
-                <div><h2>Keine Auffälligkeiten gefunden</h2><p>Die geprüften Fußnoten entsprechen den aktuell eingestellten Regeln.</p></div>
+                <div>
+                  <h2>Keine Auffälligkeiten gefunden</h2>
+                  <p>Die geprüften Fußnoten entsprechen den aktuell eingestellten Regeln.</p>
+                </div>
               </section>
             ) : (
               <>
                 {props.mode === "REVIEW" && (
                   <div className="fc-sticky-actions fc-sticky-actions--review">
                     <div className="fc-sticky-actions__status">
-                      {props.reviewResult.summary.byStatus.accepted} übernommen · {props.reviewResult.summary.byStatus.open} offen · {props.reviewResult.summary.byStatus.deferred} später
+                      {props.reviewResult.summary.byStatus.accepted} übernommen ·{" "}
+                      {props.reviewResult.summary.byStatus.open} offen ·{" "}
+                      {props.reviewResult.summary.byStatus.deferred} später
                     </div>
                     <div className="fc-bulk-actions">
-                    <NeonButton variant="primary" size="sm" onClick={props.onAcceptAllAutomatic}><CheckCheck size={15} aria-hidden="true" />Alle automatischen übernehmen</NeonButton>
-                    <NeonButton variant="secondary" size="sm" disabled={Object.keys(props.decisionState).length === 0} onClick={props.onResetDecisions}><RotateCcw size={15} aria-hidden="true" />Entscheidungen zurücksetzen</NeonButton>
+                      <NeonButton
+                        variant="primary"
+                        size="sm"
+                        disabled={
+                          isMutationRunning || (props.currentPlan?.totals.eligible ?? 0) === 0
+                        }
+                        onClick={props.onRunReviewBatch}
+                      >
+                        {isBatchRunning ? (
+                          <LoaderCircle className="fc-spin" size={15} aria-hidden="true" />
+                        ) : (
+                          <Play size={15} aria-hidden="true" />
+                        )}
+                        {isBatchRunning
+                          ? "Änderungen werden durchgeführt …"
+                          : "Ausgewählte Änderungen durchführen"}
+                      </NeonButton>
+                      <NeonButton
+                        variant="secondary"
+                        size="sm"
+                        disabled={isBatchRunning}
+                        onClick={props.onAcceptAllAutomatic}
+                      >
+                        <CheckCheck size={15} aria-hidden="true" />
+                        Alle automatischen übernehmen
+                      </NeonButton>
+                      <NeonButton
+                        variant="secondary"
+                        size="sm"
+                        disabled={isBatchRunning || Object.keys(props.decisionState).length === 0}
+                        onClick={props.onResetDecisions}
+                      >
+                        <RotateCcw size={15} aria-hidden="true" />
+                        Entscheidungen zurücksetzen
+                      </NeonButton>
                     </div>
                   </div>
                 )}
                 {props.mode === "CORRECTION" && (
-                  <div className="fc-sticky-actions fc-sticky-actions--correction" aria-label="Korrekturergebnis">
-                    <strong>Durchgeführt: {appliedCount}</strong>
-                    <span>Erneut prüfen: {staleCount}</span>
-                    <span>Fehlgeschlagen: {failedCount}</span>
+                  <div
+                    className="fc-sticky-actions fc-sticky-actions--correction"
+                    aria-label="Korrekturergebnis"
+                  >
+                    <strong>Durchgeführt: {batchSummary?.applied ?? 0}</strong>
+                    <span>Erneut prüfen: {batchSummary?.stale ?? 0}</span>
+                    <span>Fehlgeschlagen: {batchSummary?.failed ?? 0}</span>
                     <span>Prüfen: {props.reviewResult.summary.byClass.manual}</span>
                     <span>Technisch blockiert: {props.reviewResult.summary.byClass.technical}</span>
-                    <span className="fc-muted">Sichere AUTO-Korrekturen werden sequenziell angewendet</span>
+                    <span className="fc-muted">
+                      Sichere AUTO-Korrekturen werden sequenziell angewendet
+                    </span>
                   </div>
                 )}
                 <section className="fc-filters" aria-label="Findings filtern">
-                  <label className="fc-search"><span>Suche</span><div><Search size={16} aria-hidden="true" /><input type="search" placeholder="Fußnoten oder Findings durchsuchen" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} /></div></label>
-                  <div className="fc-filters-desktop"><FilterFields filters={filters} onChange={setFilters} /></div>
-                  <div className="fc-filters-mobile"><Collapsible label={<><Filter size={15} aria-hidden="true" />Filter</>} contentClassName="fc-filter-mobile-content"><FilterFields filters={filters} onChange={setFilters} /></Collapsible></div>
+                  <label className="fc-search">
+                    <span>Suche</span>
+                    <div>
+                      <Search size={16} aria-hidden="true" />
+                      <input
+                        type="search"
+                        placeholder="Fußnoten oder Findings durchsuchen"
+                        value={filters.search}
+                        onChange={(event) => setFilters({ ...filters, search: event.target.value })}
+                      />
+                    </div>
+                  </label>
+                  <div className="fc-filters-desktop">
+                    <FilterFields filters={filters} onChange={setFilters} />
+                  </div>
+                  <div className="fc-filters-mobile">
+                    <Collapsible
+                      label={
+                        <>
+                          <Filter size={15} aria-hidden="true" />
+                          Filter
+                        </>
+                      }
+                      contentClassName="fc-filter-mobile-content"
+                    >
+                      <FilterFields filters={filters} onChange={setFilters} />
+                    </Collapsible>
+                  </div>
                   <div className="fc-filter-status">
-                    <span>{filteredItems.length} von {props.reviewResult.items.length} Findings angezeigt</span>
-                    {activeFilters && <NeonButton variant="ghost" size="sm" onClick={() => setFilters(DEFAULT_REVIEW_FILTERS)}>Filter zurücksetzen</NeonButton>}
+                    <span>
+                      {filteredItems.length} von {props.reviewResult.items.length} Findings
+                      angezeigt
+                    </span>
+                    {activeFilters && (
+                      <NeonButton
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setFilters(DEFAULT_REVIEW_FILTERS)}
+                      >
+                        Filter zurücksetzen
+                      </NeonButton>
+                    )}
                   </div>
                 </section>
 
                 {groups.length === 0 ? (
-                  <section className="fc-no-results"><h2>Keine passenden Findings</h2><p>Ändern oder entfernen Sie die aktiven Filter.</p></section>
+                  <section className="fc-no-results">
+                    <h2>Keine passenden Findings</h2>
+                    <p>Ändern oder entfernen Sie die aktiven Filter.</p>
+                  </section>
                 ) : (
                   <div className="fc-results" aria-label="Prüfergebnisse">
                     {visibleGroups.map((group) => (
@@ -560,6 +1052,7 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
                         onClearStatus={props.onClearStatus}
                         writeBackState={props.writeBackState}
                         onApplySingle={props.onApplySingle}
+                        batchRunning={isMutationRunning}
                         open={openFootnotes.has(group.footnote.id)}
                         onOpenChange={(open) =>
                           setOpenFootnotes((current) =>
@@ -568,12 +1061,25 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
                         }
                       />
                     ))}
-                    {visibleGroupLimit < groups.length && <NeonButton className="fc-load-more" variant="secondary" onClick={() => setVisibleGroupLimit((limit) => limit + 80)}>Weitere {Math.min(80, groups.length - visibleGroupLimit)} Fußnoten anzeigen</NeonButton>}
+                    {visibleGroupLimit < groups.length && (
+                      <NeonButton
+                        className="fc-load-more"
+                        variant="secondary"
+                        onClick={() => setVisibleGroupLimit((limit) => limit + 80)}
+                      >
+                        Weitere {Math.min(80, groups.length - visibleGroupLimit)} Fußnoten anzeigen
+                      </NeonButton>
+                    )}
                   </div>
                 )}
               </>
             )}
-            <GlobalTechnicalData readerMetrics={props.readerMetrics} documentFormatting={props.documentFormatting} engineResult={props.engineResult} />
+            <GlobalTechnicalData
+              readerMetrics={props.readerMetrics}
+              documentFormatting={props.documentFormatting}
+              engineResult={props.engineResult}
+              batchResult={props.batchResult}
+            />
           </>
         )}
         {props.confirmReanalysis && (
@@ -587,11 +1093,21 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
           >
             <Modal className="fc-dialog">
               <AriaDialog aria-labelledby="reanalysis-title" className="fc-dialog__content">
-                <Heading slot="title" id="reanalysis-title">Aktuelle Review-Entscheidungen verwerfen?</Heading>
-                <p>Eine neue Analyse ersetzt die aktuellen Ergebnisse. Entscheidungen für unveränderte Findings werden weiterverwendet; nicht mehr passende Entscheidungen werden verworfen.</p>
+                <Heading slot="title" id="reanalysis-title">
+                  Aktuelle Review-Entscheidungen verwerfen?
+                </Heading>
+                <p>
+                  Eine neue Analyse ersetzt die aktuellen Ergebnisse. Entscheidungen für
+                  unveränderte Findings werden weiterverwendet; nicht mehr passende Entscheidungen
+                  werden verworfen.
+                </p>
                 <div className="fc-dialog__actions">
-                  <NeonButton variant="secondary" onClick={props.onCancelReanalysis}>Abbrechen</NeonButton>
-                  <NeonButton variant="primary" onClick={props.onConfirmReanalysis}>Neue Analyse starten</NeonButton>
+                  <NeonButton variant="secondary" onClick={props.onCancelReanalysis}>
+                    Abbrechen
+                  </NeonButton>
+                  <NeonButton variant="primary" onClick={props.onConfirmReanalysis}>
+                    Neue Analyse starten
+                  </NeonButton>
                 </div>
               </AriaDialog>
             </Modal>

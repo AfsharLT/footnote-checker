@@ -40,6 +40,7 @@ export async function applySingleReviewItem(
       reason: "WORD_API_ERROR",
       reasons: ["WORD_API_ERROR"],
       message: "Die Änderung konnte technisch nicht sicher angewendet werden.",
+      fatal: true,
     };
   }
 }
