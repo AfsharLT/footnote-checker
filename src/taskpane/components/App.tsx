@@ -25,6 +25,14 @@ import {
   type FootnoteReadResult,
   type FootnoteSnapshot,
 } from "@/taskpane/taskpane";
+import {
+  applySingleReviewItem,
+  createPendingWriteBackResult,
+  runCorrectionAutoApply,
+  type AppliedMutationRecord,
+  type WriteBackResult,
+  type WriteBackState,
+} from "@/write-back-engine";
 
 const ReviewWorkspace = React.lazy(() =>
   import("./ReviewWorkspace").then((module) => ({ default: module.ReviewWorkspace }))
@@ -49,7 +57,10 @@ const App: React.FC = () => {
   const [readProgress, setReadProgress] = useState<FootnoteReadProgress | null>(null);
   const [hasError, setHasError] = useState(false);
   const [confirmReanalysis, setConfirmReanalysis] = useState(false);
+  const [writeBackState, setWriteBackState] = useState<WriteBackState>({});
   const readInProgressRef = useRef(false);
+  const writeBackInFlightRef = useRef(new Set<string>());
+  const appliedMutationsRef = useRef<AppliedMutationRecord[]>([]);
 
   const protectedRangesByFootnoteId = useMemo(
     () =>
@@ -94,9 +105,43 @@ const App: React.FC = () => {
       setDocumentFormatting(result.documentFormatting);
       setReaderMetrics(result.readerMetrics);
       setEngineResult(analysis);
-      setDecisionState((current) => reconcileReviewDecisions(current, analysis.findings));
+      const reconciledDecisions = reconcileReviewDecisions(decisionState, analysis.findings);
+      setDecisionState(reconciledDecisions);
+      setWriteBackState({});
+      appliedMutationsRef.current = [];
+      if (mode === "CORRECTION") {
+        const analyzedReview = runReviewEngine({
+          findings: analysis.findings,
+          footnotes: result.footnotes,
+          mode,
+          decisionState: reconciledDecisions,
+          protectedRangesByFootnoteId: new Map(
+            analysis.footnoteAnalyses.map((footnoteAnalysis) => [
+              footnoteAnalysis.footnoteId,
+              footnoteAnalysis.protectedRanges,
+            ])
+          ),
+        });
+        const autoApply = await runCorrectionAutoApply({
+          items: analyzedReview.items,
+          footnotes: result.footnotes,
+          onProgress: ({ processed, total }) =>
+            setReadProgress(createFootnoteReadProgress("correcting", processed, total)),
+          onResult: (writeBackResult) =>
+            setWriteBackState((current) => ({
+              ...current,
+              [writeBackResult.reviewItemId]: writeBackResult,
+            })),
+        });
+        setWriteBackState(autoApply.state);
+        appliedMutationsRef.current = autoApply.mutations;
+        setMessage(
+          `${autoApply.summary.applied} Korrekturen durchgeführt · ${autoApply.summary.stale} erneut prüfen · ${analyzedReview.summary.byClass.manual} müssen manuell geprüft werden${autoApply.summary.failed > 0 ? ` · ${autoApply.summary.failed} fehlgeschlagen` : ""}`
+        );
+      } else if (result.footnotes.length === 0) {
+        setMessage("Das Dokument enthält keine Fußnoten.");
+      }
       setReadProgress(createFootnoteReadProgress("complete", result.footnotes.length, result.footnotes.length));
-      if (result.footnotes.length === 0) setMessage("Das Dokument enthält keine Fußnoten.");
     } catch (error) {
       setHasError(true);
       setMessage(formatReaderError(error));
@@ -126,6 +171,45 @@ const App: React.FC = () => {
     setDecisionState((current) => clearExplicitReviewStatus(current, item.finding.findingId));
   const handleAcceptAllAutomatic = () => {
     if (reviewResult) setDecisionState((current) => acceptAllAutomatic(current, reviewResult.items));
+  };
+  const handleApplySingle = async (item: ReviewItem) => {
+    if (writeBackInFlightRef.current.has(item.reviewItemId)) return;
+    const footnote = footnotes.find((candidate) => candidate.id === item.finding.footnoteId);
+    if (!footnote) {
+      const result: WriteBackResult = {
+        reviewItemId: item.reviewItemId,
+        status: "STALE",
+        actionKind: item.proposedAction?.type,
+        reason: "FOOTNOTE_NOT_FOUND",
+        reasons: ["FOOTNOTE_NOT_FOUND"],
+        message: "Die Fußnote wurde seit der Analyse verändert. Bitte prüfen Sie die Fußnote erneut.",
+      };
+      setWriteBackState((current) => ({ ...current, [item.reviewItemId]: result }));
+      return;
+    }
+    writeBackInFlightRef.current.add(item.reviewItemId);
+    setWriteBackState((current) => ({
+      ...current,
+      [item.reviewItemId]: createPendingWriteBackResult(item, "Wird durchgeführt …"),
+    }));
+    try {
+      const result = await applySingleReviewItem({
+        reviewItem: item,
+        footnote,
+        appliedMutations: appliedMutationsRef.current,
+      });
+      if (
+        result.mutation &&
+        !appliedMutationsRef.current.some(
+          (record) => record.reviewItemId === result.reviewItemId
+        )
+      ) {
+        appliedMutationsRef.current = [...appliedMutationsRef.current, result.mutation];
+      }
+      setWriteBackState((current) => ({ ...current, [item.reviewItemId]: result }));
+    } finally {
+      writeBackInFlightRef.current.delete(item.reviewItemId);
+    }
   };
 
   if (view === "SETTINGS") {
@@ -163,6 +247,8 @@ const App: React.FC = () => {
         onClearStatus={handleClearStatus}
         onAcceptAllAutomatic={handleAcceptAllAutomatic}
         onResetDecisions={() => setDecisionState(resetAllDecisions())}
+        writeBackState={writeBackState}
+        onApplySingle={handleApplySingle}
         message={message}
         hasError={hasError}
         readerMetrics={readerMetrics}

@@ -13,6 +13,7 @@ import {
 } from "../../src/review-engine";
 import type { ReviewDecisionState, ReviewEngineResult, ReviewMode } from "../../src/review-engine";
 import type { FootnoteSnapshot, FormattingRun } from "../../src/taskpane/taskpane";
+import { canApplySingleReviewItem } from "../../src/write-back-engine";
 
 function assert(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -185,8 +186,23 @@ const shortYearItem = shortYearReview.items.find(
 assert(
   shortYearItem?.reviewClass === "MANUAL" &&
     shortYearItem.proposedAction === undefined &&
-    !shortYearItem.canAccept,
+    !shortYearItem.canAccept &&
+    !canApplySingleReviewItem(shortYearItem),
   "A two-digit year must be visible for manual review without an invented replacement"
+);
+const fullYearCorrection = engineReview(
+  [snapshot("BGH, Urt. v. 5.7.2025 – 3 StR 123/25.", 42)],
+  "CORRECTION"
+);
+const fullYearDateItem = fullYearCorrection.items.find(
+  (item) => item.finding.ruleId === "CASE_LAW_DATE_FORMAT"
+);
+assert(
+  fullYearDateItem?.reviewClass === "AUTO" &&
+    fullYearDateItem.proposedAction?.type === "TEXT_REPLACE" &&
+    fullYearDateItem.proposedAction.replacementText === "05.07.2025" &&
+    canApplySingleReviewItem(fullYearDateItem),
+  "A deterministic four-digit date must remain accepted and individually applicable"
 );
 const muekoReview = engineReview([snapshot("MüKo-StGB/Fischer Rdnr. 4.", 5)]);
 assert(

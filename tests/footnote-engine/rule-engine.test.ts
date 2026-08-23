@@ -199,7 +199,9 @@ function runCaseLawCases(): void {
   assert(
     shortYearDate?.originalText === "5.7.25" &&
       shortYearDate.suggestedText === undefined &&
-      shortYearDate.metadata?.requiresManualReview === true,
+      shortYearDate.metadata?.requiresManualReview === true &&
+      shortYearDate.message ===
+        "Das Jahr „25“ ist nur zweistellig angegeben. Bitte prüfen Sie, welches vierstellige Jahr gemeint ist.",
     "A two-digit year must be found but never expanded by assumption"
   );
 

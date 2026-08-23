@@ -25,6 +25,18 @@ const collapsible = readFileSync(
 );
 const webpack = readFileSync(join(process.cwd(), "webpack.config.js"), "utf8");
 const manifest = readFileSync(join(process.cwd(), "manifest.xml"), "utf8");
+const writeBackStatus = readFileSync(
+  join(process.cwd(), "src/write-back-engine/status.ts"),
+  "utf8"
+);
+const writeBackOfficeAdapter = readFileSync(
+  join(process.cwd(), "src/write-back-engine/office-adapter.ts"),
+  "utf8"
+);
+const correctionAutoApply = readFileSync(
+  join(process.cwd(), "src/write-back-engine/correction-auto-apply.ts"),
+  "utf8"
+);
 
 function cssRule(selector: string): string {
   const start = css.indexOf(`${selector} {`);
@@ -105,6 +117,47 @@ assert(
     manifest.includes("assets/footnote-checker-32.png") &&
     manifest.includes("assets/footnote-checker-80.png"),
   "Webpack and the ribbon manifest must continue to deliver the Footnote Checker assets"
+);
+assert(
+  workspace.includes("if (!action) return null") &&
+    workspace.includes('"Datumsformat prüfen"') &&
+    workspace.includes('"Durchführen"') &&
+    !workspace.includes("Alle durchführen"),
+  "Manual dates must render one explanation without an action preview, and write-back must remain single-item only"
+);
+assert(
+  writeBackStatus.includes('PENDING: "Ausstehend"') &&
+    writeBackStatus.includes('APPLIED: "Durchgeführt"') &&
+    writeBackStatus.includes('FAILED: "Fehlgeschlagen"') &&
+    writeBackStatus.includes('STALE: "Erneut prüfen"') &&
+    ["pending", "applied", "failed", "stale"].every((status) =>
+      css.includes(`.fc-writeback-badge--${status}`)
+    ),
+  "All write-back states must have visible labels and distinct subtle status badges"
+);
+assert(
+  app.includes("applySingleReviewItem") &&
+    app.includes("writeBackInFlightRef") &&
+    !app.includes("Word.run") &&
+    !workspace.includes("Word.run") &&
+    writeBackOfficeAdapter.includes("Word.run"),
+  "React must delegate one guarded write-back to the central engine and never access Word directly"
+);
+assert(
+  app.includes("runCorrectionAutoApply") &&
+    app.includes('mode === "CORRECTION"') &&
+    workspace.includes("Sichere Korrekturen werden durchgeführt …") &&
+    workspace.includes("Durchgeführt: {appliedCount}") &&
+    correctionAutoApply.includes('item.reviewClass === "AUTO"') &&
+    correctionAutoApply.includes("canApplySingleReviewItem") &&
+    correctionAutoApply.includes("await applySingleReviewItem") &&
+    !correctionAutoApply.includes("Word.run"),
+  "Correction mode must visibly auto-apply only safe AUTO items through the central sequential engine"
+);
+assert(
+  writeBackStatus.includes('"Bereits erledigt"') &&
+    workspace.includes("writeBackResultLabel"),
+  "Already-resolved actions must remain green APPLIED items with a distinct visible label"
 );
 
 console.log(

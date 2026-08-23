@@ -24,8 +24,13 @@ assert(
 );
 
 const analyzing = createFootnoteReadProgress("analyzing", total, total);
+const correcting = createFootnoteReadProgress("correcting", 12, 27);
 const complete = createFootnoteReadProgress("complete", total, total);
 assert(analyzing.percent === 95, "Analysis phase must follow reader progress");
+assert(
+  correcting.processed === 12 && correcting.total === 27 && correcting.percent === 44,
+  "Correction progress must reflect actually processed automatic actions"
+);
 assert(complete.percent === 100, "Complete phase must end at 100 percent");
 assert(
   createFootnoteReadProgress("reading", total + 100, total).processed === total,

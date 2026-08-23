@@ -134,7 +134,7 @@ export interface FootnoteReadResult {
 }
 
 export interface FootnoteReadProgress {
-  phase: "initializing" | "reading" | "analyzing" | "complete";
+  phase: "initializing" | "reading" | "analyzing" | "correcting" | "complete";
   processed: number;
   total: number;
   percent: number;
@@ -152,11 +152,15 @@ export function createFootnoteReadProgress(
   const percent =
     phase === "complete"
       ? 100
-      : phase === "analyzing"
-        ? 95
-        : phase === "reading" && safeTotal > 0
-          ? Math.round((safeProcessed / safeTotal) * 90)
-          : 0;
+      : phase === "correcting"
+        ? safeTotal > 0
+          ? Math.round((safeProcessed / safeTotal) * 100)
+          : 100
+        : phase === "analyzing"
+          ? 95
+          : phase === "reading" && safeTotal > 0
+            ? Math.round((safeProcessed / safeTotal) * 90)
+            : 0;
   return { phase, processed: safeProcessed, total: safeTotal, percent };
 }
 
@@ -176,7 +180,7 @@ const CHARACTER_FORMAT_KEYS: Array<keyof CharacterFormat> = [
   "characterSpacing",
 ];
 
-function hashText(text: string): string {
+export function hashFootnoteContentText(text: string): string {
   let hash = 0x811c9dc5;
 
   for (let index = 0; index < text.length; index += 1) {
@@ -195,7 +199,7 @@ function readLoadedText(getText: () => string): string {
   }
 }
 
-function removeLeadingWordNoteReferenceMark(rawWordText: string): string {
+export function contentTextFromRawWordText(rawWordText: string): string {
   return rawWordText.startsWith(WORD_NOTE_REFERENCE_MARK) ? rawWordText.slice(1) : rawWordText;
 }
 
@@ -210,7 +214,7 @@ function createParagraphStructure(
   contentText: string
 ): FootnoteSnapshot["paragraphs"] {
   const normalizedParagraphTexts = paragraphTexts.map((text, index) =>
-    index === 0 ? removeLeadingWordNoteReferenceMark(text) : text
+    index === 0 ? contentTextFromRawWordText(text) : text
   );
   const offsetsAreExact = normalizedParagraphTexts.join("") === contentText;
   let offset = 0;
@@ -1067,6 +1071,48 @@ function createProtectedRanges(snapshot: {
     .sort((left, right) => left.start - right.start || left.end - right.end);
 }
 
+export interface CurrentProtectedRangeExtraction {
+  complete: boolean;
+  ranges: ProtectedRange[];
+}
+
+export function extractCurrentProtectedRanges(
+  ooxml: string,
+  contentText: string
+): CurrentProtectedRangeExtraction {
+  const parsed = parseFootnoteOoxml(ooxml);
+  const mapping = mapOoxmlContent(parsed.textRuns, contentText);
+  const ranges: ProtectedRange[] = [];
+  let structuresComplete = parsed.parsed && mapping.complete && !parsed.hasUnclosedStructures;
+  const append = (type: ProtectedStructureType, structures: readonly OoxmlStructureRange[]) => {
+    for (const structure of structures) {
+      const mapped = mapStructureRange(structure, mapping);
+      if (mapped) ranges.push({ type, start: mapped.start, end: mapped.end });
+      else structuresComplete = false;
+    }
+  };
+
+  append("hyperlink", parsed.hyperlinks);
+  append("field", parsed.fields);
+  append("bookmark", parsed.bookmarks);
+  append("contentControl", parsed.contentControls);
+
+  return {
+    complete: structuresComplete,
+    ranges: ranges
+      .filter(
+        (range, index, allRanges) =>
+          allRanges.findIndex(
+            (candidate) =>
+              candidate.type === range.type &&
+              candidate.start === range.start &&
+              candidate.end === range.end
+          ) === index
+      )
+      .sort((left, right) => left.start - right.start || left.end - right.end),
+  };
+}
+
 function getDocumentFormatting(
   document: Word.Document,
   supportsDesktop13: boolean,
@@ -1197,10 +1243,10 @@ export async function readFootnotes(
 
         try {
           const rawWordText = footnote.body.text;
-          const contentText = removeLeadingWordNoteReferenceMark(rawWordText);
+          const contentText = contentTextFromRawWordText(rawWordText);
           const referenceText = footnote.reference.text;
           const displayLabel = getDisplayLabel(referenceText, ordinal);
-          const originalTextHash = hashText(contentText);
+          const originalTextHash = hashFootnoteContentText(contentText);
           const warnings: FootnoteReadWarning[] = [];
           const paragraphTexts = readContext.paragraphs.items.map((paragraph) => paragraph.text);
           const paragraphs = createParagraphStructure(paragraphTexts, contentText);
@@ -1357,8 +1403,8 @@ export async function readFootnotes(
           });
         } catch {
           const rawWordText = readLoadedText(() => footnote.body.text);
-          const contentText = removeLeadingWordNoteReferenceMark(rawWordText);
-          const originalTextHash = hashText(contentText);
+          const contentText = contentTextFromRawWordText(rawWordText);
+          const originalTextHash = hashFootnoteContentText(contentText);
           const referenceText = readLoadedText(() => footnote.reference.text);
           const displayLabel = getDisplayLabel(referenceText, ordinal);
           snapshots.push({

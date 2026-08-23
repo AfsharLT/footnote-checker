@@ -338,6 +338,16 @@ input {
 .fc-status--rejected { border-color: #edcaca; background: #fff5f5; color: #9a3030; }
 .fc-status--deferred { border-color: #e6d8bd; background: #fffaf1; color: #775b27; }
 .fc-muted { color: #7c8692; font-size: 10px; }
+.fc-writeback-status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; color: var(--text-muted); font-size: 11px; }
+.fc-writeback-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border: 1px solid #d5dce6; border-radius: 999px; font-size: 10px; font-weight: 650; }
+.fc-writeback-badge--pending { border-color: #ccd9eb; background: #f2f6fb; color: #344d6e; }
+.fc-writeback-badge--applied { border-color: #b9ddc9; background: #f2faf5; color: #25643f; }
+.fc-writeback-badge--failed { border-color: #edcaca; background: #fff6f6; color: #8a3030; }
+.fc-writeback-badge--stale { border-color: #ead4ad; background: #fff9ee; color: #80551d; }
+.fc-writeback-message { flex-basis: 100%; color: #596574; line-height: 1.45; }
+.fc-writeback-actions { display: flex; margin-top: 9px; }
+.fc-spin { animation: fc-spin 800ms linear infinite; }
+@keyframes fc-spin { to { transform: rotate(360deg); } }
 
 .fc-change { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 7px; margin: 7px 0; font-size: 12px; font-weight: 600; }
 .fc-change__before,

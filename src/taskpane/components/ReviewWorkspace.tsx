@@ -14,6 +14,8 @@ import {
   Clock3,
   Filter,
   Info,
+  LoaderCircle,
+  Play,
   RotateCcw,
   Search,
   Settings,
@@ -58,6 +60,14 @@ import type {
   FootnoteReadResult,
   FootnoteSnapshot,
 } from "@/taskpane/taskpane";
+import {
+  canApplySingleReviewItem,
+  writeBackResultLabel,
+  writeBackResultForItem,
+  type WriteBackResult,
+  type WriteBackState,
+  type WriteBackStatus,
+} from "@/write-back-engine";
 
 const MODE_OPTIONS: Array<{ value: ReviewMode; label: string }> = [
   { value: "ANALYSIS", label: "Analyse" },
@@ -105,6 +115,8 @@ interface ReviewWorkspaceProps {
   onClearStatus(item: ReviewItem): void;
   onAcceptAllAutomatic(): void;
   onResetDecisions(): void;
+  writeBackState: WriteBackState;
+  onApplySingle(item: ReviewItem): void;
   message: string;
   hasError: boolean;
   readerMetrics: FootnoteReadResult["readerMetrics"] | null;
@@ -119,6 +131,13 @@ function statusIcon(status: ReviewStatus): React.ReactNode {
   if (status === "REJECTED") return <X size={13} aria-hidden="true" />;
   if (status === "DEFERRED") return <Clock3 size={13} aria-hidden="true" />;
   return <Info size={13} aria-hidden="true" />;
+}
+
+function writeBackStatusIcon(status: WriteBackStatus): React.ReactNode {
+  if (status === "APPLIED") return <Check size={13} aria-hidden="true" />;
+  if (status === "FAILED") return <X size={13} aria-hidden="true" />;
+  if (status === "STALE") return <AlertTriangle size={13} aria-hidden="true" />;
+  return <Clock3 size={13} aria-hidden="true" />;
 }
 
 function severityIcon(severity: ReviewItem["finding"]["severity"]): React.ReactNode {
@@ -165,7 +184,7 @@ function ReviewSummary({ result, mode }: { result: ReviewEngineResult; mode: Rev
       <div className="fc-summary__heading">
         <div>
           <p className="fc-eyebrow">Prüfergebnis</p>
-          <h2>{mode === "CORRECTION" ? `${summary.correctionReady} Korrekturen vorgemerkt` : `${summary.total} Findings`}</h2>
+          <h2>{mode === "CORRECTION" ? `${summary.correctionReady} sichere Korrekturen` : `${summary.total} Findings`}</h2>
         </div>
         {summary.conflicts > 0 && <span className="fc-badge fc-badge--technical">{summary.conflicts} Konflikte</span>}
       </div>
@@ -180,7 +199,7 @@ function ReviewSummary({ result, mode }: { result: ReviewEngineResult; mode: Rev
       </p>
       {mode === "CORRECTION" && (
         <p className="fc-summary__correction">
-          {summary.byClass.manual} müssen geprüft werden · {summary.byClass.technical} technisch blockiert. Word wird noch nicht verändert.
+          {summary.byClass.manual} müssen geprüft werden · {summary.byClass.technical} technisch blockiert. Sichere AUTO-Korrekturen werden automatisch angewendet.
         </p>
       )}
     </SpotlightCard>
@@ -189,7 +208,7 @@ function ReviewSummary({ result, mode }: { result: ReviewEngineResult; mode: Rev
 
 function ActionPreview({ item }: { item: ReviewItem }) {
   const action = item.proposedAction;
-  if (!action) return <p className="fc-finding__message">{item.finding.message}</p>;
+  if (!action) return null;
   if (action.type === "TEXT_REPLACE") {
     return (
       <div className="fc-change" aria-label={`Änderung von ${action.originalText} zu ${action.replacementText}`}>
@@ -212,6 +231,13 @@ function ActionPreview({ item }: { item: ReviewItem }) {
       <span className="fc-change__after">{formatFormattingValue(property, expected)}</span>
     </div>
   );
+}
+
+function findingTitle(item: ReviewItem): string {
+  return item.finding.ruleId === "CASE_LAW_DATE_FORMAT" &&
+    item.finding.metadata?.uncertainty === "TWO_DIGIT_YEAR"
+    ? "Datumsformat prüfen"
+    : getRuleTitle(item.finding.ruleId);
 }
 
 function TechnicalDetails({ item, engineResult }: { item: ReviewItem; engineResult: FootnoteEngineResult }) {
@@ -251,14 +277,22 @@ function FindingCard({
   engineResult,
   onSetStatus,
   onClearStatus,
+  writeBackResult,
+  onApplySingle,
 }: {
   item: ReviewItem;
   mode: ReviewMode;
   engineResult: FootnoteEngineResult;
   onSetStatus(item: ReviewItem, status: ReviewStatus): void;
   onClearStatus(item: ReviewItem): void;
+  writeBackResult?: WriteBackResult;
+  onApplySingle(item: ReviewItem): void;
 }) {
   const blockedReason = REVIEW_REASON_LABELS[item.classificationReason];
+  const title = findingTitle(item);
+  const canApply = canApplySingleReviewItem(item, writeBackResult);
+  const isApplying =
+    writeBackResult?.status === "PENDING" && writeBackResult.message === "Wird durchgeführt …";
   return (
     <article className={`fc-finding fc-finding--${item.finding.severity}`}>
       <div className="fc-finding__topline">
@@ -266,23 +300,42 @@ function FindingCard({
         <span className={`fc-badge fc-badge--class-${item.reviewClass.toLowerCase()}`}>{REVIEW_CLASS_LABELS[item.reviewClass]}</span>
         {item.conflicts.length > 0 && <span className="fc-badge fc-badge--technical"><ShieldAlert size={13} aria-hidden="true" />Konflikt</span>}
       </div>
-      <h3>{getRuleTitle(item.finding.ruleId)}</h3>
+      <h3>{title}</h3>
       <ActionPreview item={item} />
       <p className="fc-finding__message">{item.finding.message}</p>
       {item.conflicts.length > 0 && <p className="fc-finding__conflict">Diese Änderung überschneidet sich mit einer anderen vorgeschlagenen Änderung.</p>}
       <div className="fc-finding__status">
         <span>Status:</span>
         <span className={`fc-status fc-status--${item.decision.effectiveStatus.toLowerCase()}`}>{statusIcon(item.decision.effectiveStatus)}{REVIEW_STATUS_LABELS[item.decision.effectiveStatus]}</span>
-        {item.decision.source === "MODE_DEFAULT" && mode === "CORRECTION" && <span className="fc-muted">automatisch vorgemerkt</span>}
+        {item.decision.source === "MODE_DEFAULT" && mode === "CORRECTION" && <span className="fc-muted">automatisch freigegeben</span>}
       </div>
+      {writeBackResult && (
+        <div className="fc-writeback-status" aria-live="polite">
+          <span>Word-Änderung:</span>
+          <span className={`fc-writeback-badge fc-writeback-badge--${writeBackResult.status.toLowerCase()}`}>
+            {writeBackStatusIcon(writeBackResult.status)}
+            {isApplying ? "Wird durchgeführt …" : writeBackResultLabel(writeBackResult)}
+          </span>
+          {(writeBackResult.status === "FAILED" || writeBackResult.status === "STALE") &&
+            writeBackResult.message && <span className="fc-writeback-message">{writeBackResult.message}</span>}
+        </div>
+      )}
       {mode === "REVIEW" && item.reviewClass !== "INFO" && (
-        <div className="fc-finding__actions" aria-label={`Entscheidung für ${getRuleTitle(item.finding.ruleId)}`}>
+        <div className="fc-finding__actions" aria-label={`Entscheidung für ${title}`}>
           <span title={!item.canAccept ? blockedReason || "Für dieses Finding ist keine sichere Aktion verfügbar." : undefined}>
             <NeonButton size="sm" variant="primary" disabled={!item.canAccept} onClick={() => onSetStatus(item, "ACCEPTED")}><Check size={14} aria-hidden="true" />Übernehmen</NeonButton>
           </span>
           <NeonButton size="sm" variant="destructive" onClick={() => onSetStatus(item, "REJECTED")}><X size={14} aria-hidden="true" />Ablehnen</NeonButton>
           <NeonButton size="sm" variant="subtle" onClick={() => onSetStatus(item, "DEFERRED")}><Clock3 size={14} aria-hidden="true" />Später prüfen</NeonButton>
           {item.decision.explicitStatus && <NeonButton size="sm" variant="ghost" onClick={() => onClearStatus(item)}><RotateCcw size={14} aria-hidden="true" />Zurücksetzen</NeonButton>}
+        </div>
+      )}
+      {(mode === "REVIEW" || mode === "CORRECTION") && (canApply || isApplying) && (
+        <div className="fc-writeback-actions">
+          <NeonButton size="sm" variant="primary" disabled={isApplying} onClick={() => onApplySingle(item)}>
+            {isApplying ? <LoaderCircle className="fc-spin" size={14} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
+            {isApplying ? "Wird durchgeführt …" : "Durchführen"}
+          </NeonButton>
         </div>
       )}
       <Collapsible label="Details" className="fc-details" contentClassName="fc-details__content">
@@ -313,6 +366,8 @@ function FootnoteGroup({
   engineResult,
   onSetStatus,
   onClearStatus,
+  writeBackState,
+  onApplySingle,
   open,
   onOpenChange,
 }: {
@@ -321,6 +376,8 @@ function FootnoteGroup({
   engineResult: FootnoteEngineResult;
   onSetStatus(item: ReviewItem, status: ReviewStatus): void;
   onClearStatus(item: ReviewItem): void;
+  writeBackState: WriteBackState;
+  onApplySingle(item: ReviewItem): void;
   open: boolean;
   onOpenChange(open: boolean): void;
 }) {
@@ -338,7 +395,16 @@ function FootnoteGroup({
         {() => (
           <>
             {group.items.map((item) => (
-              <FindingCard key={item.reviewItemId} item={item} mode={mode} engineResult={engineResult} onSetStatus={onSetStatus} onClearStatus={onClearStatus} />
+              <FindingCard
+                key={item.reviewItemId}
+                item={item}
+                mode={mode}
+                engineResult={engineResult}
+                onSetStatus={onSetStatus}
+                onClearStatus={onClearStatus}
+                writeBackResult={writeBackResultForItem(writeBackState, item)}
+                onApplySingle={onApplySingle}
+              />
             ))}
             <Collapsible label="Technische Fußnotendaten" className="fc-footnote-debug" contentClassName="fc-details__content">
               <FootnoteTechnicalData footnote={group.footnote} />
@@ -390,6 +456,11 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
   const visibleGroups = groups.slice(0, visibleGroupLimit);
   const hasAnalysis = props.engineResult !== null && props.reviewResult !== null;
   const activeFilters = hasActiveFilters(filters);
+  const writeBackResults = Object.values(props.writeBackState);
+  const appliedCount = writeBackResults.filter((result) => result.status === "APPLIED").length;
+  const staleCount = writeBackResults.filter((result) => result.status === "STALE").length;
+  const failedCount = writeBackResults.filter((result) => result.status === "FAILED").length;
+  const isCorrecting = props.isLoading && props.progress?.phase === "correcting";
 
   return (
     <main className="fc-app">
@@ -413,14 +484,14 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
         </nav>
 
         <NeonButton className="fc-primary-action" variant="primary" size="lg" disabled={props.isLoading} onClick={props.onAnalyze}>
-          <CheckCheck size={18} aria-hidden="true" />{props.isLoading ? "Fußnoten werden geprüft …" : "Fußnoten prüfen"}
+          <CheckCheck size={18} aria-hidden="true" />{isCorrecting ? "Sichere Korrekturen werden durchgeführt …" : props.isLoading ? "Fußnoten werden geprüft …" : "Fußnoten prüfen"}
         </NeonButton>
 
         {props.isLoading && props.progress && (
           <section className="fc-progress-panel" aria-live="polite">
-            <strong>Fußnoten werden geprüft</strong>
-            <Progress value={props.progress.percent} label="Fortschritt der Fußnotenprüfung" />
-            <span>{props.progress.total > 0 ? `${props.progress.processed.toLocaleString("de-DE")} / ${props.progress.total.toLocaleString("de-DE")} Fußnoten · ${props.progress.percent} %` : `${props.progress.percent} %`}</span>
+            <strong>{isCorrecting ? "Sichere Korrekturen werden durchgeführt …" : "Fußnoten werden geprüft"}</strong>
+            <Progress value={props.progress.percent} label={isCorrecting ? "Fortschritt der sicheren Korrekturen" : "Fortschritt der Fußnotenprüfung"} />
+            <span>{props.progress.total > 0 ? `${props.progress.processed.toLocaleString("de-DE")} / ${props.progress.total.toLocaleString("de-DE")} ${isCorrecting ? "Korrekturen" : "Fußnoten"} · ${props.progress.percent} %` : `${props.progress.percent} %`}</span>
           </section>
         )}
 
@@ -456,11 +527,13 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
                   </div>
                 )}
                 {props.mode === "CORRECTION" && (
-                  <div className="fc-sticky-actions fc-sticky-actions--correction" aria-label="Korrekturvormerkung">
-                    <strong>Für Korrektur vorgemerkt: {props.reviewResult.summary.correctionReady}</strong>
+                  <div className="fc-sticky-actions fc-sticky-actions--correction" aria-label="Korrekturergebnis">
+                    <strong>Durchgeführt: {appliedCount}</strong>
+                    <span>Erneut prüfen: {staleCount}</span>
+                    <span>Fehlgeschlagen: {failedCount}</span>
                     <span>Prüfen: {props.reviewResult.summary.byClass.manual}</span>
                     <span>Technisch blockiert: {props.reviewResult.summary.byClass.technical}</span>
-                    <span className="fc-muted">Noch kein Word-Write-back</span>
+                    <span className="fc-muted">Sichere AUTO-Korrekturen werden sequenziell angewendet</span>
                   </div>
                 )}
                 <section className="fc-filters" aria-label="Findings filtern">
@@ -485,6 +558,8 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
                         engineResult={props.engineResult as FootnoteEngineResult}
                         onSetStatus={props.onSetStatus}
                         onClearStatus={props.onClearStatus}
+                        writeBackState={props.writeBackState}
+                        onApplySingle={props.onApplySingle}
                         open={openFootnotes.has(group.footnote.id)}
                         onOpenChange={(open) =>
                           setOpenFootnotes((current) =>

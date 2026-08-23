@@ -75,10 +75,11 @@ export const caseLawDateFormatRule: FootnoteRule = {
     if (!data?.date) return [];
     const expectedFormat = settings(context).dateFormat;
     if (!data.normalizedDate) {
+      const shortYear = /(\d{2})\s*$/.exec(data.date.rawText)?.[1] ?? data.date.rawText;
       return informationalCandidate(
         context,
         data.date,
-        "Das zweistellige Jahr kann nicht ohne fachliche Annahme auf ein vierstelliges Jahr normalisiert werden.",
+        `Das Jahr „${shortYear}“ ist nur zweistellig angegeben. Bitte prüfen Sie, welches vierstellige Jahr gemeint ist.`,
         {
           expectedFormat,
           requiresManualReview: true,
