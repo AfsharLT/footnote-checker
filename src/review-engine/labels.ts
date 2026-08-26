@@ -9,8 +9,8 @@ export const REVIEW_CLASS_LABELS: Record<ReviewClass, string> = {
 
 export const REVIEW_STATUS_LABELS: Record<ReviewStatus, string> = {
   UNREVIEWED: "Offen",
-  ACCEPTED: "Übernehmen",
-  REJECTED: "Ablehnen",
+  ACCEPTED: "Übernommen",
+  REJECTED: "Abgelehnt",
   DEFERRED: "Später prüfen",
 };
 

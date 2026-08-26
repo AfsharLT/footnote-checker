@@ -39,8 +39,15 @@ body,
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
+}
+
+:where(button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
 }
 
 .fc-app {
@@ -178,6 +185,13 @@ input {
 }
 
 .fc-notice--error { border-color: #efc3c3; background: #fff7f7; color: #8a2525; }
+
+.fc-error-boundary { display: grid; gap: 12px; margin-top: 20px; padding: 18px; border: 1px solid #efc3c3; border-radius: 12px; background: white; color: #8a2525; }
+.fc-error-boundary h1 { margin: 0; color: #752121; font-size: 18px; }
+.fc-error-boundary p { margin: 5px 0 0; color: var(--text-muted); font-size: 13px; line-height: 1.5; }
+.fc-error-boundary__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.fc-error-boundary details { color: var(--text-muted); font-size: 12px; }
+.fc-error-boundary summary { width: fit-content; cursor: pointer; }
 
 .fc-empty-state,
 .fc-no-results {
@@ -379,6 +393,7 @@ input {
 .fc-change--insert .fc-change__after { display: inline-block; margin-left: 4px; }
 .fc-finding__actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 11px; }
 .fc-finding__actions > span { display: inline-flex; }
+.fc-manual-hint { flex-basis: 100%; color: var(--text-muted); font-size: 11px; line-height: 1.45; }
 .fc-details { margin-top: 7px; border-top: 1px solid #e7eaf0; }
 .fc-details__content { min-width: 0; padding: 2px 0 5px 23px; }
 .fc-footnote-debug { margin: 1px 2px 0; padding-top: 2px; border-top: 1px solid var(--border); }
@@ -389,6 +404,7 @@ input {
 .fc-technical-grid pre { max-width: 100%; margin: 3px 0 0; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
 .fc-load-more { width: 100%; }
 .fc-global-debug { margin-top: 13px; padding-top: 4px; border-top: 1px solid var(--border); }
+.fc-error-details { max-width: 100%; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: #6e2f2f; font-size: 11px; }
 
 .fc-dialog-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 16px; background: rgba(18, 27, 40, 0.44); }
 .fc-dialog { width: min(100%, 420px); padding: 18px; border: 1px solid var(--brand-primary-border); border-radius: 12px; background: white; box-shadow: 0 18px 50px rgba(16, 28, 45, 0.22); }

@@ -56,7 +56,7 @@ export interface WriteBackPlan {
 }
 
 export type BatchRunStatus =
-  "IDLE" | "PLANNING" | "RUNNING" | "COMPLETED" | "COMPLETED_WITH_ISSUES" | "FAILED";
+  "IDLE" | "PLANNING" | "RUNNING" | "FINALIZING" | "COMPLETED" | "COMPLETED_WITH_ISSUES" | "FAILED";
 
 export type BatchProgressPhase = "PLANNING" | "WRITING" | "FINALIZING";
 

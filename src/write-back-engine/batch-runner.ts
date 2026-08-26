@@ -127,6 +127,7 @@ function fallbackPerformance(
     localValidationDurationMs: 0,
     writeDurationMs: 0,
     finalizationDurationMs: 0,
+    cleanupDurationMs: 0,
     affectedFootnotes: new Set(ordered.map((item) => item.footnoteId)).size,
     plannedActions: ordered.length,
     appliedActions: 0,
@@ -179,6 +180,7 @@ export async function runWriteBackBatch(
   let processed = 0;
   let fatalError: string | undefined;
   let performanceMetrics: BatchPerformanceMetrics | undefined;
+  let cleanedUp = false;
 
   try {
     notify(
@@ -381,6 +383,10 @@ export async function runWriteBackBatch(
     const finalPerformance =
       performanceMetrics ?? fallbackPerformance(plan, ordered, executionStartedAt);
     finalPerformance.finalizationDurationMs += performance.now() - finalizationStartedAt;
+    const cleanupStartedAt = performance.now();
+    cleanupBatchResources();
+    cleanedUp = true;
+    finalPerformance.cleanupDurationMs += performance.now() - cleanupStartedAt;
     finalPerformance.totalDurationMs =
       plan.planningDurationMs + (performance.now() - executionStartedAt);
     finalPerformance.appliedActions = summary.applied + summary.alreadyResolved;
@@ -398,6 +404,6 @@ export async function runWriteBackBatch(
       ...(fatalError ? { fatalError } : {}),
     };
   } finally {
-    cleanupBatchResources();
+    if (!cleanedUp) cleanupBatchResources();
   }
 }

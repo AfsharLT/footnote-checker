@@ -1,6 +1,7 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./components/App";
+import { TaskpaneErrorBoundary } from "./components/TaskpaneErrorBoundary";
 import {
   createLightTheme,
   FluentProvider,
@@ -32,18 +33,24 @@ const footnoteCheckerBrand: BrandVariants = {
 };
 const footnoteCheckerTheme = createLightTheme(footnoteCheckerBrand);
 
-/* Render application after Office initializes */
-Office.onReady(() => {
+function renderApplication(Component: React.ComponentType): void {
   root?.render(
     <FluentProvider className="fc-root-provider" theme={footnoteCheckerTheme}>
-      <App />
+      <TaskpaneErrorBoundary>
+        <Component />
+      </TaskpaneErrorBoundary>
     </FluentProvider>
   );
+}
+
+/* Render application after Office initializes */
+Office.onReady(() => {
+  renderApplication(App);
 });
 
 if ((module as any).hot) {
   (module as any).hot.accept("./components/App", () => {
     const NextApp = require("./components/App").default;
-    root?.render(NextApp);
+    renderApplication(NextApp);
   });
 }

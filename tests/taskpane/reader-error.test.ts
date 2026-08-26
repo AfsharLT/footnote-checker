@@ -20,13 +20,16 @@ function runReaderErrorTests(): void {
 
   assert(formatted.includes("Name: OfficeExtension.Error"), "Error name must be displayed");
   assert(formatted.includes("Code: GeneralException"), "Error code must be displayed");
-  assert(formatted.includes("Message: A general exception occurred."), "Message must be displayed");
-  assert(formatted.includes("Debug Location: Range.getOoxml"), "Location must be displayed");
-  assert(formatted.includes("Statement: context.sync()"), "Statement must be displayed");
-  assert(formatted.includes("Surrounding:"), "Surrounding statements must be displayed");
+  assert(formatted.includes("Meldung: A general exception occurred."), "Message must be displayed");
+  assert(formatted.includes("Fehlerstelle: Range.getOoxml"), "Location must be displayed");
+  assert(formatted.includes("Anweisung: context.sync()"), "Statement must be displayed");
+  assert(formatted.includes("Umgebung:"), "Surrounding statements must be displayed");
 
   const fallback = formatReaderError("unexpected");
-  assert(fallback.includes("Reader-Fehler:"), "Fallback must retain the development heading");
+  assert(
+    fallback.includes("Fehler beim Auslesen der Fußnoten:"),
+    "Fallback must retain the development heading"
+  );
   assert(fallback.includes("Die Fußnoten konnten nicht"), "Fallback message must be understandable");
 }
 

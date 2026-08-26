@@ -41,6 +41,7 @@ export type WriteBackBlockReason =
   | "PROTECTED_STATE_UNKNOWN"
   | "ACTION_UNSUPPORTED"
   | "FORMAT_PROPERTY_UNSUPPORTED"
+  | "FORMAT_WRITE_VERIFICATION_FAILED"
   | "FORMAT_CHANGE_NOT_ATOMIC"
   | "RANGE_AMBIGUOUS"
   | "LOCAL_TARGET_MISSING"
@@ -111,6 +112,7 @@ export interface BatchPerformanceMetrics {
   localValidationDurationMs: number;
   writeDurationMs: number;
   finalizationDurationMs: number;
+  cleanupDurationMs: number;
   affectedFootnotes: number;
   plannedActions: number;
   appliedActions: number;

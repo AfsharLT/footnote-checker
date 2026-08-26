@@ -1,4 +1,4 @@
-/* global Office, OfficeExtension, Word, performance */
+/* global OfficeExtension, Word, performance */
 
 import type { ProposedReviewAction } from "@/review-engine";
 import { findPlainTextUrls } from "@/footnote-engine/patterns";
@@ -11,6 +11,7 @@ import {
   extractCurrentProtectedRanges,
   hashFootnoteContentText,
 } from "@/taskpane/taskpane";
+import { getOfficeHostCapabilities } from "@/taskpane/host-capabilities";
 import { applyFormattingChange } from "./formatting-writeback";
 import {
   createFootnoteWritePlan,
@@ -176,6 +177,7 @@ function emptyBatchPerformanceMetrics(input: ApplyBatchReviewItemsInput): BatchP
     localValidationDurationMs: 0,
     writeDurationMs: 0,
     finalizationDurationMs: 0,
+    cleanupDurationMs: 0,
     affectedFootnotes: new Set(input.entries.map((entry) => entry.footnote.id)).size,
     plannedActions: input.entries.length,
     appliedActions: 0,
@@ -265,7 +267,8 @@ async function applyOfficeBatch(
   const performanceMetrics = emptyBatchPerformanceMetrics(input);
   const results: WriteBackResult[] = [];
   const mutations = [...(input.appliedMutations ?? [])];
-  if (!Office.context.requirements.isSetSupported("WordApi", "1.5")) {
+  const capabilities = getOfficeHostCapabilities();
+  if (!capabilities.supported) {
     const unsupported = input.entries.map((entry, index) =>
       batchFailure(entry, "FAILED", "WORD_API_UNSUPPORTED", undefined, index === 0)
     );
@@ -277,10 +280,7 @@ async function applyOfficeBatch(
       fatalError: "WordApi 1.5 wird von diesem Host nicht unterstützt.",
     };
   }
-  const supportsCharacterSpacing = Office.context.requirements.isSetSupported(
-    "WordApiDesktop",
-    "1.3"
-  );
+  const supportsCharacterSpacing = capabilities.requirementSets.wordApiDesktop13;
 
   const footnoteChunks = chunked(groupBatchEntries(input.entries), Math.max(1, input.chunkSize));
   let processed = 0;
@@ -640,13 +640,32 @@ async function applyOfficeBatch(
         if (queuedFormatActions.length > 0) {
           await sync();
           chunkWrote = true;
+          for (const item of queuedFormatActions) {
+            loadFormattingProperty(item.target, item.property);
+          }
+          await sync();
           const appliedAt = new Date().toISOString();
           for (const item of queuedFormatActions) {
-            const result = appliedResult(
-              { reviewItem: item.entry.reviewItem, footnote: item.entry.footnote },
-              item.action.localRevalidation,
-              appliedAt
-            );
+            const action = item.action.action;
+            const verified =
+              action.type === "FORMAT_CHANGE" &&
+              currentFormattingValue(item.target, item.property) ===
+                expectedFormattingValue(action, item.property);
+            const result = verified
+              ? appliedResult(
+                  { reviewItem: item.entry.reviewItem, footnote: item.entry.footnote },
+                  item.action.localRevalidation,
+                  appliedAt
+                )
+              : {
+                  ...batchFailure(
+                    item.entry,
+                    "FAILED",
+                    "FORMAT_WRITE_VERIFICATION_FAILED",
+                    item.action.localRevalidation
+                  ),
+                  message: "Word konnte die gewünschte Formatierung nicht zuverlässig übernehmen.",
+                };
             chunkResults.push(result);
             if (result.mutation) chunkMutations.push(result.mutation);
           }
@@ -693,7 +712,8 @@ async function applyOfficeBatch(
 export const officeWriteBackAdapter: WriteBackDocumentAdapter = {
   applyBatch: applyOfficeBatch,
   async applySingle(input) {
-    if (!Office.context.requirements.isSetSupported("WordApi", "1.5")) {
+    const capabilities = getOfficeHostCapabilities();
+    if (!capabilities.supported) {
       return failed(input, "FAILED", "WORD_API_UNSUPPORTED", undefined, undefined, true);
     }
     const action = input.reviewItem.proposedAction;
@@ -701,7 +721,7 @@ export const officeWriteBackAdapter: WriteBackDocumentAdapter = {
     if (
       action.type === "FORMAT_CHANGE" &&
       formatProperty(action) === "characterSpacing" &&
-      !Office.context.requirements.isSetSupported("WordApiDesktop", "1.3")
+      !capabilities.requirementSets.wordApiDesktop13
     ) {
       return failed(input, "FAILED", "FORMAT_PROPERTY_UNSUPPORTED");
     }
@@ -845,6 +865,23 @@ export const officeWriteBackAdapter: WriteBackDocumentAdapter = {
           if (currentValue === expectedValue) {
             return appliedResult(input, localRevalidation, new Date().toISOString(), true);
           }
+          applyMutation(target, action);
+          await context.sync();
+          loadFormattingProperty(target, property);
+          await context.sync();
+          if (currentFormattingValue(target, property) !== expectedValue) {
+            return {
+              ...failed(
+                input,
+                "FAILED",
+                "FORMAT_WRITE_VERIFICATION_FAILED",
+                undefined,
+                localRevalidation
+              ),
+              message: "Word konnte die gewünschte Formatierung nicht zuverlässig übernehmen.",
+            };
+          }
+          return appliedResult(input, localRevalidation, new Date().toISOString());
         }
         applyMutation(target, action);
         await context.sync();

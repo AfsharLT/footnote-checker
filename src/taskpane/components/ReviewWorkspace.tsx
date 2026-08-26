@@ -40,11 +40,11 @@ import {
   createClosedFootnoteState,
   DEFAULT_REVIEW_FILTERS,
   SEVERITY_LABELS,
-  filterReviewItems,
+  deduplicateMessages,
   formatFormattingValue,
   getRuleTitle,
-  groupReviewItems,
   hasActiveFilters,
+  prepareReviewDisplay,
   setFootnoteOpen,
   type ReviewFilters,
   type ReviewFootnoteGroup,
@@ -56,6 +56,11 @@ import type {
   FootnoteReadResult,
   FootnoteSnapshot,
 } from "@/taskpane/taskpane";
+import type { HostCapabilities } from "@/taskpane/host-capabilities";
+import type {
+  AnalysisPerformanceMetrics,
+  HostWorkState,
+} from "@/taskpane/performance";
 import {
   canApplySingleReviewItem,
   batchProgressPercent,
@@ -72,7 +77,7 @@ import {
 
 const MODE_OPTIONS: Array<{ value: ReviewMode; label: string }> = [
   { value: "ANALYSIS", label: "Analyse" },
-  { value: "REVIEW", label: "Review" },
+  { value: "REVIEW", label: "Prüfung" },
   { value: "CORRECTION", label: "Korrektur" },
 ];
 
@@ -125,10 +130,14 @@ interface ReviewWorkspaceProps {
   batchResult: BatchWriteBackResult | null;
   currentPlan: WriteBackPlan | null;
   reportError: string;
+  technicalError: string;
   message: string;
   hasError: boolean;
   readerMetrics: FootnoteReadResult["readerMetrics"] | null;
   documentFormatting: DocumentFormattingSnapshot | null;
+  hostCapabilities: HostCapabilities;
+  analysisPerformance: AnalysisPerformanceMetrics | null;
+  hostWorkState: HostWorkState;
   confirmReanalysis: boolean;
   onCancelReanalysis(): void;
   onConfirmReanalysis(): void;
@@ -172,7 +181,7 @@ function FilterFields({
         }
       />
       <FilterSelect
-        label="Review"
+        label="Prüfklasse"
         value={filters.reviewClass}
         options={REVIEW_CLASS_OPTIONS}
         onChange={(reviewClass) =>
@@ -207,7 +216,7 @@ function ReviewSummary({ result, mode }: { result: ReviewEngineResult; mode: Rev
           <h2>
             {mode === "CORRECTION"
               ? `${summary.correctionReady} sichere Korrekturen`
-              : `${summary.total} Findings`}
+              : `${summary.total} Prüfhinweise`}
           </h2>
         </div>
         {summary.conflicts > 0 && (
@@ -233,13 +242,13 @@ function ReviewSummary({ result, mode }: { result: ReviewEngineResult; mode: Rev
         </div>
       </div>
       <p className="fc-summary__status">
-        {summary.byStatus.open} offen · {summary.byStatus.accepted} übernehmen ·{" "}
+        {summary.byStatus.open} offen · {summary.byStatus.accepted} übernommen ·{" "}
         {summary.byStatus.rejected} abgelehnt · {summary.byStatus.deferred} später
       </p>
       {mode === "CORRECTION" && (
         <p className="fc-summary__correction">
           {summary.byClass.manual} müssen geprüft werden · {summary.byClass.technical} technisch
-          blockiert. Sichere AUTO-Korrekturen werden automatisch angewendet.
+          blockiert. Sichere automatische Korrekturen werden automatisch angewendet.
         </p>
       )}
     </SpotlightCard>
@@ -310,7 +319,7 @@ function TechnicalDetails({
   return (
     <dl className="fc-technical-grid">
       <div>
-        <dt>Rule ID</dt>
+        <dt>Regel-ID</dt>
         <dd>{item.finding.ruleId}</dd>
       </div>
       <div>
@@ -318,11 +327,11 @@ function TechnicalDetails({
         <dd>{CATEGORY_LABELS[item.finding.category]}</dd>
       </div>
       <div>
-        <dt>Severity</dt>
+        <dt>Schweregrad</dt>
         <dd>{SEVERITY_LABELS[item.finding.severity]}</dd>
       </div>
       <div>
-        <dt>Review-Grund</dt>
+        <dt>Prüfgrund</dt>
         <dd>{REVIEW_REASON_LABELS[item.classificationReason]}</dd>
       </div>
       <div>
@@ -332,7 +341,7 @@ function TechnicalDetails({
         </dd>
       </div>
       <div>
-        <dt>Finding ID</dt>
+        <dt>Hinweis-ID</dt>
         <dd>{item.finding.findingId}</dd>
       </div>
       <div>
@@ -340,43 +349,43 @@ function TechnicalDetails({
         <dd>{item.finding.sourceTextHash}</dd>
       </div>
       <div>
-        <dt>Parser Type</dt>
+        <dt>Parser-Typ</dt>
         <dd>{segment?.classification.type ?? "–"}</dd>
       </div>
       <div>
-        <dt>Effective Type</dt>
+        <dt>Effektiver Typ</dt>
         <dd>{segmentAnalysis?.effectiveClassification.effectiveType ?? "–"}</dd>
       </div>
       <div>
-        <dt>Extraction Status</dt>
+        <dt>Extraktionsstatus</dt>
         <dd>{segment?.extraction?.status ?? "–"}</dd>
       </div>
       <div>
-        <dt>Source Mapping</dt>
+        <dt>Quellenzuordnung</dt>
         <dd>
           <pre>{JSON.stringify(segmentAnalysis?.sourceMappings ?? [], null, 2)}</pre>
         </dd>
       </div>
       <div>
-        <dt>Formatting Metadata</dt>
+        <dt>Formatierungsmetadaten</dt>
         <dd>
           <pre>{JSON.stringify(item.finding.metadata ?? {}, null, 2)}</pre>
         </dd>
       </div>
       <div>
-        <dt>Proposed Action</dt>
+        <dt>Änderungsvorschlag</dt>
         <dd>
           <pre>{JSON.stringify(item.proposedAction ?? null, null, 2)}</pre>
         </dd>
       </div>
       <div>
-        <dt>Technical Eligibility</dt>
+        <dt>Technische Eignung</dt>
         <dd>
           <pre>{JSON.stringify(item.technicalEligibility, null, 2)}</pre>
         </dd>
       </div>
       <div>
-        <dt>Conflict IDs</dt>
+        <dt>Konflikt-IDs</dt>
         <dd>{item.conflicts.map((conflict) => conflict.conflictId).join(", ") || "–"}</dd>
       </div>
     </dl>
@@ -407,6 +416,11 @@ function FindingCard({
   const canApply = canApplySingleReviewItem(item, writeBackResult);
   const isApplying =
     writeBackResult?.status === "PENDING" && writeBackResult.message === "Wird durchgeführt …";
+  const findingMessage = deduplicateMessages(item.finding.message)[0];
+  const writeBackMessage = deduplicateMessages(
+    item.finding.message,
+    writeBackResult?.message
+  )[1];
   return (
     <article className={`fc-finding fc-finding--${item.finding.severity}`}>
       <div className="fc-finding__topline">
@@ -426,7 +440,7 @@ function FindingCard({
       </div>
       <h3>{title}</h3>
       <ActionPreview item={item} />
-      <p className="fc-finding__message">{item.finding.message}</p>
+      {findingMessage && <p className="fc-finding__message">{findingMessage}</p>}
       {item.conflicts.length > 0 && (
         <p className="fc-finding__conflict">
           Diese Änderung überschneidet sich mit einer anderen vorgeschlagenen Änderung.
@@ -452,30 +466,36 @@ function FindingCard({
             {isApplying ? "Wird durchgeführt …" : writeBackResultLabel(writeBackResult)}
           </span>
           {(writeBackResult.status === "FAILED" || writeBackResult.status === "STALE") &&
-            writeBackResult.message && (
-              <span className="fc-writeback-message">{writeBackResult.message}</span>
+            writeBackMessage && (
+              <span className="fc-writeback-message">{writeBackMessage}</span>
             )}
         </div>
       )}
       {mode === "REVIEW" && item.reviewClass !== "INFO" && (
         <div className="fc-finding__actions" aria-label={`Entscheidung für ${title}`}>
-          <span
-            title={
-              !item.canAccept
-                ? blockedReason || "Für dieses Finding ist keine sichere Aktion verfügbar."
-                : undefined
-            }
-          >
-            <NeonButton
-              size="sm"
-              variant="primary"
-              disabled={!item.canAccept || batchRunning}
-              onClick={() => onSetStatus(item, "ACCEPTED")}
+          {item.proposedAction ? (
+            <span
+              title={
+                !item.canAccept
+                  ? blockedReason || "Für diesen Hinweis ist keine sichere Aktion verfügbar."
+                  : undefined
+              }
             >
-              <Check size={14} aria-hidden="true" />
-              Übernehmen
-            </NeonButton>
-          </span>
+              <NeonButton
+                size="sm"
+                variant="primary"
+                disabled={!item.canAccept || batchRunning}
+                onClick={() => onSetStatus(item, "ACCEPTED")}
+              >
+                <Check size={14} aria-hidden="true" />
+                Übernehmen
+              </NeonButton>
+            </span>
+          ) : (
+            <span className="fc-manual-hint">
+              Keine sichere automatische Änderung verfügbar – bitte im Dokument prüfen.
+            </span>
+          )}
           <NeonButton
             size="sm"
             variant="destructive"
@@ -655,11 +675,17 @@ function GlobalTechnicalData({
   documentFormatting,
   engineResult,
   batchResult,
+  hostCapabilities,
+  analysisPerformance,
+  reviewPreparationDurationMs,
 }: {
   readerMetrics: FootnoteReadResult["readerMetrics"] | null;
   documentFormatting: DocumentFormattingSnapshot | null;
   engineResult: FootnoteEngineResult;
   batchResult: BatchWriteBackResult | null;
+  hostCapabilities: HostCapabilities;
+  analysisPerformance: AnalysisPerformanceMetrics | null;
+  reviewPreparationDurationMs: number;
 }) {
   return (
     <Collapsible
@@ -669,9 +695,27 @@ function GlobalTechnicalData({
     >
       <dl className="fc-technical-grid">
         <div>
-          <dt>Reader</dt>
+          <dt>Footnote Reader</dt>
           <dd>
             <pre>{JSON.stringify(readerMetrics, null, 2)}</pre>
+          </dd>
+        </div>
+        <div>
+          <dt>Host und Plattform</dt>
+          <dd>
+            <pre>{JSON.stringify(hostCapabilities, null, 2)}</pre>
+          </dd>
+        </div>
+        <div>
+          <dt>Analyseperformance</dt>
+          <dd>
+            <pre>
+              {JSON.stringify(
+                { ...analysisPerformance, reviewPreparationDurationMs },
+                null,
+                2
+              )}
+            </pre>
           </dd>
         </div>
         <div>
@@ -685,7 +729,7 @@ function GlobalTechnicalData({
           <dd>
             Analysiert: {engineResult.analyzedFootnotes}
             <br />
-            Findings: {engineResult.findings.length}
+            Prüfhinweise: {engineResult.findings.length}
             <br />
             Dauer: {engineResult.durationMs ?? "–"} ms
           </dd>
@@ -707,21 +751,21 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
   const [filters, setFilters] = useState<ReviewFilters>(DEFAULT_REVIEW_FILTERS);
   const [visibleGroupLimit, setVisibleGroupLimit] = useState(80);
   const [openFootnotes, setOpenFootnotes] = useState<OpenFootnoteState>(createClosedFootnoteState);
-  const filteredItems = useMemo(
-    () => filterReviewItems(props.reviewResult?.items ?? [], props.footnotes, filters),
+  const preparedDisplay = useMemo(
+    () => prepareReviewDisplay(props.reviewResult?.items ?? [], props.footnotes, filters),
     [props.reviewResult, props.footnotes, filters]
   );
-  const groups = useMemo(
-    () => groupReviewItems(filteredItems, props.footnotes),
-    [filteredItems, props.footnotes]
-  );
+  const { filteredItems, groups } = preparedDisplay;
   const filterSignature = `${filters.severity}:${filters.reviewClass}:${filters.status}:${filters.category}:${filters.search}`;
   useEffect(() => setVisibleGroupLimit(80), [filterSignature]);
   useEffect(() => setOpenFootnotes(createClosedFootnoteState()), [props.engineResult]);
   const visibleGroups = groups.slice(0, visibleGroupLimit);
   const hasAnalysis = props.engineResult !== null && props.reviewResult !== null;
   const activeFilters = hasActiveFilters(filters);
-  const isBatchRunning = props.batchRunStatus === "PLANNING" || props.batchRunStatus === "RUNNING";
+  const isBatchRunning =
+    props.batchRunStatus === "PLANNING" ||
+    props.batchRunStatus === "RUNNING" ||
+    props.batchRunStatus === "FINALIZING";
   const isSingleWriteBackRunning = Object.values(props.writeBackState).some(
     (result) => result.status === "PENDING" && result.message === "Wird durchgeführt …"
   );
@@ -776,7 +820,9 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
           onClick={props.onAnalyze}
         >
           <CheckCheck size={18} aria-hidden="true" />
-          {isCorrecting
+          {props.hostWorkState === "FINALIZING"
+            ? "Korrekturlauf wird abgeschlossen …"
+            : isCorrecting
             ? "Sichere Korrekturen werden durchgeführt …"
             : props.isLoading
               ? "Fußnoten werden geprüft …"
@@ -785,7 +831,11 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
 
         {isBatchRunning && props.batchProgress ? (
           <section className="fc-progress-panel" aria-live="polite">
-            <strong>Sichere Korrekturen werden durchgeführt …</strong>
+            <strong>
+              {props.hostWorkState === "FINALIZING"
+                ? "Korrekturlauf wird abgeschlossen …"
+                : "Sichere Korrekturen werden durchgeführt …"}
+            </strong>
             <Progress
               value={batchProgressPercent(props.batchProgress)}
               label="Fortschritt der sicheren Korrekturen"
@@ -822,6 +872,15 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
             <CircleAlert size={18} aria-hidden="true" />
             <span>{props.reportError}</span>
           </div>
+        )}
+        {props.technicalError && (
+          <Collapsible
+            label="Technische Fehlerdetails"
+            className="fc-global-debug"
+            contentClassName="fc-details__content"
+          >
+            <pre className="fc-error-details">{props.technicalError}</pre>
+          </Collapsible>
         )}
 
         {!hasAnalysis && !props.hasError && !props.isLoading && (
@@ -872,7 +931,7 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
                     <strong>{props.footnotes.length}</strong>
                   </div>
                   <div>
-                    <span>Findings</span>
+                    <span>Prüfhinweise</span>
                     <strong>{batchSummary.totalFindings}</strong>
                   </div>
                   <div>
@@ -972,6 +1031,9 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
                         Entscheidungen zurücksetzen
                       </NeonButton>
                     </div>
+                    {(props.currentPlan?.totals.eligible ?? 0) === 0 && (
+                      <span className="fc-muted">Keine ausgewählten sicheren Änderungen.</span>
+                    )}
                   </div>
                 )}
                 {props.mode === "CORRECTION" && (
@@ -985,18 +1047,18 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
                     <span>Prüfen: {props.reviewResult.summary.byClass.manual}</span>
                     <span>Technisch blockiert: {props.reviewResult.summary.byClass.technical}</span>
                     <span className="fc-muted">
-                      Sichere AUTO-Korrekturen werden sequenziell angewendet
+                      Sichere automatische Korrekturen werden sequenziell angewendet
                     </span>
                   </div>
                 )}
-                <section className="fc-filters" aria-label="Findings filtern">
+                <section className="fc-filters" aria-label="Prüfhinweise filtern">
                   <label className="fc-search">
                     <span>Suche</span>
                     <div>
                       <Search size={16} aria-hidden="true" />
                       <input
                         type="search"
-                        placeholder="Fußnoten oder Findings durchsuchen"
+                        placeholder="Fußnoten oder Prüfhinweise durchsuchen"
                         value={filters.search}
                         onChange={(event) => setFilters({ ...filters, search: event.target.value })}
                       />
@@ -1020,7 +1082,7 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
                   </div>
                   <div className="fc-filter-status">
                     <span>
-                      {filteredItems.length} von {props.reviewResult.items.length} Findings
+                      {filteredItems.length} von {props.reviewResult.items.length} Prüfhinweisen
                       angezeigt
                     </span>
                     {activeFilters && (
@@ -1037,7 +1099,7 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
 
                 {groups.length === 0 ? (
                   <section className="fc-no-results">
-                    <h2>Keine passenden Findings</h2>
+                    <h2>Keine passenden Prüfhinweise</h2>
                     <p>Ändern oder entfernen Sie die aktiven Filter.</p>
                   </section>
                 ) : (
@@ -1079,6 +1141,9 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
               documentFormatting={props.documentFormatting}
               engineResult={props.engineResult}
               batchResult={props.batchResult}
+              hostCapabilities={props.hostCapabilities}
+              analysisPerformance={props.analysisPerformance}
+              reviewPreparationDurationMs={preparedDisplay.durationMs}
             />
           </>
         )}
@@ -1094,11 +1159,11 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
             <Modal className="fc-dialog">
               <AriaDialog aria-labelledby="reanalysis-title" className="fc-dialog__content">
                 <Heading slot="title" id="reanalysis-title">
-                  Aktuelle Review-Entscheidungen verwerfen?
+                  Aktuelle Prüfentscheidungen verwerfen?
                 </Heading>
                 <p>
                   Eine neue Analyse ersetzt die aktuellen Ergebnisse. Entscheidungen für
-                  unveränderte Findings werden weiterverwendet; nicht mehr passende Entscheidungen
+                  unveränderte Prüfhinweise werden weiterverwendet; nicht mehr passende Entscheidungen
                   werden verworfen.
                 </p>
                 <div className="fc-dialog__actions">

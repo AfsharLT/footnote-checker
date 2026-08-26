@@ -292,6 +292,7 @@ class ChunkedBatchAdapter implements WriteBackDocumentAdapter {
       localValidationDurationMs: 0,
       writeDurationMs: 0,
       finalizationDurationMs: 0,
+      cleanupDurationMs: 0,
       affectedFootnotes: footnoteGroups.length,
       plannedActions: input.entries.length,
       appliedActions: 0,
@@ -889,6 +890,7 @@ async function run(): Promise<void> {
         getBatchRuntimeDiagnostics().pendingEntries === 0,
       "Batch runner resources must be clean after completion"
     );
+    assert(result.performance.cleanupDurationMs >= 0, "Batch cleanup duration must be recorded");
     matrixMeasurements.push(
       `${scenario.actions}=${result.performance.totalDurationMs.toFixed(1)}ms/${result.performance.contextSyncCount}sync/${result.performance.wordRunCount}run`
     );

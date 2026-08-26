@@ -1,6 +1,7 @@
-/* global Office, Word, DOMParser, Element, performance */
+/* global Word, DOMParser, Element, performance */
 
 import { normalizeFootnoteReferencesInContext, WORD_NOTE_REFERENCE_MARK } from "./locator-context";
+import { getOfficeHostCapabilities, UnsupportedHostCapabilityError } from "./host-capabilities";
 
 export interface CharacterFormat {
   fontName?: string | null;
@@ -1132,14 +1133,11 @@ export async function readFootnotes(
   const startedAt = performance.now();
   onProgress?.(createFootnoteReadProgress("initializing", 0, 0));
 
-  if (!Office.context.requirements.isSetSupported("WordApi", "1.5")) {
-    throw new Error(
-      "Diese Word-Version unterstützt das Auslesen von Fußnoten nicht (WordApi 1.5 erforderlich)."
-    );
-  }
+  const capabilities = getOfficeHostCapabilities();
+  if (!capabilities.supported) throw new UnsupportedHostCapabilityError(capabilities);
 
-  const supportsDesktop13 = Office.context.requirements.isSetSupported("WordApiDesktop", "1.3");
-  const supportsDesktop14 = Office.context.requirements.isSetSupported("WordApiDesktop", "1.4");
+  const supportsDesktop13 = capabilities.requirementSets.wordApiDesktop13;
+  const supportsDesktop14 = capabilities.requirementSets.wordApiDesktop14;
 
   const result = await Word.run(async (context) => {
     const document = context.document;

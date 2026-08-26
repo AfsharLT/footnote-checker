@@ -1,3 +1,8 @@
+import {
+  UnsupportedHostCapabilityError,
+  unsupportedCapabilityTechnicalDetails,
+} from "./host-capabilities";
+
 type UnknownRecord = Record<string, unknown>;
 
 function asRecord(value: unknown): UnknownRecord | undefined {
@@ -15,6 +20,9 @@ function compactDiagnostic(value: string): string {
 }
 
 export function formatReaderError(error: unknown): string {
+  if (error instanceof UnsupportedHostCapabilityError) {
+    return unsupportedCapabilityTechnicalDetails(error.capabilities);
+  }
   const errorRecord = asRecord(error);
   const debugInfo = asRecord(errorRecord?.debugInfo);
   const name = readString(errorRecord, "name");
@@ -30,18 +38,22 @@ export function formatReaderError(error: unknown): string {
         (item): item is string => typeof item === "string" && item.length > 0
       )
     : [];
-  const lines = ["Reader-Fehler:"];
+  const lines = ["Fehler beim Auslesen der Fußnoten:"];
 
   if (name) lines.push(`Name: ${compactDiagnostic(name)}`);
   if (code) lines.push(`Code: ${compactDiagnostic(code)}`);
-  lines.push(`Message: ${compactDiagnostic(message)}`);
-  if (errorLocation) lines.push(`Debug Location: ${compactDiagnostic(errorLocation)}`);
-  if (statement) lines.push(`Statement: ${compactDiagnostic(statement)}`);
+  lines.push(`Meldung: ${compactDiagnostic(message)}`);
+  if (errorLocation) lines.push(`Fehlerstelle: ${compactDiagnostic(errorLocation)}`);
+  if (statement) lines.push(`Anweisung: ${compactDiagnostic(statement)}`);
   if (surroundingStatements.length > 0) {
-    lines.push(
-      `Surrounding: ${surroundingStatements.slice(0, 3).map(compactDiagnostic).join(" | ")}`
-    );
+    lines.push(`Umgebung: ${surroundingStatements.slice(0, 3).map(compactDiagnostic).join(" | ")}`);
   }
 
   return lines.join("\n");
+}
+
+export function readerErrorUserMessage(error: unknown): string {
+  return error instanceof UnsupportedHostCapabilityError
+    ? error.message
+    : "Die Fußnoten konnten nicht vollständig verarbeitet werden. Bitte versuchen Sie es erneut.";
 }

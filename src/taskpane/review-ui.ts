@@ -1,3 +1,5 @@
+/* global performance */
+
 import type { FindingCategory, FindingSeverity } from "../footnote-engine/types";
 import type { ReviewClass, ReviewDecisionState, ReviewItem, ReviewStatus } from "../review-engine";
 import type { FootnoteSnapshot } from "./taskpane";
@@ -125,6 +127,42 @@ export function groupReviewItems(
           left.finding.ruleId.localeCompare(right.finding.ruleId, "de")
       ),
     }));
+}
+
+export interface ReviewDisplayPreparation {
+  filteredItems: ReviewItem[];
+  groups: ReviewFootnoteGroup[];
+  durationMs: number;
+}
+
+export function prepareReviewDisplay(
+  items: readonly ReviewItem[],
+  footnotes: readonly FootnoteSnapshot[],
+  filters: ReviewFilters,
+  now: () => number = () => performance.now()
+): ReviewDisplayPreparation {
+  const startedAt = now();
+  const filteredItems = filterReviewItems(items, footnotes, filters);
+  const groups = groupReviewItems(filteredItems, footnotes);
+  return {
+    filteredItems,
+    groups,
+    durationMs: Math.round((now() - startedAt) * 1000) / 1000,
+  };
+}
+
+export function deduplicateMessages(...messages: Array<string | undefined>): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const message of messages) {
+    const normalized = message?.replace(/\s+/g, " ").trim();
+    if (!normalized) continue;
+    const key = normalized.toLocaleLowerCase("de-DE");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(normalized);
+  }
+  return unique;
 }
 
 export function hasActiveFilters(filters: ReviewFilters): boolean {

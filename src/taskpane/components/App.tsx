@@ -1,5 +1,7 @@
+/* global performance, window */
+
 import * as React from "react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useCitationSourceMapping } from "@/citation-mapping/use-citation-source-mapping";
 import { useCitationSettings } from "@/citation-settings/use-citation-settings";
 import { analyzeFootnotes } from "@/footnote-engine/engine";
@@ -16,7 +18,17 @@ import {
   type ReviewMode,
   type ReviewStatus,
 } from "@/review-engine";
-import { formatReaderError } from "@/taskpane/reader-error";
+import {
+  getOfficeHostCapabilities,
+  unsupportedCapabilityTechnicalDetails,
+  type HostCapabilities,
+} from "@/taskpane/host-capabilities";
+import { formatReaderError, readerErrorUserMessage } from "@/taskpane/reader-error";
+import {
+  hostWorkStateForBatchPhase,
+  type AnalysisPerformanceMetrics,
+  type HostWorkState,
+} from "@/taskpane/performance";
 import {
   createFootnoteReadProgress,
   readFootnotes,
@@ -76,10 +88,29 @@ const App: React.FC = () => {
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
   const [batchRunStatus, setBatchRunStatus] = useState<BatchRunStatus>("IDLE");
   const [reportError, setReportError] = useState("");
+  const [technicalError, setTechnicalError] = useState("");
+  const [analysisPerformance, setAnalysisPerformance] =
+    useState<AnalysisPerformanceMetrics | null>(null);
+  const [hostWorkState, setHostWorkState] = useState<HostWorkState>("IDLE");
+  const [hostCapabilities] = useState<HostCapabilities>(() => getOfficeHostCapabilities());
   const readInProgressRef = useRef(false);
   const batchInFlightRef = useRef(false);
   const writeBackInFlightRef = useRef(new Set<string>());
   const appliedMutationsRef = useRef<AppliedMutationRecord[]>([]);
+
+  useEffect(() => {
+    const cleanupBestEffortResources = () => {
+      readInProgressRef.current = false;
+      batchInFlightRef.current = false;
+      writeBackInFlightRef.current.clear();
+      appliedMutationsRef.current = [];
+    };
+    window.addEventListener("pagehide", cleanupBestEffortResources);
+    return () => {
+      window.removeEventListener("pagehide", cleanupBestEffortResources);
+      cleanupBestEffortResources();
+    };
+  }, []);
 
   const protectedRangesByFootnoteId = useMemo(
     () =>
@@ -112,10 +143,19 @@ const App: React.FC = () => {
       writeBackInFlightRef.current.size > 0
     )
       return;
+    if (!hostCapabilities.supported) {
+      setHasError(true);
+      setMessage("Diese Word-Version unterstützt eine benötigte Funktion noch nicht.");
+      setTechnicalError(unsupportedCapabilityTechnicalDetails(hostCapabilities));
+      return;
+    }
+    const analysisStartedAt = performance.now();
     readInProgressRef.current = true;
+    setHostWorkState("ANALYZING");
     setIsLoading(true);
     setHasError(false);
     setMessage("");
+    setTechnicalError("");
     setReadProgress(createFootnoteReadProgress("initializing", 0, 0));
     try {
       const result = await readFootnotes(setReadProgress);
@@ -130,6 +170,14 @@ const App: React.FC = () => {
       setFootnotes(result.footnotes);
       setDocumentFormatting(result.documentFormatting);
       setReaderMetrics(result.readerMetrics);
+      setAnalysisPerformance({
+        readerDurationMs: result.readerMetrics.durationMs,
+        engineDurationMs: analysis.durationMs ?? 0,
+        totalAnalysisDurationMs:
+          Math.round((performance.now() - analysisStartedAt) * 10) / 10,
+        contextSyncCount: result.readerMetrics.syncCount,
+        footnoteCount: result.footnotes.length,
+      });
       setEngineResult(analysis);
       const analyzedAt = new Date().toISOString();
       setAnalysisTimestamp(analyzedAt);
@@ -158,13 +206,21 @@ const App: React.FC = () => {
         const plan = createWriteBackPlan({ mode, items: analyzedReview.items });
         setWriteBackPlan(plan);
         batchInFlightRef.current = true;
+        setHostWorkState("WRITING");
         setBatchRunStatus("PLANNING");
         const batch = await runWriteBackBatch(plan, {
           items: analyzedReview.items,
           footnotes: result.footnotes,
           onProgress: (progress) => {
             setBatchProgress(progress);
-            setBatchRunStatus(progress.phase === "PLANNING" ? "PLANNING" : "RUNNING");
+            setBatchRunStatus(
+              progress.phase === "PLANNING"
+                ? "PLANNING"
+                : progress.phase === "FINALIZING"
+                  ? "FINALIZING"
+                  : "RUNNING"
+            );
+            setHostWorkState(hostWorkStateForBatchPhase(progress.phase));
           },
           onResults: (writeBackResults) =>
             setWriteBackState((current) => {
@@ -177,21 +233,32 @@ const App: React.FC = () => {
         appliedMutationsRef.current = batch.mutations;
         setBatchResult(batch);
         setBatchRunStatus(batch.status);
-        setMessage("");
+        setHostWorkState("IDLE");
+        setMessage(
+          result.readerMetrics.failedCount > 0 || result.readerMetrics.partialCount > 0
+            ? `${result.readerMetrics.partialCount} Fußnoten wurden teilweise und ${result.readerMetrics.failedCount} nicht zuverlässig gelesen.`
+            : ""
+        );
       } else if (result.footnotes.length === 0) {
         setMessage("Das Dokument enthält keine Fußnoten.");
+      } else if (result.readerMetrics.failedCount > 0 || result.readerMetrics.partialCount > 0) {
+        setMessage(
+          `${result.readerMetrics.partialCount} Fußnoten wurden teilweise und ${result.readerMetrics.failedCount} nicht zuverlässig gelesen.`
+        );
       }
       setReadProgress(
         createFootnoteReadProgress("complete", result.footnotes.length, result.footnotes.length)
       );
     } catch (error) {
       setHasError(true);
-      setMessage(formatReaderError(error));
+      setMessage(readerErrorUserMessage(error));
+      setTechnicalError(formatReaderError(error));
       setReadProgress(null);
     } finally {
       batchInFlightRef.current = false;
       readInProgressRef.current = false;
       setIsLoading(false);
+      setHostWorkState("IDLE");
     }
   };
 
@@ -271,6 +338,7 @@ const App: React.FC = () => {
     });
     if (plan.totals.eligible === 0) return;
     batchInFlightRef.current = true;
+    setHostWorkState("WRITING");
     setWriteBackPlan(plan);
     setBatchResult(null);
     setBatchRunStatus("PLANNING");
@@ -284,7 +352,14 @@ const App: React.FC = () => {
         initialMutations: appliedMutationsRef.current,
         onProgress: (progress) => {
           setBatchProgress(progress);
-          setBatchRunStatus(progress.phase === "PLANNING" ? "PLANNING" : "RUNNING");
+          setBatchRunStatus(
+            progress.phase === "PLANNING"
+              ? "PLANNING"
+              : progress.phase === "FINALIZING"
+                ? "FINALIZING"
+                : "RUNNING"
+          );
+          setHostWorkState(hostWorkStateForBatchPhase(progress.phase));
         },
         onResults: (writeBackResults) =>
           setWriteBackState((current) => {
@@ -297,11 +372,13 @@ const App: React.FC = () => {
       appliedMutationsRef.current = batch.mutations;
       setBatchResult(batch);
       setBatchRunStatus(batch.status);
+      setHostWorkState("IDLE");
     } catch {
       setBatchRunStatus("FAILED");
       setReportError("Der Korrekturlauf konnte technisch nicht abgeschlossen werden.");
     } finally {
       batchInFlightRef.current = false;
+      setHostWorkState("IDLE");
     }
   };
 
@@ -397,10 +474,14 @@ const App: React.FC = () => {
             : null
         }
         reportError={reportError}
+        technicalError={technicalError}
         message={message}
         hasError={hasError}
         readerMetrics={readerMetrics}
         documentFormatting={documentFormatting}
+        hostCapabilities={hostCapabilities}
+        analysisPerformance={analysisPerformance}
+        hostWorkState={hostWorkState}
         confirmReanalysis={confirmReanalysis}
         onCancelReanalysis={() => setConfirmReanalysis(false)}
         onConfirmReanalysis={startConfirmedAnalysis}
