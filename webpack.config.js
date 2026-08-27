@@ -8,6 +8,10 @@ const path = require("path");
 
 const urlDev = "https://localhost:3000/";
 const urlProd = "https://www.contoso.com/"; // CHANGE THIS TO YOUR PRODUCTION DEPLOYMENT LOCATION
+const safari15TranspileDependencies = [
+  path.dirname(require.resolve("react-aria-components/package.json")),
+  path.dirname(require.resolve("react-aria/package.json")),
+];
 
 async function getHttpsOptions() {
   const httpsOptions = await devCerts.getHttpsServerOptions();
@@ -16,8 +20,10 @@ async function getHttpsOptions() {
 
 module.exports = async (env, options) => {
   const dev = options.mode === "development";
+  const productionScriptFilename = "[name].[contenthash:8].js";
   const config = {
     devtool: "source-map",
+    target: dev ? "web" : "browserslist",
     entry: {
       polyfill: ["core-js/stable", "regenerator-runtime/runtime"],
       react: ["react", "react-dom"],
@@ -29,6 +35,9 @@ module.exports = async (env, options) => {
     },
     output: {
       clean: true,
+      filename: dev ? "[name].js" : productionScriptFilename,
+      chunkFilename: dev ? "[name].js" : productionScriptFilename,
+      publicPath: dev ? "auto" : "/",
     },
     resolve: {
       extensions: [".ts", ".tsx", ".js", ".jsx", ".html"],
@@ -39,16 +48,14 @@ module.exports = async (env, options) => {
     module: {
       rules: [
         {
-          test: /\.ts$/,
-          exclude: /node_modules/,
-          use: {
-            loader: "babel-loader",
-          },
-        },
-        {
           test: /\.tsx?$/,
           exclude: /node_modules/,
-          use: ["ts-loader"],
+          use: ["babel-loader", "ts-loader"],
+        },
+        {
+          test: /\.[cm]?js$/,
+          include: safari15TranspileDependencies,
+          use: "babel-loader",
         },
         {
           test: /\.html$/,
@@ -91,6 +98,15 @@ module.exports = async (env, options) => {
               }
             },
           },
+          ...(!dev
+            ? [
+                {
+                  from: "public/_headers",
+                  to: "_headers",
+                  toType: "file",
+                },
+              ]
+            : []),
         ],
       }),
       new HtmlWebpackPlugin({

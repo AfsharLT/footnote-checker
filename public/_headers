@@ -1,0 +1,11 @@
+/taskpane.html
+  Cache-Control: no-store
+
+/commands.html
+  Cache-Control: no-store
+
+/*.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.css
+  Cache-Control: public, max-age=31536000, immutable
