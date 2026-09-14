@@ -2,6 +2,7 @@
 
 import { normalizeFootnoteReferencesInContext, WORD_NOTE_REFERENCE_MARK } from "./locator-context";
 import { getOfficeHostCapabilities, UnsupportedHostCapabilityError } from "./host-capabilities";
+import { findPlainTextUrls } from "../footnote-engine/patterns";
 
 export interface CharacterFormat {
   fontName?: string | null;
@@ -109,6 +110,7 @@ export interface FootnoteSnapshot {
     end?: number;
     displayText: string;
     target: string;
+    source?: "wordApi" | "ooxml" | "text" | "conservative";
   }>;
   fields: FootnoteField[];
   bookmarks: FootnoteBookmark[];
@@ -131,6 +133,10 @@ export interface FootnoteReadResult {
     partialCount: number;
     failedCount: number;
     syncCount: number;
+    optionalFeatureFailures?: Array<{
+      feature: "hyperlinks";
+      technicalDetails: string;
+    }>;
   };
 }
 
@@ -142,6 +148,40 @@ export interface FootnoteReadProgress {
 }
 
 export type FootnoteReadProgressCallback = (progress: FootnoteReadProgress) => void;
+
+const USER_FACING_HYPERLINK_WARNING_CODES = new Set([
+  "HYPERLINK_METADATA_PARTIAL",
+  "HYPERLINK_RANGE_CONSERVATIVE",
+]);
+
+export function createReaderNotice(result: FootnoteReadResult): string {
+  const messages: string[] = [];
+  for (const footnote of result.footnotes) {
+    for (const warning of footnote.readWarnings) {
+      if (
+        USER_FACING_HYPERLINK_WARNING_CODES.has(warning.code) &&
+        !messages.includes(warning.message)
+      ) {
+        messages.push(warning.message);
+      }
+    }
+  }
+
+  const otherPartialCount = result.footnotes.filter(
+    (footnote) =>
+      footnote.readStatus === "partial" &&
+      footnote.readWarnings.some(
+        (warning) => !USER_FACING_HYPERLINK_WARNING_CODES.has(warning.code)
+      )
+  ).length;
+  if (otherPartialCount > 0 || result.readerMetrics.failedCount > 0) {
+    messages.push(
+      `${otherPartialCount} Fußnoten wurden teilweise und ${result.readerMetrics.failedCount} nicht zuverlässig gelesen.`
+    );
+  }
+
+  return messages.join(" ");
+}
 
 export function createFootnoteReadProgress(
   phase: FootnoteReadProgress["phase"],
@@ -166,6 +206,10 @@ export function createFootnoteReadProgress(
 }
 
 const FOOTNOTE_CHUNK_SIZE = 150;
+export const PARTIAL_HYPERLINK_USER_MESSAGE =
+  "Ein Link in dieser Fußnote konnte aufgrund der verwendeten Word-Version nicht vollständig erkannt werden. Die übrige Fußnote wurde trotzdem geprüft.";
+export const CONSERVATIVE_HYPERLINK_USER_MESSAGE =
+  "Ein möglicher Link in dieser Fußnote konnte nicht sicher abgegrenzt werden. Dieser Bereich wurde vorsorglich nicht automatisch verändert.";
 const OOXML_STRUCTURAL_TEXT_MARKS = new Set(["\r", "\n", "\v", "\f"]);
 const CHARACTER_FORMAT_KEYS: Array<keyof CharacterFormat> = [
   "fontName",
@@ -269,6 +313,10 @@ interface OoxmlStructureRange {
   ooxmlEnd: number;
 }
 
+interface ParsedOoxmlHyperlink extends OoxmlStructureRange {
+  target?: string;
+}
+
 interface ParsedOoxmlField extends OoxmlStructureRange {
   locked?: boolean;
 }
@@ -289,7 +337,7 @@ interface ParsedFootnoteOoxml {
   textRuns: OoxmlTextRun[];
   fields: ParsedOoxmlField[];
   bookmarks: ParsedOoxmlBookmark[];
-  hyperlinks: OoxmlStructureRange[];
+  hyperlinks: ParsedOoxmlHyperlink[];
   contentControls: ParsedOoxmlContentControl[];
   hasCharacterStyles: boolean;
   hasUnclosedStructures: boolean;
@@ -540,8 +588,15 @@ function parseFootnoteOoxml(ooxml: string): ParsedFootnoteOoxml {
     const textRuns: OoxmlTextRun[] = [];
     const fields: ParsedOoxmlField[] = [];
     const bookmarks: ParsedOoxmlBookmark[] = [];
-    const hyperlinks: OoxmlStructureRange[] = [];
+    const hyperlinks: ParsedOoxmlHyperlink[] = [];
     const contentControls: ParsedOoxmlContentControl[] = [];
+    const hyperlinkTargets = new Map<string, string>();
+    for (const element of allElements) {
+      if (element.localName.toLowerCase() !== "relationship") continue;
+      const id = getOoxmlAttribute(element, "Id") ?? getOoxmlAttribute(element, "id");
+      const target = getOoxmlAttribute(element, "Target") ?? getOoxmlAttribute(element, "target");
+      if (id && target) hyperlinkTargets.set(id, target);
+    }
     const openBookmarks = new Map<string, { name: string; start: number }>();
     const openFields: Array<{ resultStart?: number; locked?: boolean }> = [];
     let ooxmlOffset = 0;
@@ -643,7 +698,14 @@ function parseFootnoteOoxml(ooxml: string): ParsedFootnoteOoxml {
       if (element.localName === "hyperlink") {
         const start = ooxmlOffset;
         for (const child of Array.from(element.children)) walk(child);
-        hyperlinks.push({ ooxmlStart: start, ooxmlEnd: ooxmlOffset });
+        const relationshipId = getOoxmlAttribute(element, "id");
+        const anchor = getOoxmlAttribute(element, "anchor") ?? "";
+        const address = relationshipId ? (hyperlinkTargets.get(relationshipId) ?? "") : "";
+        hyperlinks.push({
+          ooxmlStart: start,
+          ooxmlEnd: ooxmlOffset,
+          target: getHyperlinkTarget(address, anchor),
+        });
         return;
       }
 
@@ -851,9 +913,53 @@ interface LoadedFieldData {
   locked?: boolean;
 }
 
-interface LoadedHyperlinkData {
+export interface LoadedHyperlinkData {
   displayText: string;
   target: string;
+}
+
+export interface MappedOoxmlHyperlink {
+  start?: number;
+  end?: number;
+  target?: string;
+}
+
+export type IsolatedReaderFeatureResult<T> =
+  | { status: "available"; value: T }
+  | {
+      status: "unavailable";
+      error: unknown;
+    };
+
+export async function isolateOptionalReaderFeature<T>(
+  operation: () => Promise<T>
+): Promise<IsolatedReaderFeatureResult<T>> {
+  try {
+    return { status: "available", value: await operation() };
+  } catch (error) {
+    return { status: "unavailable", error };
+  }
+}
+
+function describeOptionalFeatureFailure(error: unknown): string {
+  if (error && typeof error === "object") {
+    const details = error as {
+      name?: unknown;
+      code?: unknown;
+      message?: unknown;
+      debugInfo?: { errorLocation?: unknown };
+    };
+    return JSON.stringify({
+      name: typeof details.name === "string" ? details.name : undefined,
+      code: typeof details.code === "string" ? details.code : undefined,
+      message: typeof details.message === "string" ? details.message : String(error),
+      errorLocation:
+        typeof details.debugInfo?.errorLocation === "string"
+          ? details.debugInfo.errorLocation
+          : undefined,
+    });
+  }
+  return String(error);
 }
 
 interface LoadedContentControlData {
@@ -939,45 +1045,178 @@ function createFootnoteBookmarks(
   });
 }
 
-function createFootnoteHyperlinks(
-  loadedHyperlinks: LoadedHyperlinkData[],
-  parsedHyperlinks: OoxmlStructureRange[],
-  mapping: OoxmlContentMapping,
-  contentText: string,
-  warnings: FootnoteReadWarning[]
-): FootnoteSnapshot["hyperlinks"] {
-  const hyperlinks = loadedHyperlinks.map((hyperlink, index) => {
-    const parsedHyperlink = parsedHyperlinks[index];
-    const mappedRange = parsedHyperlink ? mapStructureRange(parsedHyperlink, mapping) : undefined;
-    const rangeMatches =
-      mappedRange !== undefined &&
-      contentText.slice(mappedRange.start, mappedRange.end) === hyperlink.displayText;
+const POSSIBLE_URL_PATTERN =
+  /(?:https?:\/\/|www\.)[^\s<>"'\u00ab\u00bb\u2018\u2019\u201c\u201d\u2026]*/gi;
 
-    if (!rangeMatches) {
-      addReadWarning(
-        warnings,
-        "HYPERLINK_OFFSET_UNRESOLVED",
-        "A hyperlink could not be mapped safely to contentText."
-      );
+function rangesOverlap(
+  left: { start: number; end: number },
+  right: { start: number; end: number }
+): boolean {
+  return left.start < right.end && left.end > right.start;
+}
+
+function validContentRange(
+  contentText: string,
+  range: MappedOoxmlHyperlink
+): range is { start: number; end: number; target?: string } {
+  return (
+    Number.isInteger(range.start) &&
+    Number.isInteger(range.end) &&
+    (range.start as number) >= 0 &&
+    (range.start as number) < (range.end as number) &&
+    (range.end as number) <= contentText.length
+  );
+}
+
+export function resolveHyperlinkFallback(
+  contentText: string,
+  ooxmlHyperlinks: readonly MappedOoxmlHyperlink[],
+  warnings: FootnoteReadWarning[] = []
+): FootnoteSnapshot["hyperlinks"] {
+  const hyperlinks: FootnoteSnapshot["hyperlinks"] = [];
+  let hasUnresolvedOoxmlHyperlink = false;
+
+  for (const hyperlink of ooxmlHyperlinks) {
+    if (!validContentRange(contentText, hyperlink)) {
+      hasUnresolvedOoxmlHyperlink = true;
+      continue;
     }
 
-    return {
-      displayText: hyperlink.displayText,
-      target: hyperlink.target,
-      start: rangeMatches ? mappedRange.start : undefined,
-      end: rangeMatches ? mappedRange.end : undefined,
-    };
-  });
-
-  if (loadedHyperlinks.length !== parsedHyperlinks.length) {
-    addReadWarning(
-      warnings,
-      "HYPERLINK_STRUCTURE_COUNT_MISMATCH",
-      "Office.js and OOXML reported different hyperlink counts."
-    );
+    hyperlinks.push({
+      start: hyperlink.start,
+      end: hyperlink.end,
+      displayText: contentText.slice(hyperlink.start, hyperlink.end),
+      target: hyperlink.target ?? "",
+      source: "ooxml",
+    });
   }
 
-  return hyperlinks;
+  const exactTextUrls = findPlainTextUrls(contentText);
+  for (const match of exactTextUrls) {
+    const alreadyProtected = hyperlinks.some(
+      (hyperlink) =>
+        hyperlink.start !== undefined &&
+        hyperlink.end !== undefined &&
+        hyperlink.start <= match.start &&
+        hyperlink.end >= match.end
+    );
+    if (!alreadyProtected) {
+      hyperlinks.push({
+        start: match.start,
+        end: match.end,
+        displayText: match.text,
+        target: match.text,
+        source: "text",
+      });
+    }
+  }
+
+  POSSIBLE_URL_PATTERN.lastIndex = 0;
+  let possibleMatch = POSSIBLE_URL_PATTERN.exec(contentText);
+  while (possibleMatch) {
+    const candidate = {
+      start: possibleMatch.index,
+      end: possibleMatch.index + possibleMatch[0].length,
+    };
+    const overlapsKnownUrl = hyperlinks.some(
+      (hyperlink) =>
+        hyperlink.start !== undefined &&
+        hyperlink.end !== undefined &&
+        rangesOverlap(candidate, { start: hyperlink.start, end: hyperlink.end })
+    );
+
+    if (candidate.start < candidate.end && !overlapsKnownUrl) {
+      hyperlinks.push({
+        ...candidate,
+        displayText: contentText.slice(candidate.start, candidate.end),
+        target: "",
+        source: "conservative",
+      });
+      addReadWarning(warnings, "HYPERLINK_RANGE_CONSERVATIVE", CONSERVATIVE_HYPERLINK_USER_MESSAGE);
+    }
+    possibleMatch = POSSIBLE_URL_PATTERN.exec(contentText);
+  }
+
+  if (hasUnresolvedOoxmlHyperlink) {
+    hyperlinks.push({ displayText: "", target: "", source: "ooxml" });
+    addReadWarning(warnings, "HYPERLINK_METADATA_PARTIAL", PARTIAL_HYPERLINK_USER_MESSAGE);
+  }
+
+  return hyperlinks
+    .filter(
+      (hyperlink, index, all) =>
+        all.findIndex(
+          (candidate) =>
+            candidate.start === hyperlink.start &&
+            candidate.end === hyperlink.end &&
+            candidate.displayText === hyperlink.displayText
+        ) === index
+    )
+    .sort(
+      (left, right) =>
+        (left.start ?? Number.MAX_SAFE_INTEGER) - (right.start ?? Number.MAX_SAFE_INTEGER) ||
+        (left.end ?? Number.MAX_SAFE_INTEGER) - (right.end ?? Number.MAX_SAFE_INTEGER)
+    );
+}
+
+function uniqueTextRange(
+  contentText: string,
+  displayText: string
+): { start: number; end: number } | undefined {
+  if (!displayText) return undefined;
+  const start = contentText.indexOf(displayText);
+  if (start < 0 || contentText.indexOf(displayText, start + 1) >= 0) return undefined;
+  return { start, end: start + displayText.length };
+}
+
+export function mergePrimaryHyperlinks(
+  contentText: string,
+  fallbackHyperlinks: readonly FootnoteSnapshot["hyperlinks"][number][],
+  loadedHyperlinks: readonly LoadedHyperlinkData[]
+): FootnoteSnapshot["hyperlinks"] {
+  const remaining = fallbackHyperlinks.filter((hyperlink) => hyperlink.source !== "ooxml");
+  const ooxmlHyperlinks = fallbackHyperlinks.filter((hyperlink) => hyperlink.source === "ooxml");
+  const merged: FootnoteSnapshot["hyperlinks"] = [];
+
+  loadedHyperlinks.forEach((loaded, index) => {
+    const ooxml = ooxmlHyperlinks[index];
+    const ooxmlMatches =
+      ooxml?.start !== undefined &&
+      ooxml.end !== undefined &&
+      contentText.slice(ooxml.start, ooxml.end) === loaded.displayText;
+    const range = ooxmlMatches
+      ? { start: ooxml.start as number, end: ooxml.end as number }
+      : uniqueTextRange(contentText, loaded.displayText);
+
+    if (ooxml && !ooxmlMatches) {
+      // Never trade a safely mapped OOXML range for ambiguous optional metadata.
+      merged.push(ooxml);
+    }
+
+    if (!ooxml || ooxmlMatches || range) {
+      merged.push({
+        displayText: loaded.displayText,
+        target: loaded.target,
+        start: range?.start,
+        end: range?.end,
+        source: "wordApi",
+      });
+    }
+  });
+
+  for (let index = loadedHyperlinks.length; index < ooxmlHyperlinks.length; index += 1) {
+    merged.push(ooxmlHyperlinks[index]);
+  }
+
+  return [...merged, ...remaining].filter(
+    (hyperlink, index, all) =>
+      all.findIndex(
+        (candidate) =>
+          candidate.start === hyperlink.start &&
+          candidate.end === hyperlink.end &&
+          candidate.displayText === hyperlink.displayText
+      ) === index
+  );
 }
 
 function createFootnoteContentControls(
@@ -1127,6 +1366,53 @@ function getDocumentFormatting(
   };
 }
 
+interface OptionalHyperlinkLoadResult {
+  feature: IsolatedReaderFeatureResult<Map<number, LoadedHyperlinkData[]>>;
+  syncCount: number;
+}
+
+async function loadOptionalHyperlinks(footnoteCount: number): Promise<OptionalHyperlinkLoadResult> {
+  let syncCount = 0;
+  const feature = await isolateOptionalReaderFeature(() =>
+    Word.run(async (context) => {
+      const footnotes = context.document.body.footnotes;
+      footnotes.load("items");
+      syncCount += 1;
+      await context.sync();
+
+      const loadedByOrdinal = new Map<number, LoadedHyperlinkData[]>();
+      const availableCount = Math.min(footnoteCount, footnotes.items.length);
+      for (let chunkStart = 0; chunkStart < availableCount; chunkStart += FOOTNOTE_CHUNK_SIZE) {
+        const chunkEnd = Math.min(chunkStart + FOOTNOTE_CHUNK_SIZE, availableCount);
+        const collections: Word.HyperlinkCollection[] = [];
+        for (let index = chunkStart; index < chunkEnd; index += 1) {
+          const hyperlinks = footnotes.items[index].body.getRange().hyperlinks;
+          hyperlinks.load({ address: true, subAddress: true, textToDisplay: true });
+          collections.push(hyperlinks);
+        }
+
+        syncCount += 1;
+        // Optional hyperlink metadata remains bounded to the same chunk size as the core reader.
+        // eslint-disable-next-line office-addins/no-context-sync-in-loop
+        await context.sync();
+        collections.forEach((collection, localIndex) => {
+          loadedByOrdinal.set(
+            chunkStart + localIndex + 1,
+            collection.items.map((hyperlink) => ({
+              displayText: hyperlink.textToDisplay,
+              target: getHyperlinkTarget(hyperlink.address, hyperlink.subAddress),
+            }))
+          );
+        });
+      }
+
+      return loadedByOrdinal;
+    })
+  );
+
+  return { feature, syncCount };
+}
+
 export async function readFootnotes(
   onProgress?: FootnoteReadProgressCallback
 ): Promise<FootnoteReadResult> {
@@ -1139,7 +1425,7 @@ export async function readFootnotes(
   const supportsDesktop13 = capabilities.requirementSets.wordApiDesktop13;
   const supportsDesktop14 = capabilities.requirementSets.wordApiDesktop14;
 
-  const result = await Word.run(async (context) => {
+  const coreResult = await Word.run(async (context) => {
     const document = context.document;
     const footnotes = context.document.body.footnotes;
     footnotes.load({ body: { text: true }, reference: { text: true } });
@@ -1188,9 +1474,6 @@ export async function readFootnotes(
           alignment: true,
         });
 
-        const hyperlinks = supportsDesktop13 ? footnote.body.getRange().hyperlinks : undefined;
-        hyperlinks?.load({ address: true, subAddress: true, textToDisplay: true });
-
         const fields = footnote.body.fields;
         fields.load({ type: true, locked: true, result: { text: true } });
 
@@ -1221,7 +1504,6 @@ export async function readFootnotes(
           beforeRange,
           afterRange,
           paragraphs,
-          hyperlinks,
           fields,
           contentControls,
           baseCharacterRange,
@@ -1288,20 +1570,11 @@ export async function readFootnotes(
             );
           }
 
-          const loadedHyperlinks: LoadedHyperlinkData[] =
-            readContext.hyperlinks?.items.map((hyperlink) => ({
-              displayText: hyperlink.textToDisplay,
-              target: getHyperlinkTarget(hyperlink.address, hyperlink.subAddress),
-            })) ?? [];
-          const hyperlinks = supportsDesktop13
-            ? createFootnoteHyperlinks(
-                loadedHyperlinks,
-                parsedOoxml.hyperlinks,
-                ooxmlMapping,
-                contentText,
-                warnings
-              )
-            : [];
+          const mappedOoxmlHyperlinks = parsedOoxml.hyperlinks.map((hyperlink) => {
+            const range = mapStructureRange(hyperlink, ooxmlMapping);
+            return { ...range, target: hyperlink.target };
+          });
+          const hyperlinks = resolveHyperlinkFallback(contentText, mappedOoxmlHyperlinks, warnings);
           const loadedFields: LoadedFieldData[] = readContext.fields.items.map((field) => ({
             type: field.type,
             resultText: field.result.text,
@@ -1450,26 +1723,64 @@ export async function readFootnotes(
     };
   });
 
-  const completeCount = result.footnotes.filter(
+  let footnoteSnapshots = coreResult.footnotes;
+  let optionalSyncCount = 0;
+  const optionalFeatureFailures: NonNullable<
+    FootnoteReadResult["readerMetrics"]["optionalFeatureFailures"]
+  > = [];
+  if (supportsDesktop13 && footnoteSnapshots.length > 0) {
+    const optionalHyperlinks = await loadOptionalHyperlinks(footnoteSnapshots.length);
+    optionalSyncCount = optionalHyperlinks.syncCount;
+    if (optionalHyperlinks.feature.status === "available") {
+      const loadedByOrdinal = optionalHyperlinks.feature.value;
+      footnoteSnapshots = footnoteSnapshots.map((snapshot) => {
+        const loaded = loadedByOrdinal.get(snapshot.ordinal);
+        if (loaded === undefined) return snapshot;
+        const hyperlinks = mergePrimaryHyperlinks(
+          snapshot.contentText,
+          snapshot.hyperlinks,
+          loaded
+        );
+        return {
+          ...snapshot,
+          hyperlinks,
+          protectedRanges: createProtectedRanges({
+            hyperlinks,
+            fields: snapshot.fields,
+            bookmarks: snapshot.bookmarks,
+            contentControls: snapshot.contentControls,
+          }),
+        };
+      });
+    } else {
+      optionalFeatureFailures.push({
+        feature: "hyperlinks",
+        technicalDetails: describeOptionalFeatureFailure(optionalHyperlinks.feature.error),
+      });
+    }
+  }
+
+  const completeCount = footnoteSnapshots.filter(
     (footnote) => footnote.readStatus === "complete"
   ).length;
-  const partialCount = result.footnotes.filter(
+  const partialCount = footnoteSnapshots.filter(
     (footnote) => footnote.readStatus === "partial"
   ).length;
-  const failedCount = result.footnotes.filter(
+  const failedCount = footnoteSnapshots.filter(
     (footnote) => footnote.readStatus === "failed"
   ).length;
 
   return {
-    footnotes: result.footnotes,
-    documentFormatting: result.documentFormatting,
+    footnotes: footnoteSnapshots,
+    documentFormatting: coreResult.documentFormatting,
     readerMetrics: {
       durationMs: Math.round((performance.now() - startedAt) * 10) / 10,
-      footnoteCount: result.footnotes.length,
+      footnoteCount: footnoteSnapshots.length,
       completeCount,
       partialCount,
       failedCount,
-      syncCount: result.syncCount,
+      syncCount: coreResult.syncCount + optionalSyncCount,
+      ...(optionalFeatureFailures.length > 0 ? { optionalFeatureFailures } : {}),
     },
   };
 }

@@ -31,6 +31,7 @@ import {
 } from "@/taskpane/performance";
 import {
   createFootnoteReadProgress,
+  createReaderNotice,
   readFootnotes,
   type DocumentFormattingSnapshot,
   type FootnoteReadProgress,
@@ -159,6 +160,7 @@ const App: React.FC = () => {
     setReadProgress(createFootnoteReadProgress("initializing", 0, 0));
     try {
       const result = await readFootnotes(setReadProgress);
+      const readerNotice = createReaderNotice(result);
       setReadProgress(
         createFootnoteReadProgress("analyzing", result.footnotes.length, result.footnotes.length)
       );
@@ -234,17 +236,11 @@ const App: React.FC = () => {
         setBatchResult(batch);
         setBatchRunStatus(batch.status);
         setHostWorkState("IDLE");
-        setMessage(
-          result.readerMetrics.failedCount > 0 || result.readerMetrics.partialCount > 0
-            ? `${result.readerMetrics.partialCount} Fußnoten wurden teilweise und ${result.readerMetrics.failedCount} nicht zuverlässig gelesen.`
-            : ""
-        );
+        setMessage(readerNotice);
       } else if (result.footnotes.length === 0) {
         setMessage("Das Dokument enthält keine Fußnoten.");
-      } else if (result.readerMetrics.failedCount > 0 || result.readerMetrics.partialCount > 0) {
-        setMessage(
-          `${result.readerMetrics.partialCount} Fußnoten wurden teilweise und ${result.readerMetrics.failedCount} nicht zuverlässig gelesen.`
-        );
+      } else {
+        setMessage(readerNotice);
       }
       setReadProgress(
         createFootnoteReadProgress("complete", result.footnotes.length, result.footnotes.length)
