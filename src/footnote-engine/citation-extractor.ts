@@ -49,13 +49,13 @@ const DOCKET_NUMBER_PATTERN =
 const PANEL_PATTERN = /\b\d+\.\s*(?:Strafsenat|Zivilsenat|Senat)\b/i;
 const ECLI_PATTERN = /\bECLI:[A-Z]{2}:[A-Z0-9.:-]+\b/i;
 const JOURNAL_PUBLICATION_PATTERN =
-  /\b(NJW|NStZ(?:-RR)?|JZ|JuS|JA|JR|StV|wistra|ZfIStW|KriPoZ|ZStW|GA|MDR|ZIP|NZG|GmbHR|DStR|DStZ|BB|NZWiSt)\s+(\d{4}),\s*(\d+)(?:\s*(?:\(([^)]*)\)|,\s*(\d+(?:\s*ff?\.)?)|(ff?\.)))?/gi;
+  /\b(NJW|NStZ(?:-RR)?|JZ|JuS|JA|JR|StV|wistra|ZfIStW|KriPoZ|ZStW|GA|MDR|ZIP|NZG|GmbHR|DStR|DStZ|BB|NZWiSt|Jahrbuch\s+für\s+Recht\s+und\s+Ethik)\s+(\d{4}),\s*(\d+)(?:\s*(?:\(([^)]*)\)|,\s*(\d+(?:\s*ff?\.)?)|(ff?\.)))?/gi;
 const OFFICIAL_PUBLICATION_PATTERN =
   /\b(BVerfGE|BGHSt|BGHZ|BAGE|BFHE|BVerwGE|BSGE)\s+(\d+),\s*(\d+)(?:\s*(?:\(([^)]*)\)|,\s*(\d+(?:\s*ff?\.)?)|(ff?\.)))?/g;
 const DATABASE_PUBLICATION_PATTERN = /\b(BeckRS)\s+(\d{4}),\s*(\d+)\b|\b(juris|openJur)\b/gi;
 const PINPOINT_ITEM_PATTERN = /(\d+)(?:\s*(ff?\.?))?/g;
 const MARGIN_LOCATOR_PATTERN = /\b(?:Rn\.|Rdnr\.|Randnummer)\s*(\d+[A-Za-z]?)(?:\s*(ff?\.?))?/gi;
-const PAGE_LOCATOR_PATTERN = /\b(?:S\.|Seite)\s*(\d+)(?:\s*(ff?\.?))?/gi;
+const PAGE_LOCATOR_PATTERN = /\b(?:S\.|[Ss]eite)\s*(\d+)(?:\s*(ff?\.?))?/g;
 const EDITION_PATTERN = /\b(\d+)\.\s*(?:Aufl\.|Auflage\b)/i;
 const YEAR_PATTERN = /\b(?:19|20)\d{2}\b/;
 const VOLUME_PATTERN = /\b(?:Bd\.|Band)\s*([A-Za-z0-9.-]+)\b/i;

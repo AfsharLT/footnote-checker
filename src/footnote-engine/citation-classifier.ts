@@ -29,7 +29,7 @@ const DECISION_DATE_PATTERN = /\b(?:v\.|vom)\s*\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})
 const DOCKET_NUMBER_PATTERN =
   /\b(?:(?:\d+|[IVXLCDM]+)\s+)?(?:StR|BvR|BvL|ZR|ZB|AZR|ABR|R|C|U|K|L|B|A)\s+\d+\/\d{2,4}\b/i;
 const JOURNAL_REFERENCE_PATTERN =
-  /\b(?:NJW|NStZ(?:-RR)?|JZ|JuS|JA|JR|StV|wistra|ZfIStW|KriPoZ|ZStW|GA|MDR|ZIP|NZG|GmbHR|DStR|DStZ|BB|NZWiSt)\s+\d{4},\s*\d+\b/i;
+  /\b(?:NJW|NStZ(?:-RR)?|JZ|JuS|JA|JR|StV|wistra|ZfIStW|KriPoZ|ZStW|GA|MDR|ZIP|NZG|GmbHR|DStR|DStZ|BB|NZWiSt|Jahrbuch\s+für\s+Recht\s+und\s+Ethik)\s+\d{4},\s*\d+\b/i;
 const DATABASE_REFERENCE_PATTERN = /\b(?:BeckRS\s+\d{4},\s*\d+|juris|openJur)\b/i;
 const LEGISLATIVE_MATERIAL_PATTERN =
   /(?:\b(?:Bundestags-Drucksache|Bundesrats-Drucksache)\b|\b(?:BT|BR)-(?:Drs|Drucks)\.(?=$|[\s,]))/i;
@@ -49,7 +49,7 @@ const EDITION_PATTERN = /\b\d+\.\s*Aufl\.(?=$|[\s,])/i;
 const YEAR_PATTERN = /\b(?:19|20)\d{2}\b/;
 const BOOK_CHAPTER_IN_PATTERN = /\bin\s*:/i;
 const COLLECTION_WORK_PATTERN = /\b(?:Festschrift|Gedächtnisschrift|Sammelwerk|Handbuch|FS|GS)\b/i;
-const PAGE_PATTERN = /\bS\.\s*\d+\b/i;
+const PAGE_PATTERN = /\bS\.\s*\d+\b/;
 const ACCESS_DATE_PATTERN =
   /\(?\s*(?:letzter|letzten|zuletzt(?:er)?)\s+(?:Aufruf|Abruf|abgerufen)\s*(?:am)?\s*\d{1,2}\.\d{1,2}\.\d{4}\s*\)?/i;
 const WEB_SOURCE_LABEL_PATTERN = /\b(?:Onlinequelle|Website|Internetquelle|YouTube)\b/i;

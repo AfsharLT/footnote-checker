@@ -26,6 +26,7 @@ export function createBatchWriteBackSummary(
     info: 0,
     rejected: 0,
     deferred: 0,
+    manuallyChecked: 0,
     notActionable: 0,
   };
   for (const item of plan.items) {
@@ -56,6 +57,7 @@ function classifyExcluded(item: PlannedWriteBackItem, summary: BatchWriteBackSum
   } else if (item.exclusionReason === "INFORMATION_ONLY") summary.info += 1;
   else if (item.exclusionReason === "USER_REJECTED") summary.rejected += 1;
   else if (item.exclusionReason === "USER_DEFERRED") summary.deferred += 1;
+  else if (item.exclusionReason === "USER_MANUALLY_CHECKED") summary.manuallyChecked += 1;
   else if (item.exclusionReason === "ALREADY_APPLIED") summary.alreadyResolved += 1;
   else summary.notActionable += 1;
 }

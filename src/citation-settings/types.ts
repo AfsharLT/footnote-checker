@@ -16,6 +16,7 @@ export interface CitationFormattingPreferences {
 export interface GlobalCitationSettings {
   citationSeparator: string;
   personSeparator: string;
+  autoCloseInactiveFootnotes: boolean;
   trimAroundSeparators: boolean;
   finalPeriodRequired: boolean;
   preserveUnknownText: boolean;

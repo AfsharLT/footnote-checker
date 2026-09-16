@@ -854,6 +854,46 @@ function runProfilePrecedenceCase(): void {
       byRule(localPinpointRuleIsPrimary, "CITATION_STYLE_CONSISTENCY").length === 0,
     "The profile-based pinpoint rule must suppress duplicate consistency advice"
   );
+
+  const longJournalPinpoint = analyzeFootnotes([
+    snapshot("Pawlik, Jahrbuch für Recht und Ethik 2003, 287, 310.", 3),
+  ]).findings;
+  assertReplacement(longJournalPinpoint, "JOURNAL_PINPOINT_STYLE", ", 310", " (310)");
+  const qualifiedLongJournalPinpoint = analyzeFootnotes([
+    snapshot(
+      "enger: Pawlik, Jahrbuch für Recht und Ethik 2003, 287, 310: keine Entschuldigung bei deutlichem Übergewicht.",
+      4
+    ),
+  ]).findings;
+  assertReplacement(
+    qualifiedLongJournalPinpoint,
+    "JOURNAL_PINPOINT_STYLE",
+    ", 310",
+    " (310)"
+  );
+
+  const followingPinpoint = analyzeFootnotes([
+    snapshot("Korte, NZWiSt 2018, 231, 233 ff.", 5),
+  ]).findings;
+  assertReplacement(
+    followingPinpoint,
+    "JOURNAL_PINPOINT_STYLE",
+    ", 233 ff.",
+    " (233 ff.)"
+  );
+
+  for (const text of [
+    "Korte, NZWiSt 2018, 231 (233).",
+    "Korte, NZWiSt 2018, 231.",
+    "MüKo-StGB/Fischer, § 32 Rn. 11, 48.",
+    "BGH, Urt. v. 05.07.2025 – 3 StR 123/25.",
+  ]) {
+    assert(
+      byRule(analyzeFootnotes([snapshot(text)]).findings, "JOURNAL_PINPOINT_STYLE").length ===
+        0,
+      `Pinpoint parentheses must not be proposed without a safe journal start-page/pinpoint pair: ${text}`
+    );
+  }
 }
 
 runPunctuationAndStructureCases();

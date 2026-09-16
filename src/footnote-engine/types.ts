@@ -15,7 +15,7 @@ export interface TextPatternMatch {
   text: string;
 }
 
-export type EngineProtectedRangeType = "plainTextUrl";
+export type EngineProtectedRangeType = "plainTextUrl" | "uncertainCitation";
 
 export interface EngineProtectedRange {
   type: EngineProtectedRangeType;
@@ -336,6 +336,94 @@ export type CitationType =
 
 export type CitationCertainty = "high" | "medium" | "low";
 
+export type CitationStructureStatus = "recognized" | "partiallyRecognized" | "uncertain" | "failed";
+
+export interface CitationStructureWarning {
+  code: string;
+  message: string;
+  stage: "footnote" | "sequence" | "item";
+  start?: number;
+  end?: number;
+}
+
+export interface CitationQualifier {
+  signal: string;
+  start: number;
+  end: number;
+  rawText: string;
+}
+
+export interface NarrativeText {
+  id: string;
+  footnoteId: string;
+  ordinal: number;
+  start: number;
+  end: number;
+  rawText: string;
+  reason?: "narrative" | "uncertain" | "itemFailure" | "sequenceFailure" | "footnoteFailure";
+  status: "recognized" | "uncertain" | "failed";
+  warnings: CitationStructureWarning[];
+}
+
+export interface CitationInternalReference {
+  start: number;
+  end: number;
+  rawText: string;
+  referencedOrdinal?: number;
+  status: "unresolved";
+}
+
+export interface CitationFormattingEvidence {
+  start: number;
+  end: number;
+  properties: string[];
+}
+
+export interface CitationItem {
+  id: string;
+  footnoteId: string;
+  ordinal: number;
+  sequenceId: string;
+  start: number;
+  end: number;
+  rawText: string;
+  normalizedText?: string;
+  citationType?: CitationType;
+  qualifiers: CitationQualifier[];
+  locators: CitationLocator[];
+  internalReferences: CitationInternalReference[];
+  sourceResolutionStatus: "notAttempted";
+  canonicalSourceId?: string | null;
+  formattingEvidence: CitationFormattingEvidence[];
+  confidence: CitationCertainty;
+  status: CitationStructureStatus;
+  warnings: CitationStructureWarning[];
+}
+
+export interface CitationSequence {
+  id: string;
+  footnoteId: string;
+  ordinal: number;
+  start: number;
+  end: number;
+  rawText: string;
+  qualifiers: CitationQualifier[];
+  groupLabel?: string;
+  items: CitationItem[];
+  confidence: CitationCertainty;
+  status: CitationStructureStatus;
+  warnings: CitationStructureWarning[];
+}
+
+export interface CitationSequenceResult {
+  footnoteId: string;
+  sourceTextHash: string;
+  sequences: CitationSequence[];
+  narrativeText: NarrativeText[];
+  warnings: CitationStructureWarning[];
+  status: CitationStructureStatus;
+}
+
 export type CaseLawCitationForm =
   "DIRECT" | "OFFICIAL_COLLECTION" | "JOURNAL" | "DATABASE" | "HYBRID" | "UNKNOWN";
 
@@ -375,6 +463,10 @@ export interface FootnoteParseResult {
   footnoteId: string;
   sourceTextHash: string;
   segments: CitationSegment[];
+  sequences?: CitationSequence[];
+  narrativeText?: NarrativeText[];
+  segmentationWarnings?: CitationStructureWarning[];
+  segmentationStatus?: CitationStructureStatus;
 }
 
 export interface Finding {
@@ -390,6 +482,11 @@ export interface Finding {
   suggestedText?: string;
   severity: FindingSeverity;
   message: string;
+  citationSegmentId?: string;
+  citationSequenceId?: string;
+  citationItemId?: string;
+  citationStart?: number;
+  citationEnd?: number;
   metadata?: Record<string, unknown>;
 }
 

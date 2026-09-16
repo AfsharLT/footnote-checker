@@ -1,4 +1,5 @@
 import type { FootnoteSnapshot } from "../taskpane/taskpane";
+import { segmentCitationSequences } from "./citation-sequence-segmenter";
 import { isRangeProtected } from "./protected-ranges";
 import type {
   AnalysisProtectedRange,
@@ -39,8 +40,12 @@ const MODIFIER_DEFINITIONS: readonly ModifierDefinition[] = [
   { type: "detail", pattern: /ausführlich/gi },
   { type: "approval", pattern: /zust\./gi },
   { type: "criticism", pattern: /krit\./gi },
+  { type: "criticism", pattern: /kritisch(?=\s*:)/gi },
   { type: "similarity", pattern: /ähnlich/gi },
   { type: "agreement", pattern: /ebenso/gi },
+  { type: "context", pattern: /enger(?=\s*:)/gi },
+  { type: "context", pattern: /weiter(?=\s*:)/gi },
+  { type: "disagreement", pattern: /ablehnend(?=\s*:)/gi },
 ];
 
 const CONSERVATIVE_CITATION_START =
@@ -150,6 +155,8 @@ function findCoreStart(
     const modifier = modifiers.find((candidate) => candidate.start === cursor);
     if (!modifier) break;
     cursor = modifier.end;
+    while (cursor < end && /\s/.test(text[cursor])) cursor += 1;
+    if (text[cursor] === ":") cursor += 1;
   }
 
   while (cursor < end && /\s/.test(text[cursor])) cursor += 1;
@@ -464,9 +471,13 @@ export function isValidCitationSegment(segment: CitationSegment, contentText: st
 
 export function segmentFootnote(
   footnote: FootnoteSnapshot,
-  protectedRanges: readonly AnalysisProtectedRange[]
+  protectedRanges: readonly AnalysisProtectedRange[],
+  citationSeparators?: readonly string[]
 ): FootnoteParseResult {
   const text = footnote.contentText;
+  const sequenceResult = segmentCitationSequences(footnote, protectedRanges, {
+    citationSeparators,
+  });
   const segments: CitationSegment[] = [];
   const boundaries = createSegmentBoundaries(footnote, protectedRanges);
   let rangeStart = 0;
@@ -517,5 +528,9 @@ export function segmentFootnote(
     footnoteId: footnote.id,
     sourceTextHash: footnote.originalTextHash,
     segments,
+    sequences: sequenceResult.sequences,
+    narrativeText: sequenceResult.narrativeText,
+    segmentationWarnings: sequenceResult.warnings,
+    segmentationStatus: sequenceResult.status,
   };
 }

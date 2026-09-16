@@ -370,6 +370,7 @@ textarea {
 .fc-finding__status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; color: var(--text-muted); font-size: 11px; }
 .fc-status--unreviewed { border-color: #d8dde4; background: #f5f6f8; color: #55606e; }
 .fc-status--accepted { border-color: var(--brand-primary-border); background: var(--brand-primary-soft); color: var(--brand-primary); }
+.fc-status--manually_checked { border-color: #bdd8c8; background: #f2faf5; color: #286142; }
 .fc-status--rejected { border-color: #edcaca; background: #fff5f5; color: #9a3030; }
 .fc-status--deferred { border-color: #e6d8bd; background: #fffaf1; color: #775b27; }
 .fc-muted { color: #7c8692; font-size: 10px; }
@@ -391,8 +392,17 @@ textarea {
 .fc-change__after { background: var(--brand-primary-soft); color: var(--brand-primary); }
 .fc-change--insert { display: block; color: #485565; }
 .fc-change--insert .fc-change__after { display: inline-block; margin-left: 4px; }
+.fc-source-preview { margin: 7px 0 0; padding: 7px 8px; border-left: 2px solid var(--brand-primary-border); border-radius: 0 6px 6px 0; background: #f7f9fc; }
+.fc-source-preview > span { display: block; margin-bottom: 2px; color: #687587; font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.fc-source-preview blockquote { margin: 0; overflow-wrap: anywhere; color: #344154; font-size: 11px; line-height: 1.4; }
 .fc-finding__actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 11px; }
 .fc-finding__actions > span { display: inline-flex; }
+.fc-review-action { min-height: 30px; padding: 4px 8px; gap: 5px; font-size: 11px; }
+.fc-filter-checkbox { display: flex; align-items: center; gap: 7px; min-height: 32px; color: #46556a; font-size: 11px; }
+.fc-filter-checkbox input { accent-color: var(--brand-primary); }
+.fc-footnote-accounting { display: flex; align-items: center; gap: 7px; margin: 0; padding: 9px 10px; border-radius: 7px; font-size: 12px; }
+.fc-footnote-accounting--clean { color: #245f43; background: #eff9f3; }
+.fc-footnote-accounting--partial { color: #7a5215; background: #fff8e8; }
 .fc-manual-hint { flex-basis: 100%; color: var(--text-muted); font-size: 11px; line-height: 1.45; }
 .fc-details { margin-top: 7px; border-top: 1px solid #e7eaf0; }
 .fc-details__content { min-width: 0; padding: 2px 0 5px 23px; }

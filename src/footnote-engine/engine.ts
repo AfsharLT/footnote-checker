@@ -13,6 +13,7 @@ import { resolveCitationSettings } from "../citation-settings/resolver";
 import type { CitationStyleProfile } from "../citation-settings/types";
 import { classifyFootnoteParseResult } from "./citation-classifier";
 import { extractFootnoteParseResult } from "./citation-extractor";
+import { SEGMENTATION_USER_MESSAGE } from "./citation-sequence-segmenter";
 import { segmentFootnote } from "./citation-segmenter";
 import { deriveEffectiveCitationClassification } from "./effective-classification";
 import { findPlainTextUrls } from "./patterns";
@@ -22,12 +23,20 @@ import { runRules } from "./rules/runner";
 import type { RuleContext } from "./rules/types";
 import type {
   AnalysisProtectedRange,
+  CitationItem,
+  CitationSequence,
   EngineProtectedRange,
+  Finding,
   FootnoteAnalysisResult,
   FootnoteEngineResult,
   FootnoteParseResult,
   TextPatternMatch,
 } from "./types";
+
+interface CitationItemLocation {
+  sequence: CitationSequence;
+  item: CitationItem;
+}
 
 function getTimestamp(): number {
   return typeof performance === "undefined" ? Date.now() : performance.now();
@@ -159,6 +168,163 @@ function createFootnoteAnalysis(footnote: FootnoteSnapshot): FootnoteAnalysisRes
   };
 }
 
+function addUncertainSegmentationProtection(
+  footnote: FootnoteSnapshot,
+  analysis: FootnoteAnalysisResult,
+  parseResult: FootnoteParseResult
+): void {
+  const ranges = [
+    ...(parseResult.sequences ?? []).flatMap((sequence) =>
+      sequence.items
+        .filter((item) => item.status === "uncertain" || item.status === "failed")
+        .map((item) => ({ start: item.start, end: item.end }))
+    ),
+    ...(parseResult.narrativeText ?? [])
+      .filter((narrative) => narrative.status !== "recognized")
+      .map((narrative) => ({ start: narrative.start, end: narrative.end })),
+  ];
+
+  for (const range of ranges) {
+    if (
+      range.start < range.end &&
+      !analysis.engineProtectedRanges.some(
+        (existing) => existing.start === range.start && existing.end === range.end
+      )
+    ) {
+      analysis.engineProtectedRanges.push({
+        type: "uncertainCitation",
+        start: range.start,
+        end: range.end,
+        text: footnote.contentText.slice(range.start, range.end),
+      });
+      analysis.protectedRanges.push({ source: "engine", type: "uncertainCitation", ...range });
+    }
+  }
+  analysis.protectedRanges.sort(compareProtectedRanges);
+}
+
+function failedFootnoteParseResult(footnote: FootnoteSnapshot): FootnoteParseResult {
+  const end = footnote.contentText.length;
+  const warning = {
+    code: "CITATION_FOOTNOTE_FAILED",
+    message: SEGMENTATION_USER_MESSAGE,
+    stage: "footnote" as const,
+    start: 0,
+    end,
+  };
+  return {
+    footnoteId: footnote.id,
+    sourceTextHash: footnote.originalTextHash,
+    segments: [],
+    sequences: [],
+    narrativeText:
+      end > 0
+        ? [
+            {
+              id: `narrative:${footnote.id}:0:${end}:${footnote.originalTextHash}`,
+              footnoteId: footnote.id,
+              ordinal: footnote.ordinal,
+              start: 0,
+              end,
+              rawText: footnote.contentText,
+              reason: "footnoteFailure",
+              status: "failed",
+              warnings: [warning],
+            },
+          ]
+        : [],
+    segmentationWarnings: [warning],
+    segmentationStatus: "failed",
+  };
+}
+
+function rangesOverlap(
+  left: { start: number; end: number },
+  right: { start: number; end: number }
+): boolean {
+  if (left.start === left.end) return left.start >= right.start && left.start <= right.end;
+  return left.start < right.end && left.end > right.start;
+}
+
+function associateFindingsWithCitationItems(
+  findings: readonly Finding[],
+  parseResults: readonly FootnoteParseResult[]
+): Finding[] {
+  const locationsByFootnote = new Map<string, CitationItemLocation[]>();
+  const narrativeByFootnote = new Map<string, NonNullable<FootnoteParseResult["narrativeText"]>>();
+  const segmentRanges = new Map<string, { start: number; end: number }>();
+  for (const result of parseResults) {
+    locationsByFootnote.set(
+      result.footnoteId,
+      (result.sequences ?? []).flatMap((sequence) =>
+        sequence.items.map((item) => ({ sequence, item }))
+      )
+    );
+    narrativeByFootnote.set(result.footnoteId, result.narrativeText ?? []);
+    for (const segment of result.segments) {
+      segmentRanges.set(`${result.footnoteId}:${segment.segmentId}`, {
+        start: segment.coreStart,
+        end: segment.coreEnd,
+      });
+    }
+  }
+
+  const associated = findings.flatMap((finding) => {
+    if (!finding.citationSegmentId) return [finding];
+    if (
+      (narrativeByFootnote.get(finding.footnoteId) ?? []).some(
+        (narrative) => narrative.start <= finding.start && narrative.end >= finding.end
+      )
+    ) {
+      return [];
+    }
+    const locations = locationsByFootnote.get(finding.footnoteId) ?? [];
+    const segmentRange = segmentRanges.get(`${finding.footnoteId}:${finding.citationSegmentId}`);
+    const relevant = locations.filter(({ item }) => rangesOverlap(item, segmentRange ?? finding));
+    if (relevant.length === 0) return [finding];
+
+    const associations =
+      finding.ruleId === "CITATION_OTHER_REVIEW"
+        ? relevant
+        : [
+            relevant.find(({ item }) => item.start <= finding.start && item.end >= finding.end) ??
+              [...relevant].sort(
+                (left, right) =>
+                  Math.min(right.item.end, finding.end) -
+                  Math.max(right.item.start, finding.start) -
+                  (Math.min(left.item.end, finding.end) - Math.max(left.item.start, finding.start))
+              )[0],
+          ];
+
+    return associations.map(({ sequence, item }) => ({
+      ...finding,
+      ...(finding.ruleId === "CITATION_OTHER_REVIEW"
+        ? {
+            findingId: `${finding.findingId}:item:${item.id}`,
+            start: item.start,
+            end: item.end,
+            originalText: item.rawText,
+            message:
+              "Diese Quelle konnte keiner bekannten Zitierweise sicher zugeordnet werden. Bitte prüfen Sie sie manuell.",
+          }
+        : {}),
+      citationSequenceId: sequence.id,
+      citationItemId: item.id,
+      citationStart: item.start,
+      citationEnd: item.end,
+    }));
+  });
+  const unique = new Map<string, Finding>();
+  for (const finding of associated) {
+    const key =
+      finding.ruleId === "CITATION_OTHER_REVIEW" && finding.citationItemId
+        ? `${finding.footnoteId}:${finding.ruleId}:${finding.citationItemId}`
+        : finding.findingId;
+    if (!unique.has(key)) unique.set(key, finding);
+  }
+  return [...unique.values()];
+}
+
 export interface AnalyzeFootnotesOptions {
   profile?: CitationStyleProfile;
   mappingData?: CitationSourceMappingData;
@@ -183,17 +349,28 @@ export function analyzeFootnotes(
   let engineProtectedRangeCount = 0;
 
   for (const footnote of footnotes) {
-    const analysis = createFootnoteAnalysis(footnote);
+    let analysis: FootnoteAnalysisResult;
+    try {
+      analysis = createFootnoteAnalysis(footnote);
+    } catch {
+      analysis = { footnoteId: footnote.id, engineProtectedRanges: [], protectedRanges: [] };
+    }
     footnoteAnalyses.push(analysis);
-    const classifiedParseResult = classifyFootnoteParseResult(
-      segmentFootnote(footnote, analysis.protectedRanges),
-      analysis.protectedRanges
-    );
-    const parseResult = extractFootnoteParseResult(
-      classifiedParseResult,
-      footnote,
-      analysis.protectedRanges
-    );
+    let parseResult: FootnoteParseResult;
+    try {
+      const classifiedParseResult = classifyFootnoteParseResult(
+        segmentFootnote(footnote, analysis.protectedRanges, [profile.global.citationSeparator]),
+        analysis.protectedRanges
+      );
+      parseResult = extractFootnoteParseResult(
+        classifiedParseResult,
+        footnote,
+        analysis.protectedRanges
+      );
+    } catch {
+      parseResult = failedFootnoteParseResult(footnote);
+    }
+    addUncertainSegmentationProtection(footnote, analysis, parseResult);
     parseResults.push(parseResult);
     engineProtectedRangeCount += analysis.engineProtectedRanges.length;
 
@@ -202,6 +379,8 @@ export function analyzeFootnotes(
         plainTextUrlCount += 1;
       }
     }
+
+    if (parseResult.segmentationStatus === "failed") continue;
 
     footnoteContexts.push({
       footnote,
@@ -250,11 +429,14 @@ export function analyzeFootnotes(
     }
   }
 
-  const findings = runRules(footnoteContexts, segmentContexts, {
-    footnotes,
-    profile,
-    mappingData,
-  });
+  const findings = associateFindingsWithCitationItems(
+    runRules(footnoteContexts, segmentContexts, {
+      footnotes,
+      profile,
+      mappingData,
+    }),
+    parseResults
+  );
 
   const findingsBySeverity = {
     info: 0,

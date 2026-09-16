@@ -1,6 +1,12 @@
 /* global performance */
 
-import type { FindingCategory, FindingSeverity } from "../footnote-engine/types";
+import type {
+  Finding,
+  FindingCategory,
+  FindingSeverity,
+  FootnoteEngineResult,
+  FootnoteParseResult,
+} from "../footnote-engine/types";
 import type { ReviewClass, ReviewDecisionState, ReviewItem, ReviewStatus } from "../review-engine";
 import type { FootnoteSnapshot } from "./taskpane";
 
@@ -25,6 +31,7 @@ export const RULE_TITLES: Readonly<Record<string, string>> = {
   SOURCE_MAPPING_LEGACY_UNCERTAIN: "Quellenzuordnung prüfen",
   SOURCE_MAPPING_AMBIGUOUS: "Quellenzuordnung prüfen",
   SOURCE_MAPPING_UNMATCHED: "Quelle prüfen",
+  CITATION_OTHER_REVIEW: "Quelle manuell prüfen",
   CITATION_STYLE_CONSISTENCY: "Zitierweise vereinheitlichen",
   SOURCE_NAME_CONSISTENCY: "Werkbezeichnung vereinheitlichen",
   FORMATTING_CONSISTENCY: "Formatierung vereinheitlichen",
@@ -52,6 +59,7 @@ export interface ReviewFilters {
   status: "ALL" | ReviewStatus;
   category: "ALL" | FindingCategory;
   search: string;
+  onlyWithFindings: boolean;
 }
 
 export const DEFAULT_REVIEW_FILTERS: ReviewFilters = {
@@ -60,15 +68,39 @@ export const DEFAULT_REVIEW_FILTERS: ReviewFilters = {
   status: "ALL",
   category: "ALL",
   search: "",
+  onlyWithFindings: false,
 };
 
 export interface ReviewFootnoteGroup {
   footnote: FootnoteSnapshot;
   items: ReviewItem[];
+  totalItemCount: number;
+  accountingStatus: "FINDINGS" | "CLEAN" | "PARTIAL";
 }
 
 export function getRuleTitle(ruleId: string): string {
   return RULE_TITLES[ruleId] ?? "Prüfhinweis";
+}
+
+export function citationPreviewForFinding(
+  finding: Finding,
+  engineResult: FootnoteEngineResult
+): string | undefined {
+  if (!finding.citationItemId) return undefined;
+  const parseResult = engineResult.parseResults.find(
+    (candidate) => candidate.footnoteId === finding.footnoteId
+  );
+  const item = parseResult?.sequences
+    ?.flatMap((sequence) => sequence.items)
+    .find((candidate) => candidate.id === finding.citationItemId);
+  if (!item) return undefined;
+  if (
+    finding.citationStart !== undefined &&
+    (item.start !== finding.citationStart || item.end !== finding.citationEnd)
+  ) {
+    return undefined;
+  }
+  return item.rawText;
 }
 
 function searchableText(item: ReviewItem, footnote: FootnoteSnapshot | undefined): string {
@@ -80,6 +112,7 @@ function searchableText(item: ReviewItem, footnote: FootnoteSnapshot | undefined
     item.finding.suggestedText,
     item.finding.message,
     getRuleTitle(item.finding.ruleId),
+    footnote?.contentText,
   ]
     .filter((part) => part !== undefined)
     .join(" ")
@@ -108,25 +141,49 @@ const SEVERITY_ORDER: Record<FindingSeverity, number> = { error: 0, warning: 1, 
 
 export function groupReviewItems(
   items: readonly ReviewItem[],
-  footnotes: readonly FootnoteSnapshot[]
+  footnotes: readonly FootnoteSnapshot[],
+  options: {
+    includeEmpty?: boolean;
+    allItems?: readonly ReviewItem[];
+    parseResults?: readonly FootnoteParseResult[];
+  } = {}
 ): ReviewFootnoteGroup[] {
   const grouped = new Map<string, ReviewItem[]>();
+  const allGrouped = new Map<string, ReviewItem[]>();
   for (const item of items) {
     const current = grouped.get(item.finding.footnoteId);
     if (current) current.push(item);
     else grouped.set(item.finding.footnoteId, [item]);
   }
+  for (const item of options.allItems ?? items) {
+    const current = allGrouped.get(item.finding.footnoteId);
+    if (current) current.push(item);
+    else allGrouped.set(item.finding.footnoteId, [item]);
+  }
+  const parseResultsById = new Map(
+    (options.parseResults ?? []).map((result) => [result.footnoteId, result] as const)
+  );
   return footnotes
-    .filter((footnote) => grouped.has(footnote.id))
-    .map((footnote) => ({
-      footnote,
-      items: [...(grouped.get(footnote.id) ?? [])].sort(
-        (left, right) =>
-          SEVERITY_ORDER[left.finding.severity] - SEVERITY_ORDER[right.finding.severity] ||
-          left.finding.start - right.finding.start ||
-          left.finding.ruleId.localeCompare(right.finding.ruleId, "de")
-      ),
-    }));
+    .filter((footnote) => options.includeEmpty || grouped.has(footnote.id))
+    .map((footnote) => {
+      const totalItemCount = allGrouped.get(footnote.id)?.length ?? 0;
+      const parseResult = parseResultsById.get(footnote.id);
+      const partial =
+        (footnote.readStatus !== undefined && footnote.readStatus !== "complete") ||
+        (parseResult?.segmentationStatus !== undefined &&
+          parseResult.segmentationStatus !== "recognized");
+      return {
+        footnote,
+        items: [...(grouped.get(footnote.id) ?? [])].sort(
+          (left, right) =>
+            SEVERITY_ORDER[left.finding.severity] - SEVERITY_ORDER[right.finding.severity] ||
+            left.finding.start - right.finding.start ||
+            left.finding.ruleId.localeCompare(right.finding.ruleId, "de")
+        ),
+        totalItemCount,
+        accountingStatus: partial ? "PARTIAL" : totalItemCount > 0 ? "FINDINGS" : "CLEAN",
+      };
+    });
 }
 
 export interface ReviewDisplayPreparation {
@@ -139,11 +196,37 @@ export function prepareReviewDisplay(
   items: readonly ReviewItem[],
   footnotes: readonly FootnoteSnapshot[],
   filters: ReviewFilters,
+  parseResults: readonly FootnoteParseResult[] = [],
   now: () => number = () => performance.now()
 ): ReviewDisplayPreparation {
   const startedAt = now();
   const filteredItems = filterReviewItems(items, footnotes, filters);
-  const groups = groupReviewItems(filteredItems, footnotes);
+  const itemFilterActive =
+    filters.severity !== "ALL" ||
+    filters.reviewClass !== "ALL" ||
+    filters.status !== "ALL" ||
+    filters.category !== "ALL";
+  const filteredFootnoteIds = new Set(filteredItems.map((item) => item.finding.footnoteId));
+  const allItemFootnoteIds = new Set(items.map((item) => item.finding.footnoteId));
+  const search = filters.search.trim().toLocaleLowerCase("de-DE");
+  const candidateFootnotes = footnotes.filter((footnote) => {
+    const hasFindings = allItemFootnoteIds.has(footnote.id);
+    if (filters.onlyWithFindings && !hasFindings) return false;
+    if (itemFilterActive && !filteredFootnoteIds.has(footnote.id)) return false;
+    if (search === "") return true;
+    return (
+      filteredFootnoteIds.has(footnote.id) ||
+      [`Fußnote ${footnote.ordinal}`, footnote.displayLabel, footnote.contentText]
+        .join(" ")
+        .toLocaleLowerCase("de-DE")
+        .includes(search)
+    );
+  });
+  const groups = groupReviewItems(filteredItems, candidateFootnotes, {
+    includeEmpty: true,
+    allItems: items,
+    parseResults,
+  });
   return {
     filteredItems,
     groups,
@@ -171,6 +254,7 @@ export function hasActiveFilters(filters: ReviewFilters): boolean {
     filters.reviewClass !== "ALL" ||
     filters.status !== "ALL" ||
     filters.category !== "ALL" ||
+    filters.onlyWithFindings ||
     filters.search.trim() !== ""
   );
 }
@@ -188,8 +272,10 @@ export function createClosedFootnoteState(): OpenFootnoteState {
 export function setFootnoteOpen(
   state: OpenFootnoteState,
   footnoteId: string,
-  open: boolean
+  open: boolean,
+  autoCloseInactiveFootnotes = true
 ): OpenFootnoteState {
+  if (open && autoCloseInactiveFootnotes) return new Set([footnoteId]);
   const next = new Set(state);
   if (open) next.add(footnoteId);
   else next.delete(footnoteId);

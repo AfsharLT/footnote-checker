@@ -43,6 +43,10 @@ assert(
 assert(profile.commentary.bearbeiterFormatting.italic === true, "Bearbeiter must be italic");
 assert(profile.commentary.editorFormatting.italic === false, "Editor must not be italic");
 assert(profile.journalArticle.pinpointStyle === "parentheses", "Journal pinpoint mismatch");
+assert(
+  profile.global.autoCloseInactiveFootnotes === true,
+  "Inactive footnotes must auto-close by default"
+);
 assert(profile.statute.paragraphStyle === "abbreviation", "Paragraph style mismatch");
 assert(profile.statute.sentenceStyle === "abbreviation", "Sentence style mismatch");
 

@@ -41,6 +41,7 @@ function exclusionReason(
   if (existing?.status === "STALE") return "STALE_BEFORE_RUN";
   if (item.decision.explicitStatus === "REJECTED") return "USER_REJECTED";
   if (item.decision.explicitStatus === "DEFERRED") return "USER_DEFERRED";
+  if (item.decision.explicitStatus === "MANUALLY_CHECKED") return "USER_MANUALLY_CHECKED";
   if (item.conflicts.length > 0) return "CONFLICT";
   if (item.reviewClass === "MANUAL") return "MANUAL_REVIEW_REQUIRED";
   if (item.reviewClass === "TECHNICAL") return "TECHNICAL_BLOCK";
@@ -80,6 +81,8 @@ function totals(items: readonly PlannedWriteBackItem[]): WriteBackPlanTotals {
     info: items.filter((item) => item.exclusionReason === "INFORMATION_ONLY").length,
     rejected: items.filter((item) => item.exclusionReason === "USER_REJECTED").length,
     deferred: items.filter((item) => item.exclusionReason === "USER_DEFERRED").length,
+    manuallyChecked: items.filter((item) => item.exclusionReason === "USER_MANUALLY_CHECKED")
+      .length,
     alreadyApplied: items.filter((item) => item.exclusionReason === "ALREADY_APPLIED").length,
   };
 }

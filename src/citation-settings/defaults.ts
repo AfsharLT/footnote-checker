@@ -16,6 +16,7 @@ export function createDefaultCitationStyleProfile(): CitationStyleProfile {
     global: {
       citationSeparator: "; ",
       personSeparator: "/",
+      autoCloseInactiveFootnotes: true,
       trimAroundSeparators: true,
       finalPeriodRequired: true,
       preserveUnknownText: true,

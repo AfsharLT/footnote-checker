@@ -15,6 +15,7 @@ import {
   getRuleTitle,
   groupReviewItems,
   hasActiveFilters,
+  prepareReviewDisplay,
   setFootnoteOpen,
 } from "../../src/taskpane/review-ui";
 import type { FootnoteSnapshot } from "../../src/taskpane/taskpane";
@@ -142,6 +143,8 @@ assert(
 
 const initiallyClosed = createClosedFootnoteState();
 const opened = setFootnoteOpen(initiallyClosed, first.id, true);
+const exclusiveSecond = setFootnoteOpen(opened, second.id, true, true);
+const nonExclusiveSecond = setFootnoteOpen(opened, second.id, true, false);
 const preservedAcrossModeChange = opened;
 const resetForNewAnalysis = createClosedFootnoteState();
 assert(initiallyClosed.size === 0, "Every footnote group must start collapsed");
@@ -153,10 +156,54 @@ assert(
   resetForNewAnalysis.size === 0,
   "A new analysis must reset every footnote group to collapsed"
 );
+assert(
+  exclusiveSecond.size === 1 && exclusiveSecond.has(second.id) && !exclusiveSecond.has(first.id),
+  "Default accordion behavior must close the previously active footnote"
+);
+assert(
+  nonExclusiveSecond.size === 2 && nonExclusiveSecond.has(first.id) && nonExclusiveSecond.has(second.id),
+  "Disabled auto-close must allow multiple open footnotes"
+);
 
 const grouped = groupReviewItems(samples, [first, second]);
 assert(grouped.length === 2 && grouped[0].items.length === 2, "Findings must be grouped once per footnote");
 assert(grouped[0].items[0].finding.severity === "error", "Group findings must sort by severity first");
+
+const allFootnotes = Array.from({ length: 80 }, (_, index) => footnote(index + 1));
+const firstAndLastItems = [item(allFootnotes[0], 100), item(allFootnotes[79], 101)];
+const completeDisplay = prepareReviewDisplay(
+  firstAndLastItems,
+  allFootnotes,
+  DEFAULT_REVIEW_FILTERS,
+  allFootnotes.map((target) => ({
+    footnoteId: target.id,
+    sourceTextHash: target.originalTextHash,
+    segments: [],
+    segmentationStatus: target.ordinal === 40 ? "partiallyRecognized" : "recognized",
+  }))
+);
+assert(
+  completeDisplay.groups.length === 80 &&
+    completeDisplay.groups.map((group) => group.footnote.ordinal).join(",") ===
+      Array.from({ length: 80 }, (_, index) => index + 1).join(","),
+  "Every analyzed footnote ordinal from 1 through 80 must have a deterministic UI group"
+);
+assert(
+  completeDisplay.groups[79].accountingStatus === "FINDINGS" &&
+    completeDisplay.groups[39].accountingStatus === "PARTIAL" &&
+    completeDisplay.groups[1].accountingStatus === "CLEAN",
+  "Finding, partial and zero-finding footnotes must remain distinguishable"
+);
+const findingsOnlyDisplay = prepareReviewDisplay(
+  firstAndLastItems,
+  allFootnotes,
+  { ...DEFAULT_REVIEW_FILTERS, onlyWithFindings: true }
+);
+assert(
+  findingsOnlyDisplay.groups.length === 2 &&
+    findingsOnlyDisplay.groups.some((group) => group.footnote.ordinal === 80),
+  "The findings-only toggle must remain optional and must not hide a matching footnote 80"
+);
 assert(getRuleTitle("CASE_LAW_DATE_FORMAT") === "Datumsformat" && getRuleTitle("UNKNOWN") === "Prüfhinweis", "Rule titles need a German mapping and fallback");
 
 const modeFootnote = footnote(3, "Text");

@@ -8,6 +8,13 @@ import type {
   StoredReviewDecision,
 } from "./types";
 
+export function canMarkManuallyChecked(item: ReviewItem): boolean {
+  return (
+    item.proposedAction === undefined &&
+    (item.reviewClass === "MANUAL" || item.reviewClass === "INFO")
+  );
+}
+
 function decisionRecord(item: ReviewItem, status: ReviewStatus): StoredReviewDecision {
   return {
     findingId: item.finding.findingId,
@@ -24,6 +31,7 @@ export function setReviewStatus(
   item: ReviewItem,
   status: ReviewStatus
 ): ReviewDecisionState {
+  if (status === "MANUALLY_CHECKED" && !canMarkManuallyChecked(item)) return state;
   return { ...state, [item.finding.findingId]: decisionRecord(item, status) };
 }
 

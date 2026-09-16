@@ -390,7 +390,12 @@ function SelectField<T extends string>(props: {
   );
 }
 
-function CheckField(props: { label: string; checked: boolean; onChange(value: boolean): void }) {
+function CheckField(props: {
+  label: string;
+  checked: boolean;
+  onChange(value: boolean): void;
+  helpText?: string;
+}) {
   const styles = useStyles();
   return (
     <label className={styles.checkbox}>
@@ -399,7 +404,10 @@ function CheckField(props: { label: string; checked: boolean; onChange(value: bo
         checked={props.checked}
         onChange={(event) => props.onChange(event.target.checked)}
       />
-      <span>{props.label}</span>
+      <span>
+        {props.label}
+        {props.helpText && <span className={styles.help}>{props.helpText}</span>}
+      </span>
     </label>
   );
 }
@@ -548,6 +556,14 @@ function ProfileEditor(props: {
           checked={props.profile.global.preferConservativeCorrections}
           onChange={(value) =>
             update((next) => (next.global.preferConservativeCorrections = value))
+          }
+        />
+        <CheckField
+          label="Nicht aktive Fußnoten automatisch schließen"
+          helpText="Wenn Sie eine andere Fußnote öffnen, wird die zuvor geöffnete Fußnote automatisch geschlossen."
+          checked={props.profile.global.autoCloseInactiveFootnotes}
+          onChange={(value) =>
+            update((next) => (next.global.autoCloseInactiveFootnotes = value))
           }
         />
       </section>

@@ -29,6 +29,7 @@ import {
   REVIEW_CLASS_LABELS,
   REVIEW_REASON_LABELS,
   REVIEW_STATUS_LABELS,
+  canMarkManuallyChecked,
   type ReviewDecisionState,
   type ReviewEngineResult,
   type ReviewItem,
@@ -37,6 +38,7 @@ import {
 } from "@/review-engine";
 import {
   CATEGORY_LABELS,
+  citationPreviewForFinding,
   createClosedFootnoteState,
   DEFAULT_REVIEW_FILTERS,
   SEVERITY_LABELS,
@@ -98,6 +100,7 @@ const STATUS_OPTIONS: FilterOption[] = [
   { value: "ALL", label: "Alle" },
   { value: "UNREVIEWED", label: "Offen" },
   { value: "ACCEPTED", label: "Übernehmen" },
+  { value: "MANUALLY_CHECKED", label: "Manuell geprüft" },
   { value: "REJECTED", label: "Abgelehnt" },
   { value: "DEFERRED", label: "Später prüfen" },
 ];
@@ -116,6 +119,7 @@ interface ReviewWorkspaceProps {
   footnotes: FootnoteSnapshot[];
   engineResult: FootnoteEngineResult | null;
   reviewResult: ReviewEngineResult | null;
+  autoCloseInactiveFootnotes: boolean;
   decisionState: ReviewDecisionState;
   onSetStatus(item: ReviewItem, status: ReviewStatus): void;
   onClearStatus(item: ReviewItem): void;
@@ -145,6 +149,7 @@ interface ReviewWorkspaceProps {
 
 function statusIcon(status: ReviewStatus): React.ReactNode {
   if (status === "ACCEPTED") return <Check size={13} aria-hidden="true" />;
+  if (status === "MANUALLY_CHECKED") return <CheckCheck size={13} aria-hidden="true" />;
   if (status === "REJECTED") return <X size={13} aria-hidden="true" />;
   if (status === "DEFERRED") return <Clock3 size={13} aria-hidden="true" />;
   return <Info size={13} aria-hidden="true" />;
@@ -202,6 +207,16 @@ function FilterFields({
           onChange({ ...filters, category: category as ReviewFilters["category"] })
         }
       />
+      <label className="fc-filter-checkbox">
+        <input
+          type="checkbox"
+          checked={filters.onlyWithFindings}
+          onChange={(event) =>
+            onChange({ ...filters, onlyWithFindings: event.target.checked })
+          }
+        />
+        <span>Nur Fußnoten mit Hinweisen</span>
+      </label>
     </div>
   );
 }
@@ -243,7 +258,8 @@ function ReviewSummary({ result, mode }: { result: ReviewEngineResult; mode: Rev
       </div>
       <p className="fc-summary__status">
         {summary.byStatus.open} offen · {summary.byStatus.accepted} übernommen ·{" "}
-        {summary.byStatus.rejected} abgelehnt · {summary.byStatus.deferred} später
+        {summary.byStatus.manuallyChecked} manuell geprüft · {summary.byStatus.rejected} abgelehnt ·{" "}
+        {summary.byStatus.deferred} später
       </p>
       {mode === "CORRECTION" && (
         <p className="fc-summary__correction">
@@ -421,6 +437,8 @@ function FindingCard({
     item.finding.message,
     writeBackResult?.message
   )[1];
+  const citationPreview = citationPreviewForFinding(item.finding, engineResult);
+  const canManuallyCheck = canMarkManuallyChecked(item);
   return (
     <article className={`fc-finding fc-finding--${item.finding.severity}`}>
       <div className="fc-finding__topline">
@@ -440,6 +458,12 @@ function FindingCard({
       </div>
       <h3>{title}</h3>
       <ActionPreview item={item} />
+      {citationPreview && (
+        <div className="fc-source-preview">
+          <span>Quelle</span>
+          <blockquote title={citationPreview}>{citationPreview}</blockquote>
+        </div>
+      )}
       {findingMessage && <p className="fc-finding__message">{findingMessage}</p>}
       {item.conflicts.length > 0 && (
         <p className="fc-finding__conflict">
@@ -471,7 +495,7 @@ function FindingCard({
             )}
         </div>
       )}
-      {mode === "REVIEW" && item.reviewClass !== "INFO" && (
+      {mode === "REVIEW" && item.reviewClass !== "TECHNICAL" && (
         <div className="fc-finding__actions" aria-label={`Entscheidung für ${title}`}>
           {item.proposedAction ? (
             <span
@@ -482,6 +506,7 @@ function FindingCard({
               }
             >
               <NeonButton
+                className="fc-review-action"
                 size="sm"
                 variant="primary"
                 disabled={!item.canAccept || batchRunning}
@@ -491,12 +516,24 @@ function FindingCard({
                 Übernehmen
               </NeonButton>
             </span>
+          ) : canManuallyCheck ? (
+            <NeonButton
+              className="fc-review-action"
+              size="sm"
+              variant="primary"
+              disabled={batchRunning}
+              onClick={() => onSetStatus(item, "MANUALLY_CHECKED")}
+            >
+              <CheckCheck size={13} aria-hidden="true" />
+              Manuell geprüft
+            </NeonButton>
           ) : (
             <span className="fc-manual-hint">
               Keine sichere automatische Änderung verfügbar – bitte im Dokument prüfen.
             </span>
           )}
           <NeonButton
+            className="fc-review-action"
             size="sm"
             variant="destructive"
             disabled={batchRunning}
@@ -506,6 +543,7 @@ function FindingCard({
             Ablehnen
           </NeonButton>
           <NeonButton
+            className="fc-review-action"
             size="sm"
             variant="subtle"
             disabled={batchRunning}
@@ -516,6 +554,7 @@ function FindingCard({
           </NeonButton>
           {item.decision.explicitStatus && (
             <NeonButton
+              className="fc-review-action"
               size="sm"
               variant="ghost"
               disabled={batchRunning}
@@ -625,7 +664,14 @@ function FootnoteGroup({
   open: boolean;
   onOpenChange(open: boolean): void;
 }) {
-  const problemLabel = group.items.length === 1 ? "1 Problem" : `${group.items.length} Probleme`;
+  const problemLabel =
+    group.accountingStatus === "CLEAN"
+      ? "Keine Probleme gefunden"
+      : group.accountingStatus === "PARTIAL"
+        ? `${group.totalItemCount} Hinweise · Analyse teilweise unsicher`
+        : group.totalItemCount === 1
+          ? "1 Prüfhinweis"
+          : `${group.totalItemCount} Prüfhinweise`;
   return (
     <section className="fc-footnote-group">
       <Collapsible
@@ -643,6 +689,17 @@ function FootnoteGroup({
       >
         {() => (
           <>
+            {group.accountingStatus === "CLEAN" && (
+              <p className="fc-footnote-accounting fc-footnote-accounting--clean">
+                <Check size={15} aria-hidden="true" /> Keine Probleme gefunden
+              </p>
+            )}
+            {group.accountingStatus === "PARTIAL" && (
+              <p className="fc-footnote-accounting fc-footnote-accounting--partial">
+                <AlertTriangle size={15} aria-hidden="true" /> Die Fußnote wurde analysiert,
+                einzelne Daten konnten jedoch nicht vollständig ausgewertet werden.
+              </p>
+            )}
             {group.items.map((item) => (
               <FindingCard
                 key={item.reviewItemId}
@@ -752,8 +809,14 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
   const [visibleGroupLimit, setVisibleGroupLimit] = useState(80);
   const [openFootnotes, setOpenFootnotes] = useState<OpenFootnoteState>(createClosedFootnoteState);
   const preparedDisplay = useMemo(
-    () => prepareReviewDisplay(props.reviewResult?.items ?? [], props.footnotes, filters),
-    [props.reviewResult, props.footnotes, filters]
+    () =>
+      prepareReviewDisplay(
+        props.reviewResult?.items ?? [],
+        props.footnotes,
+        filters,
+        props.engineResult?.parseResults ?? []
+      ),
+    [props.reviewResult, props.footnotes, props.engineResult, filters]
   );
   const { filteredItems, groups } = preparedDisplay;
   const filterSignature = `${filters.severity}:${filters.reviewClass}:${filters.status}:${filters.category}:${filters.search}`;
@@ -943,6 +1006,10 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
                     <strong>{batchSummary.manualReview}</strong>
                   </div>
                   <div>
+                    <span>Manuell geprüft</span>
+                    <strong>{batchSummary.manuallyChecked}</strong>
+                  </div>
+                  <div>
                     <span>Technisch blockiert</span>
                     <strong>{batchSummary.technical}</strong>
                   </div>
@@ -957,8 +1024,8 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
                 </div>
                 <p>
                   {batchSummary.applied} Korrekturen durchgeführt · {batchSummary.stale} erneut
-                  prüfen · {batchSummary.failed} fehlgeschlagen · {batchSummary.manualReview}{" "}
-                  manuell zu prüfen
+                  prüfen · {batchSummary.failed} fehlgeschlagen · {batchSummary.manuallyChecked}{" "}
+                  manuell geprüft · {batchSummary.manualReview} manuell zu prüfen
                 </p>
                 <div className="fc-batch-summary__actions">
                   <NeonButton variant="primary" size="sm" onClick={props.onExportDetailReport}>
@@ -977,7 +1044,7 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
                 </div>
               </section>
             )}
-            {props.reviewResult.items.length === 0 ? (
+            {props.reviewResult.items.length === 0 && (
               <section className="fc-success" role="status">
                 <Check size={22} aria-hidden="true" />
                 <div>
@@ -985,12 +1052,13 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
                   <p>Die geprüften Fußnoten entsprechen den aktuell eingestellten Regeln.</p>
                 </div>
               </section>
-            ) : (
-              <>
+            )}
+            <>
                 {props.mode === "REVIEW" && (
                   <div className="fc-sticky-actions fc-sticky-actions--review">
                     <div className="fc-sticky-actions__status">
                       {props.reviewResult.summary.byStatus.accepted} übernommen ·{" "}
+                      {props.reviewResult.summary.byStatus.manuallyChecked} manuell geprüft ·{" "}
                       {props.reviewResult.summary.byStatus.open} offen ·{" "}
                       {props.reviewResult.summary.byStatus.deferred} später
                     </div>
@@ -1118,7 +1186,12 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
                         open={openFootnotes.has(group.footnote.id)}
                         onOpenChange={(open) =>
                           setOpenFootnotes((current) =>
-                            setFootnoteOpen(current, group.footnote.id, open)
+                            setFootnoteOpen(
+                              current,
+                              group.footnote.id,
+                              open,
+                              props.autoCloseInactiveFootnotes
+                            )
                           )
                         }
                       />
@@ -1134,8 +1207,7 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
                     )}
                   </div>
                 )}
-              </>
-            )}
+            </>
             <GlobalTechnicalData
               readerMetrics={props.readerMetrics}
               documentFormatting={props.documentFormatting}

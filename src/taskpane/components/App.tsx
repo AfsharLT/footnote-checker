@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useCitationSourceMapping } from "@/citation-mapping/use-citation-source-mapping";
 import { useCitationSettings } from "@/citation-settings/use-citation-settings";
 import { analyzeFootnotes } from "@/footnote-engine/engine";
+import { SEGMENTATION_USER_MESSAGE } from "@/footnote-engine/citation-sequence-segmenter";
 import type { FootnoteEngineResult } from "@/footnote-engine/types";
 import {
   acceptAllAutomatic,
@@ -90,8 +91,9 @@ const App: React.FC = () => {
   const [batchRunStatus, setBatchRunStatus] = useState<BatchRunStatus>("IDLE");
   const [reportError, setReportError] = useState("");
   const [technicalError, setTechnicalError] = useState("");
-  const [analysisPerformance, setAnalysisPerformance] =
-    useState<AnalysisPerformanceMetrics | null>(null);
+  const [analysisPerformance, setAnalysisPerformance] = useState<AnalysisPerformanceMetrics | null>(
+    null
+  );
   const [hostWorkState, setHostWorkState] = useState<HostWorkState>("IDLE");
   const [hostCapabilities] = useState<HostCapabilities>(() => getOfficeHostCapabilities());
   const readInProgressRef = useRef(false);
@@ -169,14 +171,23 @@ const App: React.FC = () => {
         mappingData,
         mappingIndex,
       });
+      const analysisNotice = [
+        readerNotice,
+        analysis.parseResults.some((parseResult) =>
+          parseResult.segmentationWarnings?.some((warning) => warning.code.endsWith("_FAILED"))
+        )
+          ? SEGMENTATION_USER_MESSAGE
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
       setFootnotes(result.footnotes);
       setDocumentFormatting(result.documentFormatting);
       setReaderMetrics(result.readerMetrics);
       setAnalysisPerformance({
         readerDurationMs: result.readerMetrics.durationMs,
         engineDurationMs: analysis.durationMs ?? 0,
-        totalAnalysisDurationMs:
-          Math.round((performance.now() - analysisStartedAt) * 10) / 10,
+        totalAnalysisDurationMs: Math.round((performance.now() - analysisStartedAt) * 10) / 10,
         contextSyncCount: result.readerMetrics.syncCount,
         footnoteCount: result.footnotes.length,
       });
@@ -236,11 +247,11 @@ const App: React.FC = () => {
         setBatchResult(batch);
         setBatchRunStatus(batch.status);
         setHostWorkState("IDLE");
-        setMessage(readerNotice);
+        setMessage(analysisNotice);
       } else if (result.footnotes.length === 0) {
         setMessage("Das Dokument enthält keine Fußnoten.");
       } else {
-        setMessage(readerNotice);
+        setMessage(analysisNotice);
       }
       setReadProgress(
         createFootnoteReadProgress("complete", result.footnotes.length, result.footnotes.length)
@@ -452,6 +463,7 @@ const App: React.FC = () => {
         footnotes={footnotes}
         engineResult={engineResult}
         reviewResult={reviewResult}
+        autoCloseInactiveFootnotes={activeProfile.global.autoCloseInactiveFootnotes}
         decisionState={decisionState}
         onSetStatus={handleSetStatus}
         onClearStatus={handleClearStatus}
