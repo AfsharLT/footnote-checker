@@ -1,7 +1,7 @@
 import * as React from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button, makeStyles, tokens } from "@fluentui/react-components";
-import { ChevronDown, ChevronRight, Download, RotateCcw, Upload } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, RotateCcw, Search, Upload } from "lucide-react";
 import { NeonButton } from "@/components/ui/neon-button";
 import { BrandLogo } from "@/taskpane/components/BrandLogo";
 import {
@@ -58,6 +58,18 @@ import {
   type AliasConflict,
   type SettingsSection,
 } from "../../settings-ui/state";
+import {
+  CITATION_SETTINGS_SECTIONS,
+  SETTINGS_TOP_LEVEL_SECTIONS,
+  formatSettingsSearchContext,
+  resolveSettingsSearchSelection,
+  searchSettings,
+  settingsFieldTarget,
+  settingsSubsectionTarget,
+  type SettingsNestedSection,
+  type SettingsSearchEntry,
+  type SettingsTopLevelSection,
+} from "../settings-search";
 
 interface SettingsPanelProps {
   activeProfile: CitationStyleProfile;
@@ -177,6 +189,57 @@ const useStyles = makeStyles({
     backgroundColor: "rgba(255, 255, 255, 0.96)",
     boxShadow: "0 5px 18px rgba(0, 51, 129, 0.08)",
   },
+  searchArea: { position: "relative", flex: "1 1 100%", minWidth: 0 },
+  searchField: {
+    display: "flex",
+    minWidth: 0,
+    alignItems: "center",
+    gap: "8px",
+    padding: "0 10px",
+    border: "1px solid #aebfd6",
+    borderRadius: "8px",
+    backgroundColor: "#fff",
+    color: tokens.colorNeutralForeground2,
+  },
+  searchInput: {
+    width: "100%",
+    minWidth: 0,
+    height: "36px",
+    border: 0,
+    outline: 0,
+    backgroundColor: "transparent",
+    color: tokens.colorNeutralForeground1,
+  },
+  searchResults: {
+    position: "absolute",
+    zIndex: 30,
+    top: "calc(100% + 5px)",
+    right: 0,
+    left: 0,
+    display: "grid",
+    maxHeight: "260px",
+    overflowY: "auto",
+    padding: "5px",
+    border: "1px solid #c8d8ee",
+    borderRadius: "8px",
+    backgroundColor: "#fff",
+    boxShadow: "0 10px 24px rgba(24, 39, 60, 0.16)",
+  },
+  searchResult: {
+    width: "100%",
+    padding: "8px 9px",
+    border: 0,
+    borderRadius: "6px",
+    backgroundColor: "transparent",
+    color: tokens.colorNeutralForeground1,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    fontSize: tokens.fontSizeBase200,
+    lineHeight: "18px",
+    textAlign: "left",
+  },
+  searchEmpty: { margin: 0, padding: "9px", color: tokens.colorNeutralForeground2 },
+  actionStatus: { marginLeft: "auto", fontSize: tokens.fontSizeBase200 },
   hiddenInput: { display: "none" },
   fileAction: {
     display: "inline-flex",
@@ -324,6 +387,8 @@ const useStyles = makeStyles({
   },
 });
 
+const SettingsTargetContext = React.createContext<string | null>(null);
+
 function TextField(props: {
   label: string;
   value: string;
@@ -336,8 +401,10 @@ function TextField(props: {
   error?: string;
 }) {
   const styles = useStyles();
+  const targetScope = React.useContext(SettingsTargetContext);
+  const targetId = targetScope ? settingsFieldTarget(targetScope, props.label) : undefined;
   return (
-    <label className={styles.field}>
+    <label className={styles.field} id={targetId} tabIndex={targetId ? -1 : undefined}>
       <span className={styles.label}>{props.label}</span>
       {props.multiline ? (
         <textarea
@@ -371,8 +438,10 @@ function SelectField<T extends string>(props: {
   disabled?: boolean;
 }) {
   const styles = useStyles();
+  const targetScope = React.useContext(SettingsTargetContext);
+  const targetId = targetScope ? settingsFieldTarget(targetScope, props.label) : undefined;
   return (
-    <label className={styles.field}>
+    <label className={styles.field} id={targetId} tabIndex={targetId ? -1 : undefined}>
       <span className={styles.label}>{props.label}</span>
       <select
         className={styles.input}
@@ -395,10 +464,18 @@ function CheckField(props: {
   checked: boolean;
   onChange(value: boolean): void;
   helpText?: string;
+  targetId?: string;
 }) {
   const styles = useStyles();
+  const targetScope = React.useContext(SettingsTargetContext);
+  const targetId =
+    props.targetId ?? (targetScope ? settingsFieldTarget(targetScope, props.label) : undefined);
   return (
-    <label className={styles.checkbox}>
+    <label
+      className={`${styles.checkbox} ${props.helpText ? "fc-settings-product-setting" : ""}`}
+      id={targetId}
+      tabIndex={targetId ? -1 : undefined}
+    >
       <input
         type="checkbox"
         checked={props.checked}
@@ -416,10 +493,11 @@ function StyleEditor(props: {
   title: string;
   value: CharacterStylePreference;
   onChange(value: CharacterStylePreference): void;
+  targetId?: string;
 }) {
   const styles = useStyles();
   return (
-    <div className={styles.card}>
+    <div className={styles.card} id={props.targetId} tabIndex={props.targetId ? -1 : undefined}>
       <div className={styles.cardTitle}>{props.title}</div>
       <div className={styles.grid}>
         {(["italic", "bold", "underline"] as const).map((property) => (
@@ -523,7 +601,7 @@ function ProfileEditor(props: {
   if (props.section === "GENERAL") {
     return (
       <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Allgemeine Einstellungen</h2>
+        <h2 className={styles.sectionTitle}>Allgemeine Zitiereinstellungen</h2>
         <div className={styles.grid}>
           <TextField
             label="Zitattrenner"
@@ -556,14 +634,6 @@ function ProfileEditor(props: {
           checked={props.profile.global.preferConservativeCorrections}
           onChange={(value) =>
             update((next) => (next.global.preferConservativeCorrections = value))
-          }
-        />
-        <CheckField
-          label="Nicht aktive Fußnoten automatisch schließen"
-          helpText="Wenn Sie eine andere Fußnote öffnen, wird die zuvor geöffnete Fußnote automatisch geschlossen."
-          checked={props.profile.global.autoCloseInactiveFootnotes}
-          onChange={(value) =>
-            update((next) => (next.global.autoCloseInactiveFootnotes = value))
           }
         />
       </section>
@@ -1184,7 +1254,12 @@ function ProfileEditor(props: {
           (concept) => {
             const preference = props.profile.abbreviations[concept];
             return (
-              <details className={styles.card} key={concept}>
+              <details
+                className={styles.card}
+                id={settingsFieldTarget("ABBREVIATIONS", ABBREVIATION_LABELS[concept])}
+                tabIndex={-1}
+                key={concept}
+              >
                 <summary className={styles.cardTitle}>{ABBREVIATION_LABELS[concept]}</summary>
                 <div className={styles.subsection}>
                   <TextField
@@ -1216,14 +1291,19 @@ function ProfileEditor(props: {
           }
         )}
         <div className={styles.subsection}>
-          <h2 className={styles.sectionTitle}>Zitationszusätze</h2>
+          <h2 className={styles.sectionTitle}>Modifier / Signalwörter</h2>
           <p className={styles.help}>
             Modifier bleiben getrennt von f. und ff.; diese gehören weiterhin zu den Abkürzungen.
           </p>
           {(Object.keys(props.profile.modifiers) as CitationModifierConcept[]).map((concept) => {
             const preference = props.profile.modifiers[concept];
             return (
-              <details className={styles.card} key={concept}>
+              <details
+                className={styles.card}
+                id={settingsFieldTarget("ABBREVIATIONS", MODIFIER_LABELS[concept])}
+                tabIndex={-1}
+                key={concept}
+              >
                 <summary className={styles.cardTitle}>{MODIFIER_LABELS[concept]}</summary>
                 <div className={styles.subsection}>
                   <TextField
@@ -1269,21 +1349,25 @@ function ProfileEditor(props: {
       <h2 className={styles.sectionTitle}>Rollenbezogene Formatierung</h2>
       <StyleEditor
         title="Autor"
+        targetId="fc-setting-formatting-author"
         value={props.profile.formatting.author}
         onChange={(value) => update((next) => (next.formatting.author = value))}
       />
       <StyleEditor
         title="Bearbeiter"
+        targetId="fc-setting-formatting-bearbeiter"
         value={props.profile.formatting.bearbeiter}
         onChange={(value) => update((next) => (next.formatting.bearbeiter = value))}
       />
       <StyleEditor
         title="Herausgeber"
+        targetId="fc-setting-formatting-editor"
         value={props.profile.formatting.editor}
         onChange={(value) => update((next) => (next.formatting.editor = value))}
       />
       <StyleEditor
         title="Werktitel"
+        targetId="fc-setting-formatting-work-title"
         value={props.profile.formatting.workTitle}
         onChange={(value) => update((next) => (next.formatting.workTitle = value))}
       />
@@ -1653,7 +1737,7 @@ function SourceEditor(props: {
                 · Ursprung: {alias.legacyMappingId ? "Altdaten" : "Benutzer"}
               </p>
               {alias.legacyMappingId && (
-                <p className={styles.help}>Altdaten-Mapping-ID: {alias.legacyMappingId}</p>
+                <p className={styles.help}>Altdaten-Kennung: {alias.legacyMappingId}</p>
               )}
               {alias.notes && <p className={styles.help}>{alias.notes}</p>}
               {alias.legacyMappingId ? (
@@ -1704,7 +1788,7 @@ function SourceEditor(props: {
               </p>
               {props.source.sourceOrigin === "DEFAULT" && (
                 <p className={styles.warning}>
-                  Diese Quelle stammt aus dem Standard-Mapping. Sie kann später über
+                  Diese Quelle stammt aus dem Standardverzeichnis. Sie kann später über
                   „Standardquellen wiederherstellen“ erneut hinzugefügt werden.
                 </p>
               )}
@@ -1878,7 +1962,8 @@ function MappingEditor(props: {
   const conflicts = useMemo(() => findAliasConflicts(props.mapping), [props.mapping]);
   return (
     <section className={styles.section}>
-      <h2 className={styles.sectionTitle}>Werk- & Zeitschriften-Mapping</h2>
+      <h2 className={styles.sectionTitle}>Literaturverzeichnis</h2>
+      <p className={styles.help}>Bekannte Werke, Zeitschriften, Quellen und Aliase verwalten.</p>
       <div className={styles.summary}>
         <span>Quellen: {props.mapping.sources.length}</span>
         <span>
@@ -1963,7 +2048,7 @@ function MappingEditor(props: {
   );
 }
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({
+const LegacySettingsPanel: React.FC<SettingsPanelProps> = ({
   activeProfile,
   mappingData,
   onSaveProfile,
@@ -2395,6 +2480,559 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               }}
             >
               {resetTarget === "PROFILE" ? "Zurücksetzen" : "Standardquellen wiederherstellen"}
+            </Button>
+            <Button onClick={() => setResetTarget(null)}>Abbrechen</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({
+  activeProfile,
+  mappingData,
+  onSaveProfile,
+  onSaveMapping,
+  onClose,
+}) => {
+  const styles = useStyles();
+  const [section, setSection] = useState<SettingsTopLevelSection | null>(null);
+  const [nestedSection, setNestedSection] = useState<SettingsNestedSection | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [pendingSearchTarget, setPendingSearchTarget] = useState<string | null>(null);
+  const [profile, setProfile] = useState(() => cloneCitationStyleProfile(activeProfile));
+  const [mapping, setMapping] = useState(() => cloneCitationSourceMapping(mappingData));
+  const [profileMessage, setProfileMessage] = useState("");
+  const [mappingMessage, setMappingMessage] = useState("");
+  const [leaveWarning, setLeaveWarning] = useState(false);
+  const [resetTarget, setResetTarget] = useState<"MAPPING" | "ALL" | null>(null);
+  const [profileImport, setProfileImport] = useState<ReturnType<
+    typeof parseCitationStyleProfile
+  > | null>(null);
+  const [mappingImport, setMappingImport] = useState<ReturnType<
+    typeof parseCitationSourceMappingCsv
+  > | null>(null);
+  const profileDirty = hasUnsavedChanges(profile, activeProfile);
+  const mappingDirty = hasUnsavedChanges(mapping, mappingData);
+  const searchResults = useMemo(() => searchSettings(searchQuery), [searchQuery]);
+
+  useEffect(() => {
+    if (!pendingSearchTarget) return undefined;
+    const target = document.getElementById(pendingSearchTarget);
+    if (!target) return undefined;
+    if (target instanceof HTMLDetailsElement) target.open = true;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.focus({ preventScroll: true });
+    target.classList.remove("fc-settings-search-target");
+    void target.offsetWidth;
+    target.classList.add("fc-settings-search-target");
+    const clearHighlight = () => target.classList.remove("fc-settings-search-target");
+    target.addEventListener("animationend", clearHighlight, { once: true });
+    setPendingSearchTarget(null);
+    return () => target.removeEventListener("animationend", clearHighlight);
+  }, [pendingSearchTarget, section, nestedSection]);
+
+  const updateProfile = (next: CitationStyleProfile) => {
+    setProfile(next);
+    setProfileMessage("");
+  };
+  const saveProfile = (): boolean => {
+    const errors = validateSettingsWorkingCopy(profile);
+    if (errors.length > 0) {
+      setProfileMessage(errors.join("\n"));
+      return false;
+    }
+    const result = onSaveProfile(profile);
+    setProfileMessage(
+      result.success ? "Einstellungen wurden gespeichert." : (result.error ?? "Speichern fehlgeschlagen.")
+    );
+    return result.success;
+  };
+  const saveMapping = (): boolean => {
+    const validation = validateCitationSourceMappingData(mapping);
+    if (!validation.success) {
+      setMappingMessage(validation.errors.join("\n"));
+      return false;
+    }
+    const result = onSaveMapping(mapping);
+    setMappingMessage(
+      result.success
+        ? "Literaturverzeichnis wurde gespeichert."
+        : (result.error ?? "Speichern fehlgeschlagen.")
+    );
+    return result.success;
+  };
+  const saveAll = (): boolean => {
+    const settingsSaved = !profileDirty || saveProfile();
+    const literatureSaved = !mappingDirty || saveMapping();
+    return settingsSaved && literatureSaved;
+  };
+  const requestClose = () => {
+    if (profileDirty || mappingDirty) setLeaveWarning(true);
+    else onClose();
+  };
+  const selectSearchResult = (entry: SettingsSearchEntry) => {
+    const target = resolveSettingsSearchSelection(entry);
+    setSection(target.topLevelSection);
+    setNestedSection(target.nestedSection);
+    setPendingSearchTarget(target.targetElementId);
+    setSearchQuery("");
+  };
+  const profileSectionFor = (value: SettingsNestedSection): SettingsSection | null => {
+    if (value === "CITATION_GENERAL") return "GENERAL";
+    if (value === "FESTSCHRIFT") return null;
+    return value;
+  };
+  const handleImport = async (file: File) => {
+    const text = await readTextFile(file);
+    if (file.name.toLocaleLowerCase("de-DE").endsWith(".csv")) {
+      setMappingImport(parseCitationSourceMappingCsv(text));
+      setSection("LITERATURE");
+    } else {
+      setProfileImport(parseCitationStyleProfile(text));
+      setSection("CITATION");
+    }
+  };
+
+  const nestedAccordion = (
+    value: SettingsNestedSection,
+    label: string,
+    content: React.ReactNode
+  ) => {
+    const isOpen = nestedSection === value;
+    const contentId = settingsSubsectionTarget(value);
+    return (
+      <section className="fc-settings-nested-item" key={value}>
+        <button
+          className="fc-settings-nested-trigger"
+          type="button"
+          aria-expanded={isOpen}
+          aria-controls={contentId}
+          onClick={() => setNestedSection((current) => (current === value ? null : value))}
+        >
+          {isOpen ? (
+            <ChevronDown size={16} aria-hidden="true" />
+          ) : (
+            <ChevronRight size={16} aria-hidden="true" />
+          )}
+          <span>{label}</span>
+        </button>
+        {isOpen && (
+          <div className="fc-settings-nested-content" id={contentId} tabIndex={-1}>
+            {content}
+          </div>
+        )}
+      </section>
+    );
+  };
+
+  const topLevelContent = (value: SettingsTopLevelSection): React.ReactNode => {
+    if (value === "GENERAL") {
+      return (
+        <div className="fc-settings-section-stack">
+          <section className="fc-settings-product-card">
+            <CheckField
+              targetId="fc-setting-auto-close-inactive-footnotes"
+              label="Nicht aktive Fußnoten automatisch schließen"
+              helpText="Wenn Sie eine andere Fußnote öffnen, wird die zuvor geöffnete Fußnote automatisch geschlossen."
+              checked={profile.global.autoCloseInactiveFootnotes}
+              onChange={(checked) => {
+                const next = cloneCitationStyleProfile(profile);
+                next.global.autoCloseInactiveFootnotes = checked;
+                updateProfile(next);
+              }}
+            />
+          </section>
+          {nestedAccordion(
+            "FORMATTING",
+            "Formatierung",
+            <SettingsTargetContext.Provider value="FORMATTING">
+              <ProfileEditor section="FORMATTING" profile={profile} onChange={updateProfile} />
+            </SettingsTargetContext.Provider>
+          )}
+        </div>
+      );
+    }
+    if (value === "CITATION") {
+      return (
+        <div className="fc-settings-nested-list">
+          {CITATION_SETTINGS_SECTIONS.map((nested) => {
+            const profileSection = profileSectionFor(nested.value);
+            return nestedAccordion(
+              nested.value,
+              nested.label,
+              profileSection ? (
+                <SettingsTargetContext.Provider value={nested.value}>
+                  <ProfileEditor
+                    section={profileSection}
+                    profile={profile}
+                    onChange={updateProfile}
+                  />
+                </SettingsTargetContext.Provider>
+              ) : (
+                <section className={styles.section}>
+                  <h2 className={styles.sectionTitle}>Festschriften</h2>
+                  <p className={styles.help}>
+                    Festschrift-spezifische Einstellungen werden in einem späteren Schritt ergänzt.
+                  </p>
+                </section>
+              )
+            );
+          })}
+        </div>
+      );
+    }
+    if (value === "LITERATURE") {
+      return (
+        <div id="fc-settings-literature" tabIndex={-1}>
+          <MappingEditor
+            mapping={mapping}
+            onChange={(next) => {
+              setMapping(next);
+              setMappingMessage("");
+            }}
+          />
+          <section className={`${styles.section} fc-settings-directory-actions`}>
+            <h2 className={styles.sectionTitle}>Literaturdaten verwalten</h2>
+            <div className={styles.actionBar}>
+              <Button appearance="primary" disabled={!mappingDirty} onClick={saveMapping}>
+                Literaturverzeichnis speichern
+              </Button>
+              <Button
+                disabled={!mappingDirty}
+                onClick={() => {
+                  setMapping(cloneCitationSourceMapping(mappingData));
+                  setMappingMessage("Ungespeicherte Änderungen wurden verworfen.");
+                }}
+              >
+                Änderungen verwerfen
+              </Button>
+              <Button onClick={() => setResetTarget("MAPPING")}>
+                Standardquellen wiederherstellen
+              </Button>
+              <Button
+                onClick={() =>
+                  downloadText(
+                    "footnote-checker-literaturverzeichnis.csv",
+                    exportCitationSourceMappingCsv(mapping),
+                    "text/csv;charset=utf-8"
+                  )
+                }
+              >
+                Exportieren
+              </Button>
+              <label className={styles.fileAction}>
+                Importieren
+                <input
+                  className={styles.hiddenInput}
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      await handleImport(file);
+                    } catch (error) {
+                      setMappingMessage(
+                        error instanceof Error ? error.message : "Datei konnte nicht gelesen werden."
+                      );
+                    }
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+            {mappingMessage && <p className={styles.message}>{mappingMessage}</p>}
+          </section>
+        </div>
+      );
+    }
+    if (value === "ABBREVIATIONS") {
+      return (
+        <div id="fc-settings-abbreviations" tabIndex={-1}>
+          <ProfileEditor section="ABBREVIATIONS" profile={profile} onChange={updateProfile} />
+        </div>
+      );
+    }
+    return (
+      <section className={styles.section} id="fc-settings-help" tabIndex={-1}>
+        <h2 className={styles.sectionTitle}>Hilfe &amp; Info</h2>
+        <p className={styles.help}>Weitere Informationen und Hilfestellungen werden hier ergänzt.</p>
+      </section>
+    );
+  };
+
+  return (
+    <div className={`${styles.panel} fc-settings-shell`}>
+      <header className={styles.header}>
+        <div className={styles.identity}>
+          <BrandLogo className={styles.logo} size={36} />
+          <div>
+            <h1 className={styles.title}>Footnote Checker</h1>
+            <p className={styles.subtitle}>Einstellungen</p>
+          </div>
+        </div>
+        <NeonButton variant="ghost" size="sm" onClick={requestClose}>
+          ← Analyse
+        </NeonButton>
+      </header>
+
+      <div className={`${styles.stickyActionBar} fc-settings-action-card`} aria-label="Aktionen für Einstellungen">
+        <div className={styles.searchArea}>
+          <label className={`${styles.searchField} fc-settings-search-field`}>
+            <Search size={16} aria-hidden="true" />
+            <span className="fc-visually-hidden">Einstellungen durchsuchen</span>
+            <input
+              className={styles.searchInput}
+              type="search"
+              role="combobox"
+              value={searchQuery}
+              placeholder="Einstellungen durchsuchen …"
+              autoComplete="off"
+              aria-controls="fc-settings-search-results"
+              aria-expanded={searchQuery.trim().length > 0}
+              aria-autocomplete="list"
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setSearchQuery("");
+              }}
+            />
+          </label>
+          {searchQuery.trim() && (
+            <div
+              className={styles.searchResults}
+              id="fc-settings-search-results"
+              role="listbox"
+              aria-label="Suchergebnisse"
+            >
+              {searchResults.length > 0 ? (
+                searchResults.map((result) => (
+                  <button
+                    className={styles.searchResult}
+                    type="button"
+                    role="option"
+                    aria-selected="false"
+                    key={result.id}
+                    onClick={() => selectSearchResult(result)}
+                  >
+                    {formatSettingsSearchContext(result)}
+                  </button>
+                ))
+              ) : (
+                <p className={styles.searchEmpty}>Keine passende Einstellung gefunden.</p>
+              )}
+            </div>
+          )}
+        </div>
+        <NeonButton
+          variant="primary"
+          size="sm"
+          disabled={!profileDirty && !mappingDirty}
+          onClick={saveAll}
+        >
+          Einstellungen speichern
+        </NeonButton>
+        <NeonButton
+          variant="secondary"
+          size="sm"
+          onClick={() =>
+            downloadText(
+              "footnote-checker-citation-settings.json",
+              serializeCitationStyleProfile(profile),
+              "application/json;charset=utf-8"
+            )
+          }
+        >
+          <Download size={14} aria-hidden="true" /> Exportieren
+        </NeonButton>
+        <label className={styles.fileAction}>
+          <Upload size={14} aria-hidden="true" /> Importieren
+          <input
+            className={styles.hiddenInput}
+            type="file"
+            accept=".json,.csv,application/json,text/csv"
+            onChange={async (event) => {
+              const file = event.target.files?.[0];
+              if (!file) return;
+              try {
+                await handleImport(file);
+              } catch (error) {
+                setProfileMessage(
+                  error instanceof Error ? error.message : "Datei konnte nicht gelesen werden."
+                );
+              }
+              event.target.value = "";
+            }}
+          />
+        </label>
+        <NeonButton
+          variant="secondary"
+          size="sm"
+          disabled={!profileDirty && !mappingDirty}
+          onClick={() => {
+            setProfile(cloneCitationStyleProfile(activeProfile));
+            setMapping(cloneCitationSourceMapping(mappingData));
+            setProfileMessage("Ungespeicherte Änderungen wurden verworfen.");
+            setMappingMessage("");
+          }}
+        >
+          Änderungen verwerfen
+        </NeonButton>
+        <NeonButton variant="ghost" size="sm" onClick={() => setResetTarget("ALL")}>
+          <RotateCcw size={14} aria-hidden="true" /> Standard wiederherstellen
+        </NeonButton>
+        <span
+          className={`${styles.actionStatus} ${
+            profileDirty || mappingDirty ? styles.statusDirty : styles.statusSaved
+          }`}
+        >
+          {profileDirty || mappingDirty ? "Ungespeicherte Änderungen" : "Alles gespeichert"}
+        </span>
+      </div>
+
+      {leaveWarning && (
+        <div className={styles.dialog} role="dialog" aria-label="Ungespeicherte Änderungen">
+          <strong>Es gibt ungespeicherte Änderungen.</strong>
+          <div className={styles.actionBar}>
+            <Button appearance="primary" onClick={() => saveAll() && onClose()}>
+              Speichern und zurück
+            </Button>
+            <Button onClick={onClose}>Verwerfen und zurück</Button>
+            <Button onClick={() => setLeaveWarning(false)}>Abbrechen</Button>
+          </div>
+        </div>
+      )}
+
+      <div className={styles.accordion} aria-label="Einstellungsbereiche">
+        {SETTINGS_TOP_LEVEL_SECTIONS.map((option) => {
+          const isOpen = section === option.value;
+          const contentId = `fc-settings-section-${option.value.toLowerCase()}`;
+          return (
+            <section className={`${styles.accordionItem} fc-settings-top-level`} key={option.value}>
+              <button
+                className={styles.accordionTrigger}
+                type="button"
+                aria-expanded={isOpen}
+                aria-controls={contentId}
+                onClick={() => setSection((current) => (current === option.value ? null : option.value))}
+              >
+                {isOpen ? (
+                  <ChevronDown size={17} aria-hidden="true" />
+                ) : (
+                  <ChevronRight size={17} aria-hidden="true" />
+                )}
+                <span>{option.label}</span>
+              </button>
+              {isOpen && (
+                <div className={styles.accordionContent} id={contentId}>
+                  {topLevelContent(option.value)}
+                </div>
+              )}
+            </section>
+          );
+        })}
+      </div>
+
+      {profileMessage && <p className={styles.message}>{profileMessage}</p>}
+      {profileImport && (
+        <section className={styles.section}>
+          <div className={styles.card}>
+            <h3 className={styles.subsectionTitle}>Import-Vorschau</h3>
+            <p>Schema: {profileImport.profile.schemaVersion}</p>
+            <p className={profileImport.success ? styles.statusSaved : styles.error}>
+              {profileImport.success
+                ? "Datei ist gültig."
+                : "Die Datei mit Zitiereinstellungen ist ungültig."}
+            </p>
+            {formatCitationStyleImportErrors(profileImport.errors).map((error) => (
+              <p className={styles.error} key={error}>
+                {error}
+              </p>
+            ))}
+            <div className={styles.actionBar}>
+              <Button
+                appearance="primary"
+                disabled={!profileImport.success}
+                onClick={() => {
+                  if (profileImport.success) {
+                    setProfile(cloneCitationStyleProfile(profileImport.profile));
+                    setProfileImport(null);
+                    setProfileMessage("Import wurde als ungespeicherte Arbeitskopie übernommen.");
+                  }
+                }}
+              >
+                Import übernehmen
+              </Button>
+              <Button onClick={() => setProfileImport(null)}>Abbrechen</Button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {mappingImport && (
+        <section className={styles.section}>
+          <div className={styles.card}>
+            <h3 className={styles.subsectionTitle}>Import-Vorschau Literaturverzeichnis</h3>
+            <p>
+              Schema: {mappingImport.data.schemaVersion} · Quellen: {mappingImport.data.sources.length}
+              {" · "}Aliase: {mappingImport.data.aliases.length}
+            </p>
+            <p className={mappingImport.success ? styles.statusSaved : styles.error}>
+              {mappingImport.success ? "Datei ist strukturell gültig." : "Datei ist ungültig."}
+            </p>
+            {mappingImport.errors.map((error) => (
+              <p className={styles.error} key={error}>
+                {error}
+              </p>
+            ))}
+            {mappingImport.warnings?.map((warning) => (
+              <p className={styles.warning} key={warning}>
+                {warning}
+              </p>
+            ))}
+            <div className={styles.actionBar}>
+              <Button
+                appearance="primary"
+                disabled={!mappingImport.success}
+                onClick={() => {
+                  if (mappingImport.success) {
+                    setMapping(cloneCitationSourceMapping(mappingImport.data));
+                    setMappingImport(null);
+                    setMappingMessage("Import wurde als ungespeicherte Arbeitskopie übernommen.");
+                  }
+                }}
+              >
+                Literaturdaten übernehmen
+              </Button>
+              <Button onClick={() => setMappingImport(null)}>Abbrechen</Button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {resetTarget && (
+        <div className={styles.dialog} role="dialog" aria-label="Standard wiederherstellen">
+          <strong>
+            {resetTarget === "MAPPING"
+              ? "Standardquellen wirklich wiederherstellen?"
+              : "Alle Einstellungen wirklich auf Standard zurücksetzen?"}
+          </strong>
+          <p className={styles.help}>
+            {resetTarget === "MAPPING"
+              ? "Standardquellen werden auf den gebündelten Stand gebracht. Eigene und importierte Quellen bleiben erhalten. Dauerhaft wird dies erst mit dem Speichern."
+              : "Zitiereinstellungen und Standardquellen werden als Arbeitskopie zurückgesetzt. Eigene Literaturquellen bleiben erhalten. Dauerhaft wird dies erst mit dem Speichern."}
+          </p>
+          <div className={styles.actionBar}>
+            <Button
+              appearance="primary"
+              onClick={() => {
+                if (resetTarget === "ALL") setProfile(createDefaultCitationStyleProfile());
+                setMapping(restoreDefaultCitationSources(mapping));
+                setResetTarget(null);
+              }}
+            >
+              {resetTarget === "MAPPING" ? "Standardquellen wiederherstellen" : "Zurücksetzen"}
             </Button>
             <Button onClick={() => setResetTarget(null)}>Abbrechen</Button>
           </div>
