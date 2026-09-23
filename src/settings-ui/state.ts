@@ -295,7 +295,21 @@ export function findAliasConflicts(mapping: CitationSourceMappingData): AliasCon
 function sourceIdFor(input: NewCitationSourceInput): string {
   const slug = createCanonicalSourceSlug(input.preferredName);
   if (input.kind === "JOURNAL") return `journal-${slug}`;
-  if (input.kind === "COMMENTARY") return `commentary-${input.legalArea.toLowerCase()}-${slug}`;
+  if (input.kind === "COMMENTARY") {
+    const law = createCanonicalSourceSlug(input.commentedLaw ?? "");
+    const area =
+      law ||
+      (input.legalArea === "ZIVILRECHT"
+        ? "zivilrecht"
+        : input.legalArea === "STRAFRECHT"
+          ? "strafrecht"
+          : input.legalArea === "PROZESSRECHT"
+            ? "prozessrecht"
+            : input.legalArea === "OEFFENTLICHES_RECHT"
+              ? "oeffentliches-recht"
+              : input.legalArea.toLowerCase());
+    return `commentary-${area}-${slug}`;
+  }
   return `${input.kind.toLowerCase()}-${slug}`;
 }
 
@@ -313,6 +327,19 @@ export function addCitationSource(
   const preferredName = input.preferredName.trim();
   if (!preferredName) {
     return { success: false, value: mapping, error: "Preferred Name darf nicht leer sein." };
+  }
+  if (
+    mapping.sources.some(
+      (source) =>
+        normalizeCitationSourceText(source.preferredName) ===
+        normalizeCitationSourceText(preferredName)
+    )
+  ) {
+    return {
+      success: false,
+      value: mapping,
+      error: "Eine Quelle mit diesem bevorzugten Namen existiert bereits.",
+    };
   }
   const canonicalSourceId = sourceIdFor({ ...input, preferredName });
   if (!canonicalSourceId.replace(/^(journal|commentary-[a-z]+|book|report|custom)-/, "")) {

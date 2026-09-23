@@ -54,7 +54,8 @@ const OFFICIAL_PUBLICATION_PATTERN =
   /\b(BVerfGE|BGHSt|BGHZ|BAGE|BFHE|BVerwGE|BSGE)\s+(\d+),\s*(\d+)(?:\s*(?:\(([^)]*)\)|,\s*(\d+(?:\s*ff?\.)?)|(ff?\.)))?/g;
 const DATABASE_PUBLICATION_PATTERN = /\b(BeckRS)\s+(\d{4}),\s*(\d+)\b|\b(juris|openJur)\b/gi;
 const PINPOINT_ITEM_PATTERN = /(\d+)(?:\s*(ff?\.?))?/g;
-const MARGIN_LOCATOR_PATTERN = /\b(?:Rn\.|Rdnr\.|Randnummer)\s*(\d+[A-Za-z]?)(?:\s*(ff?\.?))?/gi;
+const MARGIN_LOCATOR_PATTERN =
+  /\b(?:Rn\.|Rdn\.|Rdnr\.|Randnummer)\s*(\d+[A-Za-z]?)(?:\s*(ff?\.?))?/gi;
 const PAGE_LOCATOR_PATTERN = /\b(?:S\.|[Ss]eite)\s*(\d+)(?:\s*(ff?\.?))?/g;
 const EDITION_PATTERN = /\b(\d+)\.\s*(?:Aufl\.|Auflage\b)/i;
 const YEAR_PATTERN = /\b(?:19|20)\d{2}\b/;
@@ -774,21 +775,41 @@ function extractCommentary(
   segment: CitationSegment
 ): CitationExtractionResult {
   const consumed: TextRange[] = [];
+  const bearbeiterInWork =
+    /^([A-ZÄÖÜ][\p{L}\p{M}'’.-]+(?:\s*\/\s*[A-ZÄÖÜ][\p{L}\p{M}'’.-]+)*)\s*,\s*in\s*:\s*([^,;]{2,120})/iu.exec(
+      segment.coreText
+    );
   const comma = segment.coreText.indexOf(",");
   const headEnd = comma >= 0 ? segment.coreStart + comma : segment.coreEnd;
   const head = contentText.slice(segment.coreStart, headEnd);
   const slash = head.indexOf("/");
-  const workEnd = slash >= 0 ? segment.coreStart + slash : headEnd;
+  const workStart = bearbeiterInWork
+    ? segment.coreStart + bearbeiterInWork[0].indexOf(bearbeiterInWork[2])
+    : segment.coreStart;
+  const workEnd = bearbeiterInWork
+    ? workStart + bearbeiterInWork[2].trimEnd().length
+    : slash >= 0
+      ? segment.coreStart + slash
+      : headEnd;
   const work = createComponent(
     contentText,
-    segment.coreStart,
+    workStart,
     workEnd,
-    contentText.slice(segment.coreStart, workEnd)
+    contentText.slice(workStart, workEnd)
   );
   consumed.push(...rangeOf(work));
 
-  const persons =
-    slash >= 0 ? extractSlashPersons(contentText, footnote, workEnd + 1, headEnd, "unknown") : [];
+  const persons = bearbeiterInWork
+    ? extractSlashPersons(
+        contentText,
+        footnote,
+        segment.coreStart,
+        segment.coreStart + bearbeiterInWork[1].length,
+        "bearbeiter"
+      )
+    : slash >= 0
+      ? extractSlashPersons(contentText, footnote, workEnd + 1, headEnd, "unknown")
+      : [];
   consumed.push(...persons);
 
   let commentedLaw: ExtractedComponent<string> | undefined;
@@ -851,7 +872,12 @@ function extractCommentary(
     editors: persons.filter((person) => person.role === "editor"),
     bearbeiters: persons.filter((person) => person.role === "bearbeiter"),
     ...(persons.length > 0
-      ? { personSequence: { persons, roleResolution: "ambiguous" as const } }
+      ? {
+          personSequence: {
+            persons,
+            roleResolution: bearbeiterInWork ? ("resolved" as const) : ("ambiguous" as const),
+          },
+        }
       : {}),
     ...(volume ? { volume } : {}),
     ...(edition ? { edition } : {}),

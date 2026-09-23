@@ -32,8 +32,11 @@ export const RULE_TITLES: Readonly<Record<string, string>> = {
   SOURCE_MAPPING_AMBIGUOUS: "Quellenzuordnung prüfen",
   SOURCE_MAPPING_UNMATCHED: "Quelle prüfen",
   CITATION_OTHER_REVIEW: "Quelle manuell prüfen",
+  CITATION_BOUNDARY_CAPITALIZATION: "Großschreibung am Zitatbeginn",
+  BOOK_AUTHOR_TITLE_SEPARATOR: "Komma zwischen Autor und Werktitel",
   CITATION_STYLE_CONSISTENCY: "Zitierweise vereinheitlichen",
   SOURCE_NAME_CONSISTENCY: "Werkbezeichnung vereinheitlichen",
+  SOURCE_CITATION_VARIANT_CONSISTENCY: "Zitierweise dieser Quelle prüfen",
   FORMATTING_CONSISTENCY: "Formatierung vereinheitlichen",
   RULE_OUTPUT_INVALID: "Technischen Prüfhinweis untersuchen",
 };

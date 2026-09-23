@@ -41,7 +41,9 @@ const COMMENTARY_WORK_PATTERN =
 const COMMENTARY_STRUCTURE_PATTERN =
   /\b(?:[A-Za-zÄÖÜäöüß]+-(?:StGB|BGB|StPO)|Studienkommentar|Kommentar)\//i;
 const WORK_BEARBEITER_PATTERN = /^[^,]+\/[A-ZÄÖÜ][A-Za-zÄÖÜäöüß'-]+/;
-const MARGIN_NUMBER_PATTERN = /\b(?:Rn\.|Rdnr\.)\s*\d+[A-Za-z]?\b/i;
+const BEARBEITER_IN_WORK_PATTERN =
+  /^[A-ZÄÖÜ][\p{L}\p{M}'’.-]+(?:\s*\/\s*[A-ZÄÖÜ][\p{L}\p{M}'’.-]+)*\s*,\s*in\s*:\s*[^,;]{2,120}/iu;
+const MARGIN_NUMBER_PATTERN = /\b(?:Rn\.|Rdn\.|Rdnr\.)\s*\d+[A-Za-z]?\b/i;
 const AUTHOR_PREFIX_PATTERN = /^[A-ZÄÖÜ][A-Za-zÄÖÜäöüß'-]+(?:\/[A-ZÄÖÜ][A-Za-zÄÖÜäöüß'-]+)*\s*,/;
 const BOOK_TITLE_PATTERN =
   /\b(?:Strafrecht|Zivilrecht|Lehrbuch|Handbuch|Monografie|Grundkurs|Allgemeiner\s+Teil|Besonderer\s+Teil)\b/i;
@@ -190,6 +192,12 @@ function detectCommentary(segment: CitationSegment): CitationClassification | un
     WORK_BEARBEITER_PATTERN,
     "COMMENTARY_WORK_BEARBEITER_PATTERN"
   );
+  const bearbeiterInWork = findSignal(
+    segment.coreText,
+    segment.coreStart,
+    BEARBEITER_IN_WORK_PATTERN,
+    "COMMENTARY_BEARBEITER_IN_WORK_PATTERN"
+  );
   const marginNumber = findSignal(
     segment.coreText,
     segment.coreStart,
@@ -199,14 +207,22 @@ function detectCommentary(segment: CitationSegment): CitationClassification | un
   const statute = embeddedStatuteSignal(segment);
   const isCommentary =
     Boolean(knownWork && workBearbeiter && marginNumber && statute) ||
-    Boolean(generalStructure && workBearbeiter && marginNumber && statute);
+    Boolean(generalStructure && workBearbeiter && marginNumber && statute) ||
+    Boolean(bearbeiterInWork && marginNumber && statute);
 
   if (!isCommentary) return undefined;
 
   return {
     type: "COMMENTARY",
-    certainty: knownWork ? "high" : "medium",
-    signals: compactSignals([knownWork, generalStructure, workBearbeiter, marginNumber, statute]),
+    certainty: knownWork || bearbeiterInWork ? "high" : "medium",
+    signals: compactSignals([
+      knownWork,
+      generalStructure,
+      workBearbeiter,
+      bearbeiterInWork,
+      marginNumber,
+      statute,
+    ]),
   };
 }
 

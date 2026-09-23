@@ -1,6 +1,7 @@
 import type { CitationSegment, CitationType } from "../footnote-engine/types";
 import { absoluteContentRangeFromSegment } from "../footnote-engine/offsets";
 import { normalizeCitationSourceText } from "./normalization";
+import { compileStructuredAlias, type CompiledStructuredAlias } from "./structured-alias";
 import type {
   CitationSegmentSourceMapping,
   CitationSourceAlias,
@@ -14,12 +15,17 @@ interface AliasIndexEntry {
   source: CitationSourceMaster;
 }
 
+interface StructuredAliasIndexEntry extends AliasIndexEntry {
+  compiled: CompiledStructuredAlias;
+}
+
 export interface CitationSourceMappingIndex {
   sourcesById: ReadonlyMap<string, CitationSourceMaster>;
   preferredNames: ReadonlyMap<string, readonly CitationSourceMaster[]>;
   aliases: ReadonlyMap<string, readonly AliasIndexEntry[]>;
   fallbackPreferredNames: readonly CitationSourceMaster[];
   fallbackAliases: readonly AliasIndexEntry[];
+  structuredAliases: readonly StructuredAliasIndexEntry[];
 }
 
 export interface ResolveCitationSourceInput {
@@ -45,6 +51,7 @@ export function createCitationSourceMappingIndex(
   );
   const preferredNames = new Map<string, CitationSourceMaster[]>();
   const aliases = new Map<string, AliasIndexEntry[]>();
+  const structuredAliases: StructuredAliasIndexEntry[] = [];
 
   sourcesById.forEach((source) => {
     appendMapValue(preferredNames, normalizeCitationSourceText(source.preferredName), source);
@@ -54,7 +61,9 @@ export function createCitationSourceMappingIndex(
     .forEach((alias) => {
       const source = sourcesById.get(alias.canonicalSourceId);
       if (source) {
-        appendMapValue(aliases, normalizeCitationSourceText(alias.alias), { alias, source });
+        const compiled = compileStructuredAlias(alias.alias);
+        if (compiled) structuredAliases.push({ alias, source, compiled });
+        else appendMapValue(aliases, normalizeCitationSourceText(alias.alias), { alias, source });
       }
     });
 
@@ -68,6 +77,62 @@ export function createCitationSourceMappingIndex(
     fallbackAliases: Array.from(aliases.values())
       .flat()
       .sort((left, right) => right.alias.alias.length - left.alias.alias.length),
+    structuredAliases: structuredAliases.sort(
+      (left, right) =>
+        right.alias.alias.length - left.alias.alias.length ||
+        left.source.canonicalSourceId.localeCompare(right.source.canonicalSourceId)
+    ),
+  };
+}
+
+function resolveStructuredAlias(
+  segment: CitationSegment,
+  index: CitationSourceMappingIndex
+): CitationSourceMappingResolution {
+  const matches = index.structuredAliases.flatMap((entry) => {
+    if (!appliesTo(entry.source, "COMMENTARY")) return [];
+    const match = entry.compiled.match(segment.coreText);
+    return match ? [{ entry, match }] : [];
+  });
+  const sources = uniqueSources(matches.map(({ entry }) => entry.source));
+  if (sources.length > 1) return ambiguous(sources);
+  if (sources.length === 0) return { status: "UNMATCHED" };
+  const selected = matches.find(
+    ({ entry }) => entry.source.canonicalSourceId === sources[0].canonicalSourceId
+  )!;
+  const absolute = absoluteContentRangeFromSegment(
+    segment,
+    selected.match.start,
+    selected.match.end,
+    "core"
+  );
+  const absoluteBearbeiter = absoluteContentRangeFromSegment(
+    segment,
+    selected.match.bearbeiterStart,
+    selected.match.bearbeiterEnd,
+    "core"
+  );
+  const absoluteWork =
+    selected.match.workStart !== undefined && selected.match.workEnd !== undefined
+      ? absoluteContentRangeFromSegment(
+          segment,
+          selected.match.workStart,
+          selected.match.workEnd,
+          "core"
+        )
+      : undefined;
+  return {
+    ...matched(
+      selected.entry.source,
+      selected.match.matchedText,
+      "STRUCTURED_ALIAS",
+      selected.entry.alias
+    ),
+    matchedBearbeiter: selected.match.bearbeiterText,
+    ...(absoluteBearbeiter ? { matchedBearbeiterRange: absoluteBearbeiter } : {}),
+    ...(selected.match.workText ? { matchedWorkText: selected.match.workText } : {}),
+    ...(absoluteWork ? { matchedWorkRange: absoluteWork } : {}),
+    ...(absolute ? { matchedRange: absolute } : {}),
   };
 }
 
@@ -329,6 +394,11 @@ export function resolveCitationSegmentSources(
     );
   }
   if (structured.some(({ resolution }) => resolution.status !== "UNMATCHED")) return structured;
+
+  const structuredAlias = resolveStructuredAlias(segment, index);
+  if (structuredAlias.status !== "UNMATCHED") {
+    return [{ target: "PRIMARY_SOURCE", resolution: structuredAlias }];
+  }
 
   const prefix = commentaryPrefix(segment);
   if (prefix) {

@@ -10,6 +10,45 @@ interface BundledLegacyMappingResult {
   report: CitationSourceMigrationReport;
 }
 
+const LK_STRUCTURED_ALIASES = [
+  { id: "BUILTIN-LK-PATTERN-001", alias: "{Bearbeiter}, in: Leipziger Kommentar StGB" },
+  { id: "BUILTIN-LK-PATTERN-002", alias: "{Bearbeiter}, in: LK-StGB" },
+  { id: "BUILTIN-LK-PATTERN-003", alias: "{Bearbeiter}/LK-StGB" },
+] as const;
+
+export function mergeBuiltInCitationSourceAdditions(
+  mapping: CitationSourceMappingData
+): CitationSourceMappingData {
+  const lkSource = mapping.sources.find(
+    (source) =>
+      source.canonicalSourceId === "commentary-stgb-lk-stgb" || source.preferredName === "LK-StGB"
+  );
+  if (!lkSource) return mapping;
+  const additions = LK_STRUCTURED_ALIASES.filter(
+    ({ alias }) =>
+      !mapping.aliases.some(
+        (candidate) =>
+          candidate.canonicalSourceId === lkSource.canonicalSourceId && candidate.alias === alias
+      )
+  );
+  if (additions.length === 0) return mapping;
+  return {
+    ...mapping,
+    aliases: [
+      ...mapping.aliases,
+      ...additions.map(({ id, alias }) => ({
+        legacyMappingId: id,
+        canonicalSourceId: lkSource.canonicalSourceId,
+        alias,
+        matchMode: "CASE_INSENSITIVE_TEXT" as const,
+        wholeWord: true,
+        active: true,
+        legacySafetyLevel: "PROBABLE" as const,
+      })),
+    ],
+  };
+}
+
 export function migrateBundledLegacyCitationSourceMapping(): BundledLegacyMappingResult {
   const parsed = parseLegacyWorkMappingCsv(BUNDLED_LEGACY_WORK_MAPPING_CSV);
   if (!parsed.success) {
@@ -26,8 +65,8 @@ export function migrateBundledLegacyCitationSourceMapping(): BundledLegacyMappin
 
 export function createDefaultCitationSourceMapping(): CitationSourceMappingData {
   const mapping = migrateBundledLegacyCitationSourceMapping().data;
-  return {
+  return mergeBuiltInCitationSourceAdditions({
     ...mapping,
     sources: mapping.sources.map((source) => ({ ...source, sourceOrigin: "DEFAULT" })),
-  };
+  });
 }

@@ -11,6 +11,10 @@ import type { CitationSourceMappingData } from "../citation-mapping/types";
 import { createDefaultCitationStyleProfile } from "../citation-settings/defaults";
 import { resolveCitationSettings } from "../citation-settings/resolver";
 import type { CitationStyleProfile } from "../citation-settings/types";
+import {
+  buildDocumentSourceRegistry,
+  type DocumentSourceRegistry,
+} from "../document-source-registry";
 import { classifyFootnoteParseResult } from "./citation-classifier";
 import { extractFootnoteParseResult } from "./citation-extractor";
 import { SEGMENTATION_USER_MESSAGE } from "./citation-sequence-segmenter";
@@ -325,6 +329,115 @@ function associateFindingsWithCitationItems(
   return [...unique.values()];
 }
 
+function applyDocumentSourceRegistryFindings(
+  findings: readonly Finding[],
+  registry: DocumentSourceRegistry,
+  parseResults: readonly FootnoteParseResult[],
+  footnotes: readonly FootnoteSnapshot[]
+): Finding[] {
+  const sourceById = new Map(registry.sources.map((source) => [source.documentSourceId, source]));
+  const resolutionByItemId = new Map(
+    registry.resolutions.map((resolution) => [resolution.citationItemId, resolution])
+  );
+  const itemById = new Map(
+    parseResults.flatMap((result) =>
+      (result.sequences ?? []).flatMap((sequence) =>
+        sequence.items.map((item) => [item.id, item] as const)
+      )
+    )
+  );
+  const footnoteById = new Map(footnotes.map((footnote) => [footnote.id, footnote]));
+  const retained = findings.flatMap((finding) => {
+    if (finding.ruleId !== "CITATION_OTHER_REVIEW" || !finding.citationItemId) {
+      return [finding];
+    }
+    const resolution = resolutionByItemId.get(finding.citationItemId);
+    const source = resolution?.documentSourceId
+      ? sourceById.get(resolution.documentSourceId)
+      : undefined;
+    const safelyResolved =
+      resolution &&
+      !resolution.warnings.includes("SUSPICIOUS_NARRATIVE_PREFIX") &&
+      (resolution.finalState === "PERSISTENT_MATCH" ||
+        (source?.status === "CONFIRMED_DOCUMENT_SOURCE" &&
+          (resolution.canEstablishIdentity ||
+            resolution.explanation.strategy === "ANM_REFERENCE" ||
+            resolution.explanation.strategy === "IMMEDIATE_CONTEXT")));
+    if (safelyResolved) return [];
+    return [
+      resolution?.resolution === "AMBIGUOUS"
+        ? {
+            ...finding,
+            message:
+              "Die Quelle konnte nicht eindeutig einer bereits verwendeten Quelle zugeordnet werden.",
+          }
+        : finding,
+    ];
+  });
+  const consistencyFindings: Finding[] = [];
+  for (const resolution of registry.resolutions) {
+    if (!resolution.documentSourceId || !resolution.canEstablishIdentity) continue;
+    const source = sourceById.get(resolution.documentSourceId);
+    const item = itemById.get(resolution.citationItemId);
+    if (!source || !item || source.status !== "CONFIRMED_DOCUMENT_SOURCE") continue;
+    if (
+      !resolution.normalizedBibliographicCore ||
+      resolution.normalizedBibliographicCore === source.canonicalVariant.normalizedBibliographicCore
+    ) {
+      continue;
+    }
+    const footnote = footnoteById.get(item.footnoteId);
+    if (!footnote) continue;
+    consistencyFindings.push({
+      findingId: `document-source-variant:${item.id}:${source.documentSourceId}`,
+      footnoteId: item.footnoteId,
+      footnoteOrdinal: footnote.ordinal,
+      sourceTextHash: footnote.originalTextHash,
+      ruleId: "SOURCE_CITATION_VARIANT_CONSISTENCY",
+      category: "citation",
+      start: item.start,
+      end: item.end,
+      originalText: item.rawText,
+      severity: "warning",
+      message: "Diese Quelle wird im übrigen Dokument überwiegend anders zitiert.",
+      citationSequenceId: item.sequenceId,
+      citationItemId: item.id,
+      citationStart: item.start,
+      citationEnd: item.end,
+      metadata: {
+        documentSourceId: source.documentSourceId,
+        canonicalDocumentCitation: source.canonicalDisplayCitation,
+        requiresManualReview: true,
+      },
+    });
+  }
+  return [...retained, ...consistencyFindings];
+}
+
+function attachSourceAuditFindings(
+  registry: DocumentSourceRegistry,
+  findings: readonly Finding[]
+): void {
+  const findingIdsByItem = new Map<string, string[]>();
+  findings.forEach((finding) => {
+    if (!finding.citationItemId) return;
+    const ids = findingIdsByItem.get(finding.citationItemId) ?? [];
+    ids.push(finding.findingId);
+    findingIdsByItem.set(finding.citationItemId, ids);
+  });
+  registry.auditRecords.forEach((record) => {
+    record.associatedFindingIds = [...(findingIdsByItem.get(record.citationItemId) ?? [])].sort();
+    record.noFindingReason =
+      record.associatedFindingIds.length === 0
+        ? record.finalState === "PERSISTENT_MATCH"
+          ? "KNOWN_PERSISTENT_SOURCE_WITHOUT_STYLE_FINDING"
+          : record.finalState === "DOCUMENT_MATCH"
+            ? "DOCUMENT_SOURCE_WITHOUT_STYLE_FINDING"
+            : "SOURCE_ACCOUNTED_WITHOUT_RULE_FINDING"
+        : undefined;
+  });
+}
+
 export interface AnalyzeFootnotesOptions {
   profile?: CitationStyleProfile;
   mappingData?: CitationSourceMappingData;
@@ -429,14 +542,26 @@ export function analyzeFootnotes(
     }
   }
 
-  const findings = associateFindingsWithCitationItems(
-    runRules(footnoteContexts, segmentContexts, {
-      footnotes,
-      profile,
-      mappingData,
-    }),
-    parseResults
+  const documentSourceRegistry = buildDocumentSourceRegistry({
+    footnotes,
+    parseResults,
+    segmentAnalyses,
+    mappingData,
+  });
+  const findings = applyDocumentSourceRegistryFindings(
+    associateFindingsWithCitationItems(
+      runRules(footnoteContexts, segmentContexts, {
+        footnotes,
+        profile,
+        mappingData,
+      }),
+      parseResults
+    ),
+    documentSourceRegistry,
+    parseResults,
+    footnotes
   );
+  attachSourceAuditFindings(documentSourceRegistry, findings);
 
   const findingsBySeverity = {
     info: 0,
@@ -457,6 +582,8 @@ export function analyzeFootnotes(
     plainTextUrlCount,
     engineProtectedRangeCount,
     findingsBySeverity,
+    documentSourceRegistry,
+    registryDurationMs: documentSourceRegistry.durationMs,
     durationMs: Number((getTimestamp() - startedAt).toFixed(3)),
   };
 }

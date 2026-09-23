@@ -36,16 +36,43 @@ function applicableCitationTypes(kind: CitationSourceKind) {
   return ["OTHER"] as const;
 }
 
-function isArea(value: unknown): value is CitationSourceLegalArea {
-  return ["BGB", "STGB", "STPO", "ZPO", "GG", "GENERAL", "UNKNOWN"].includes(
-    value as CitationSourceLegalArea
-  );
+export function normalizeCitationSourceLegalArea(
+  value: unknown
+): CitationSourceLegalArea | undefined {
+  switch (value) {
+    case "ZIVILRECHT":
+    case "BGB":
+      return "ZIVILRECHT";
+    case "STRAFRECHT":
+    case "STGB":
+      return "STRAFRECHT";
+    case "PROZESSRECHT":
+    case "STPO":
+    case "ZPO":
+      return "PROZESSRECHT";
+    case "OEFFENTLICHES_RECHT":
+    case "GG":
+      return "OEFFENTLICHES_RECHT";
+    case "EUROPARECHT":
+      return "EUROPARECHT";
+    case "SONSTIGE":
+    case "GENERAL":
+    case "UNKNOWN":
+      return "SONSTIGE";
+    default:
+      return undefined;
+  }
 }
 
 function isHint(value: unknown): value is CommentaryPersonStructureHint {
-  return ["WORK_THEN_BEARBEITER", "WORK_WITHOUT_BEARBEITER", "AMBIGUOUS", "UNKNOWN"].includes(
-    value as CommentaryPersonStructureHint
-  );
+  return [
+    "WORK_THEN_BEARBEITER",
+    "BEARBEITER_THEN_WORK",
+    "WORK_WITHOUT_BEARBEITER",
+    "EDITOR_STRUCTURE",
+    "AMBIGUOUS",
+    "UNKNOWN",
+  ].includes(value as CommentaryPersonStructureHint);
 }
 
 function isSafety(value: unknown): value is LegacySafetyLevel {
@@ -187,7 +214,7 @@ function validateSource(
     !isKind(value.kind) ||
     typeof value.preferredName !== "string" ||
     value.preferredName.trim() === "" ||
-    !isArea(value.legalArea) ||
+    !normalizeCitationSourceLegalArea(value.legalArea) ||
     typeof value.active !== "boolean"
   ) {
     errors.push(`sources[${index}] has invalid required fields`);
@@ -217,7 +244,7 @@ function validateSource(
     ...(optionalString(value.preferredCitationText)
       ? { preferredCitationText: value.preferredCitationText as string }
       : {}),
-    legalArea: value.legalArea,
+    legalArea: normalizeCitationSourceLegalArea(value.legalArea)!,
     ...(optionalString(value.commentedLaw) ? { commentedLaw: value.commentedLaw as string } : {}),
     applicableCitationTypes: [...applicableCitationTypes(kind)],
     active: value.active,

@@ -25,9 +25,20 @@ export interface FormattingRun extends CharacterFormat {
 
 export type FootnoteReadStatus = "complete" | "partial" | "failed";
 
+export type FootnoteReadWarningCategory =
+  | "LINK_INFORMATION"
+  | "FORMATTING_METADATA"
+  | "FIELD_INFORMATION"
+  | "BOOKMARK_OR_CONTENT_CONTROL"
+  | "TEXT_EXTRACTION"
+  | "OPTIONAL_WORD_CAPABILITY"
+  | "OTHER_LOCAL_WARNING";
+
 export interface FootnoteReadWarning {
   code: string;
   message: string;
+  category: FootnoteReadWarningCategory;
+  affectsCorrectness: boolean;
 }
 
 export interface FootnoteField {
@@ -149,38 +160,47 @@ export interface FootnoteReadProgress {
 
 export type FootnoteReadProgressCallback = (progress: FootnoteReadProgress) => void;
 
-const USER_FACING_HYPERLINK_WARNING_CODES = new Set([
-  "HYPERLINK_METADATA_PARTIAL",
-  "HYPERLINK_RANGE_CONSERVATIVE",
-]);
-
 export function createReaderNotice(result: FootnoteReadResult): string {
   const messages: string[] = [];
-  for (const footnote of result.footnotes) {
-    for (const warning of footnote.readWarnings) {
-      if (
-        USER_FACING_HYPERLINK_WARNING_CODES.has(warning.code) &&
-        !messages.includes(warning.message)
-      ) {
-        messages.push(warning.message);
-      }
-    }
+  const partialWarnings = result.footnotes.flatMap((footnote) => footnote.readWarnings);
+  if (result.footnotes.some((footnote) => footnote.readStatus === "partial")) {
+    messages.push(
+      "Die Fußnote wurde vollständig als Text gelesen. Einzelne Zusatzinformationen konnten nicht vollständig geprüft werden."
+    );
+  }
+  [...new Set(partialWarnings.map((warning) => userMessageForReadWarning(warning)))].forEach(
+    (message) => messages.push(message)
+  );
+  if (partialWarnings.some((warning) => warning.affectsCorrectness)) {
+    messages.push("Eine manuelle Prüfung wird empfohlen.");
   }
 
-  const otherPartialCount = result.footnotes.filter(
-    (footnote) =>
-      footnote.readStatus === "partial" &&
-      footnote.readWarnings.some(
-        (warning) => !USER_FACING_HYPERLINK_WARNING_CODES.has(warning.code)
-      )
-  ).length;
-  if (otherPartialCount > 0 || result.readerMetrics.failedCount > 0) {
+  if (result.readerMetrics.failedCount > 0) {
     messages.push(
-      `${otherPartialCount} Fußnoten wurden teilweise und ${result.readerMetrics.failedCount} nicht zuverlässig gelesen.`
+      `${result.readerMetrics.failedCount} Fußnoten konnten nicht zuverlässig als Text gelesen werden.`
     );
   }
 
   return messages.join(" ");
+}
+
+export function userMessageForReadWarning(warning: FootnoteReadWarning): string {
+  switch (warning.category) {
+    case "LINK_INFORMATION":
+      return "Linkinformationen konnten in dieser Word-Version nur eingeschränkt ausgewertet werden.";
+    case "FORMATTING_METADATA":
+      return "Einzelne Formatierungsinformationen konnten nicht vollständig geprüft werden.";
+    case "FIELD_INFORMATION":
+      return "Feldinformationen konnten nicht vollständig geprüft werden.";
+    case "BOOKMARK_OR_CONTENT_CONTROL":
+      return "Einzelne geschützte Dokumentbereiche konnten nicht vollständig eingeordnet werden.";
+    case "TEXT_EXTRACTION":
+      return "Der Text dieser Fußnote konnte nicht vollständig zuverlässig gelesen werden.";
+    case "OPTIONAL_WORD_CAPABILITY":
+      return "Eine optionale Word-Funktion steht in dieser Version nur eingeschränkt zur Verfügung.";
+    default:
+      return "Einzelne lokale Zusatzinformationen konnten nicht vollständig geprüft werden.";
+  }
 }
 
 export function createFootnoteReadProgress(
@@ -891,9 +911,40 @@ function createFormattingRunsFromOoxml(
   return runs;
 }
 
-function addReadWarning(warnings: FootnoteReadWarning[], code: string, message: string): void {
+function warningCategory(code: string): FootnoteReadWarningCategory {
+  if (code.includes("HYPERLINK") || code.includes("LINK")) return "LINK_INFORMATION";
+  if (code.includes("FIELD")) return "FIELD_INFORMATION";
+  if (code.includes("BOOKMARK") || code.includes("CONTENT_CONTROL") || code.includes("STRUCTURE")) {
+    return "BOOKMARK_OR_CONTENT_CONTROL";
+  }
+  if (
+    code.includes("FORMAT") ||
+    code.includes("CHARACTER_STYLE") ||
+    code.includes("PARAGRAPH") ||
+    code.includes("OOXML")
+  ) {
+    return "FORMATTING_METADATA";
+  }
+  if (code.includes("TEXT") || code.includes("SNAPSHOT")) return "TEXT_EXTRACTION";
+  if (code.includes("CAPABILITY") || code.includes("UNSUPPORTED")) {
+    return "OPTIONAL_WORD_CAPABILITY";
+  }
+  return "OTHER_LOCAL_WARNING";
+}
+
+function addReadWarning(
+  warnings: FootnoteReadWarning[],
+  code: string,
+  message: string,
+  affectsCorrectness = code.includes("CONSERVATIVE") || code.includes("TEXT")
+): void {
   if (!warnings.some((warning) => warning.code === code)) {
-    warnings.push({ code, message });
+    warnings.push({
+      code,
+      message,
+      category: warningCategory(code),
+      affectsCorrectness,
+    });
   }
 }
 
@@ -1706,6 +1757,8 @@ export async function readFootnotes(
               {
                 code: "FOOTNOTE_SNAPSHOT_FAILED",
                 message: "The footnote could not be converted into a reliable snapshot.",
+                category: "TEXT_EXTRACTION",
+                affectsCorrectness: true,
               },
             ],
             formattingRuns: [],

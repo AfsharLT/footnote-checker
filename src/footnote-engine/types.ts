@@ -1,4 +1,8 @@
 import type { CitationSegmentSourceMapping } from "../citation-mapping/types";
+import type {
+  DocumentSourceRegistry,
+  SourceResolutionKind,
+} from "../document-source-registry/types";
 import type { EffectiveCitationClassification } from "./effective-classification";
 
 export type FindingCategory =
@@ -392,7 +396,7 @@ export interface CitationItem {
   qualifiers: CitationQualifier[];
   locators: CitationLocator[];
   internalReferences: CitationInternalReference[];
-  sourceResolutionStatus: "notAttempted";
+  sourceResolutionStatus: "notAttempted" | SourceResolutionKind;
   canonicalSourceId?: string | null;
   formattingEvidence: CitationFormattingEvidence[];
   confidence: CitationCertainty;
@@ -508,5 +512,7 @@ export interface FootnoteEngineResult {
     warning: number;
     error: number;
   };
+  documentSourceRegistry?: DocumentSourceRegistry;
+  registryDurationMs?: number;
   durationMs?: number;
 }

@@ -24,7 +24,7 @@ const FIXTURE_SOURCES: readonly FixtureSource[] = [
   {
     kind: "COMMENTARY",
     preferredName: "MüKoBGB",
-    legalArea: "BGB",
+    legalArea: "ZIVILRECHT",
     aliases: ["Münchener Kommentar zum BGB", "MünchKomm BGB", "MüKo BGB", "MüKo-BGB", "MK-BGB"],
     examplePattern: "MüKoBGB/Bearbeiter, 9. Aufl. 2022, § 823 Rn. 12.",
     personStructureHint: "WORK_THEN_BEARBEITER",
@@ -32,7 +32,7 @@ const FIXTURE_SOURCES: readonly FixtureSource[] = [
   {
     kind: "COMMENTARY",
     preferredName: "MüKoStGB",
-    legalArea: "STGB",
+    legalArea: "STRAFRECHT",
     aliases: ["Münchener Kommentar zum StGB", "MüKo StGB", "MüKo-StGB", "MK-StGB"],
     examplePattern: "MüKoStGB/Bearbeiter, § 13 Rn. 12.",
     personStructureHint: "WORK_THEN_BEARBEITER",
@@ -40,43 +40,50 @@ const FIXTURE_SOURCES: readonly FixtureSource[] = [
   {
     kind: "COMMENTARY",
     preferredName: "BeckOK StGB",
-    legalArea: "STGB",
+    legalArea: "STRAFRECHT",
     aliases: ["Beck Online-Kommentar StGB", "BeckOK-StGB", "Beck OK StGB"],
   },
   {
     kind: "COMMENTARY",
     preferredName: "LK-StGB",
-    legalArea: "STGB",
-    aliases: ["Leipziger Kommentar", "Leipziger Kommentar StGB", "LK StGB"],
+    legalArea: "STRAFRECHT",
+    aliases: [
+      "Leipziger Kommentar",
+      "Leipziger Kommentar StGB",
+      "LK StGB",
+      "{Bearbeiter}, in: Leipziger Kommentar StGB",
+      "{Bearbeiter}, in: LK-StGB",
+      "{Bearbeiter}/LK-StGB",
+    ],
   },
   {
     kind: "COMMENTARY",
     preferredName: "Schönke/Schröder",
-    legalArea: "STGB",
+    legalArea: "STRAFRECHT",
     aliases: ["S/S", "Schönke-Schröder", "Schönke Schröder"],
   },
   {
     kind: "COMMENTARY",
     preferredName: "Meyer-Goßner/Schmitt",
-    legalArea: "STPO",
+    legalArea: "PROZESSRECHT",
     aliases: ["Meyer-Gossner/Schmitt", "M-G/S", "Meyer-Goßner Schmitt"],
   },
   {
     kind: "COMMENTARY",
     preferredName: "LR-StPO",
-    legalArea: "STPO",
+    legalArea: "PROZESSRECHT",
     aliases: ["Löwe-Rosenberg", "Loewe-Rosenberg", "LR StPO"],
   },
   {
     kind: "COMMENTARY",
     preferredName: "Maunz/Dürig",
-    legalArea: "GG",
+    legalArea: "OEFFENTLICHES_RECHT",
     aliases: ["Maunz-Dürig", "Maunz Dürig", "M/D"],
   },
   {
     kind: "COMMENTARY",
     preferredName: "Staudinger",
-    legalArea: "BGB",
+    legalArea: "ZIVILRECHT",
     aliases: ["J. von Staudingers Kommentar", "Staudinger BGB"],
     safety: "UNCERTAIN",
     notes: "Staudinger-Zitate können editionsspezifisch sein.",
@@ -85,7 +92,7 @@ const FIXTURE_SOURCES: readonly FixtureSource[] = [
   {
     kind: "COMMENTARY",
     preferredName: "Grüneberg",
-    legalArea: "BGB",
+    legalArea: "ZIVILRECHT",
     aliases: ["Palandt", "Palandt/Grüneberg", "Grüneberg BGB"],
     safety: "UNCERTAIN",
     notes: "Historische Auflagen können andere Bezeichnung rechtfertigen.",
@@ -94,7 +101,7 @@ const FIXTURE_SOURCES: readonly FixtureSource[] = [
   {
     kind: "COMMENTARY",
     preferredName: "Fischer",
-    legalArea: "STGB",
+    legalArea: "STRAFRECHT",
     aliases: ["Fischer StGB", "Fischer, StGB"],
     safety: "UNCERTAIN",
     notes: "Einzelautor-Kommentar ohne Bearbeitertrenner.",
@@ -104,40 +111,56 @@ const FIXTURE_SOURCES: readonly FixtureSource[] = [
   {
     kind: "JOURNAL",
     preferredName: "NJW",
-    legalArea: "GENERAL",
+    legalArea: "SONSTIGE",
     aliases: ["Neue Juristische Wochenschrift", "NJW."],
     examplePattern: "Autor, NJW 2024, 1234 (1236).",
   },
   {
     kind: "JOURNAL",
     preferredName: "NStZ",
-    legalArea: "GENERAL",
+    legalArea: "SONSTIGE",
     aliases: ["Neue Zeitschrift für Strafrecht", "NStz", "NStZ."],
   },
   {
     kind: "JOURNAL",
     preferredName: "JuS",
-    legalArea: "GENERAL",
+    legalArea: "SONSTIGE",
     aliases: ["Juristische Schulung", "Jus", "JuS."],
   },
   {
     kind: "JOURNAL",
     preferredName: "wistra",
-    legalArea: "GENERAL",
+    legalArea: "SONSTIGE",
     aliases: ["Wirtschaft und Steuerstrafrecht", "Wistra", "wistra."],
   },
 ];
 
 function sourceId(source: FixtureSource): string {
+  const areaId =
+    source.legalArea === "ZIVILRECHT"
+      ? "bgb"
+      : source.legalArea === "STRAFRECHT"
+        ? "stgb"
+        : source.legalArea === "PROZESSRECHT"
+          ? "stpo"
+          : source.legalArea === "OEFFENTLICHES_RECHT"
+            ? "gg"
+            : "general";
   return source.kind === "JOURNAL"
     ? `journal-${createCanonicalSourceSlug(source.preferredName)}`
-    : `commentary-${source.legalArea.toLowerCase()}-${createCanonicalSourceSlug(source.preferredName)}`;
+    : `commentary-${areaId}-${createCanonicalSourceSlug(source.preferredName)}`;
 }
 
 function commentedLaw(area: CitationSourceLegalArea): string | undefined {
-  return { BGB: "BGB", STGB: "StGB", STPO: "StPO", ZPO: "ZPO", GG: "GG" }[
-    area as "BGB" | "STGB" | "STPO" | "ZPO" | "GG"
-  ];
+  return area === "ZIVILRECHT"
+    ? "BGB"
+    : area === "STRAFRECHT"
+      ? "StGB"
+      : area === "PROZESSRECHT"
+        ? "StPO"
+        : area === "OEFFENTLICHES_RECHT"
+          ? "GG"
+          : undefined;
 }
 
 export function createBuiltInCitationSourceMappingFixture(): CitationSourceMappingData {

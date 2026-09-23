@@ -96,6 +96,14 @@ for (const finding of unresolved) {
 const corpusSnapshots = corpus.map((fixture) => snapshot(fixture.ordinal));
 const corpusEngine = analyzeFootnotes(corpusSnapshots);
 assert(
+  corpusEngine.documentSourceRegistry !== undefined &&
+    corpusEngine.registryDurationMs === corpusEngine.documentSourceRegistry.durationMs,
+  "The 80-footnote corpus must expose registry matching time separately from Reader/engine time"
+);
+console.log(
+  `POC 17.2 registry performance: 80-footnote corpus in ${corpusEngine.registryDurationMs?.toFixed(1)} ms`
+);
+assert(
   corpusEngine.findings.every(
     (finding) => !finding.citationSegmentId || finding.citationItemId !== undefined
   ),
@@ -124,16 +132,14 @@ const corpusDisplay = prepareReviewDisplay(
   corpusEngine.parseResults
 );
 assert(
-  corpusDisplay.groups.length === 80 &&
-    corpusDisplay.groups[79].footnote.ordinal === 80,
+  corpusDisplay.groups.length === 80 && corpusDisplay.groups[79].footnote.ordinal === 80,
   "All 80 real corpus footnotes, including footnote 80, must be accounted for in the UI model"
 );
 const silvaItem = corpusEngine.parseResults[64].sequences
   ?.flatMap((sequence) => sequence.items)
   .find((item) => item.rawText.startsWith("Silva Sánchez,"));
 assert(
-  silvaItem?.rawText ===
-    "Silva Sánchez, Jahrbuch für Recht und Ethik 2005, S. 681 ff",
+  silvaItem?.rawText === "Silva Sánchez, Jahrbuch für Recht und Ethik 2005, S. 681 ff",
   "The Silva Sánchez source model must exclude post-colon explanatory prose"
 );
 const pawlikItem = corpusEngine.parseResults[65].sequences

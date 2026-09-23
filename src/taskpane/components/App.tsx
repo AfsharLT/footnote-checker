@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useCitationSourceMapping } from "@/citation-mapping/use-citation-source-mapping";
 import { useCitationSettings } from "@/citation-settings/use-citation-settings";
 import { analyzeFootnotes } from "@/footnote-engine/engine";
+import { promoteDocumentSources } from "@/document-source-registry";
 import { SEGMENTATION_USER_MESSAGE } from "@/footnote-engine/citation-sequence-segmenter";
 import type { FootnoteEngineResult } from "@/footnote-engine/types";
 import {
@@ -95,6 +96,8 @@ const App: React.FC = () => {
     null
   );
   const [hostWorkState, setHostWorkState] = useState<HostWorkState>("IDLE");
+  const [showSourceReview, setShowSourceReview] = useState(false);
+  const [sourcePromotionMessage, setSourcePromotionMessage] = useState("");
   const [hostCapabilities] = useState<HostCapabilities>(() => getOfficeHostCapabilities());
   const readInProgressRef = useRef(false);
   const batchInFlightRef = useRef(false);
@@ -192,6 +195,7 @@ const App: React.FC = () => {
         footnoteCount: result.footnotes.length,
       });
       setEngineResult(analysis);
+      setSourcePromotionMessage("");
       const analyzedAt = new Date().toISOString();
       setAnalysisTimestamp(analyzedAt);
       const reconciledDecisions = reconcileReviewDecisions(decisionState, analysis.findings);
@@ -253,6 +257,9 @@ const App: React.FC = () => {
       } else {
         setMessage(analysisNotice);
       }
+      setShowSourceReview(
+        (analysis.documentSourceRegistry?.unpromotedConfirmedSourceCount ?? 0) > 0
+      );
       setReadProgress(
         createFootnoteReadProgress("complete", result.footnotes.length, result.footnotes.length)
       );
@@ -285,8 +292,15 @@ const App: React.FC = () => {
 
   const handleSetStatus = (item: ReviewItem, status: ReviewStatus) =>
     setDecisionState((current) => setReviewStatus(current, item, status));
-  const handleClearStatus = (item: ReviewItem) =>
+  const handleClearStatus = (item: ReviewItem) => {
     setDecisionState((current) => clearExplicitReviewStatus(current, item.finding.findingId));
+    setWriteBackState((current) => {
+      if (!current[item.reviewItemId]) return current;
+      const next = { ...current };
+      delete next[item.reviewItemId];
+      return next;
+    });
+  };
   const handleAcceptAllAutomatic = () => {
     if (reviewResult)
       setDecisionState((current) => acceptAllAutomatic(current, reviewResult.items));
@@ -421,6 +435,36 @@ const App: React.FC = () => {
     }
   };
 
+  const promoteSourcesToLiterature = (documentSourceIds: string[]) => {
+    const registry = engineResult?.documentSourceRegistry;
+    if (!engineResult || !registry || documentSourceIds.length === 0) return;
+    const promotion = promoteDocumentSources(registry, mappingData, documentSourceIds);
+    if (promotion.mappingChanged) {
+      const saveResult = updateMapping(promotion.mapping);
+      if (!saveResult.success) {
+        setSourcePromotionMessage(
+          saveResult.error ?? "Die Quellen konnten nicht gespeichert werden."
+        );
+        return;
+      }
+    }
+    setEngineResult({ ...engineResult, documentSourceRegistry: promotion.registry });
+    const successful = promotion.items.filter(
+      (item) => item.status === "CREATED" || item.status === "LINKED_EXISTING"
+    ).length;
+    const requiresReview = promotion.items.filter(
+      (item) => item.status === "AMBIGUOUS" || item.status === "FAILED"
+    ).length;
+    setSourcePromotionMessage(
+      requiresReview > 0
+        ? `${successful} Quellen übernommen · ${requiresReview} Zuordnungen müssen geprüft werden.`
+        : successful === 1
+          ? "Die Quelle wurde ins Literaturverzeichnis übernommen."
+          : `${successful} Quellen wurden ins Literaturverzeichnis übernommen.`
+    );
+    setShowSourceReview(false);
+  };
+
   if (view === "SETTINGS") {
     return (
       <main className="fc-app">
@@ -493,6 +537,11 @@ const App: React.FC = () => {
         confirmReanalysis={confirmReanalysis}
         onCancelReanalysis={() => setConfirmReanalysis(false)}
         onConfirmReanalysis={startConfirmedAnalysis}
+        showSourceReview={showSourceReview}
+        onOpenSourceReview={() => setShowSourceReview(true)}
+        onCloseSourceReview={() => setShowSourceReview(false)}
+        onPromoteDocumentSources={promoteSourcesToLiterature}
+        sourcePromotionMessage={sourcePromotionMessage}
       />
     </React.Suspense>
   );

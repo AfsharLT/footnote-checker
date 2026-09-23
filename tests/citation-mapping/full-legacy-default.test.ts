@@ -57,7 +57,10 @@ const bundled = migrateBundledLegacyCitationSourceMapping();
 assert(bundled.report.legacyRows === 71, "Bundled migration must read all rows");
 const defaults = createDefaultCitationSourceMapping();
 assert(defaults.sources.length === 25, "Full default must contain 25 sources");
-assert(defaults.aliases.length === 71, "Full default must contain 71 aliases");
+assert(
+  defaults.aliases.length === 74,
+  "Full default must contain 71 legacy and 3 structured aliases"
+);
 
 const expectedPreferredNames = [
   "MüKoBGB",

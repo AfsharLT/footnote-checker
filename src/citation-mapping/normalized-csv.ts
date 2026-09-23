@@ -193,12 +193,28 @@ export function parseCitationSourceMappingCsv(
       `${path}.kind`,
       errors
     );
-    const area = enumValue<CitationSourceLegalArea>(
-      valueAt(row, "legalArea"),
-      ["BGB", "STGB", "STPO", "ZPO", "GG", "GENERAL", "UNKNOWN"],
-      `${path}.legalArea`,
-      errors
-    );
+    const areaValue = valueAt(row, "legalArea");
+    const area = (
+      {
+        BGB: "ZIVILRECHT",
+        STGB: "STRAFRECHT",
+        STPO: "PROZESSRECHT",
+        ZPO: "PROZESSRECHT",
+        GG: "OEFFENTLICHES_RECHT",
+        GENERAL: "SONSTIGE",
+        UNKNOWN: "SONSTIGE",
+        ZIVILRECHT: "ZIVILRECHT",
+        STRAFRECHT: "STRAFRECHT",
+        PROZESSRECHT: "PROZESSRECHT",
+        OEFFENTLICHES_RECHT: "OEFFENTLICHES_RECHT",
+        EUROPARECHT: "EUROPARECHT",
+        SONSTIGE: "SONSTIGE",
+      } as const
+    )[
+      areaValue as
+        CitationSourceLegalArea | "BGB" | "STGB" | "STPO" | "ZPO" | "GG" | "GENERAL" | "UNKNOWN"
+    ];
+    if (!area) errors.push(`${path}.legalArea has an unsupported value`);
     const preferredName = valueAt(row, "preferredName");
     const aliasText = valueAt(row, "alias");
     const matchMode = enumValue(
@@ -218,7 +234,14 @@ export function parseCitationSourceMappingCsv(
     const personHint = hint
       ? enumValue<CommentaryPersonStructureHint>(
           hint,
-          ["WORK_THEN_BEARBEITER", "WORK_WITHOUT_BEARBEITER", "AMBIGUOUS", "UNKNOWN"],
+          [
+            "WORK_THEN_BEARBEITER",
+            "BEARBEITER_THEN_WORK",
+            "WORK_WITHOUT_BEARBEITER",
+            "EDITOR_STRUCTURE",
+            "AMBIGUOUS",
+            "UNKNOWN",
+          ],
           `${path}.personStructureHint`,
           errors
         )

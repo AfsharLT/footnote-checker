@@ -54,7 +54,7 @@ const mappingData: CitationSourceMappingData = {
       canonicalSourceId: "commentary:mueko-stgb",
       kind: "COMMENTARY",
       preferredName: "MüKoStGB",
-      legalArea: "STGB",
+      legalArea: "STRAFRECHT",
       applicableCitationTypes: ["COMMENTARY"],
       active: true,
       personStructureHint: "WORK_THEN_BEARBEITER",
@@ -64,7 +64,7 @@ const mappingData: CitationSourceMappingData = {
       canonicalSourceId: "commentary:grueneberg",
       kind: "COMMENTARY",
       preferredName: "Grüneberg",
-      legalArea: "BGB",
+      legalArea: "ZIVILRECHT",
       applicableCitationTypes: ["COMMENTARY"],
       active: true,
     },
@@ -73,7 +73,7 @@ const mappingData: CitationSourceMappingData = {
       canonicalSourceId: "journal:jus-a",
       kind: "JOURNAL",
       preferredName: "JuS",
-      legalArea: "GENERAL",
+      legalArea: "SONSTIGE",
       applicableCitationTypes: ["JOURNAL_ARTICLE", "CASE_LAW"],
       active: true,
     },
@@ -293,7 +293,7 @@ function runMappingAndCitationCases(): void {
         canonicalSourceId: "commentary:second",
         kind: "COMMENTARY",
         preferredName: "Zweitwerk",
-        legalArea: "STGB",
+        legalArea: "STRAFRECHT",
         applicableCitationTypes: ["COMMENTARY"],
         active: true,
       },
@@ -339,13 +339,76 @@ function runMappingAndCitationCases(): void {
     findingsFor("mwN BGH NJW 2025, 1234 (1236)."),
     "CITATION_MODIFIER_STYLE",
     "mwN",
-    "m. w. N."
+    "M. w. N."
   );
   assertReplacement(
     findingsFor("a.A. BGH NJW 2025, 1234 (1236)."),
     "CITATION_MODIFIER_STYLE",
     "a.A.",
-    "a. A."
+    "A. A."
+  );
+
+  assertReplacement(
+    findingsFor("Küper Der verschuldete Notstand, 1982, S. 111."),
+    "BOOK_AUTHOR_TITLE_SEPARATOR",
+    "",
+    ","
+  );
+  assert(
+    byRule(
+      findingsFor("Küper erläutert den verschuldeten Notstand, ohne eine Quelle zu zitieren."),
+      "BOOK_AUTHOR_TITLE_SEPARATOR"
+    ).length === 0,
+    "Ordinary prose must not trigger the book author/title separator"
+  );
+
+  for (const text of [
+    "Ebert, JuS 1973, 319, 323.",
+    "Kuhlen, GA 2008, 282, 289.",
+    "Mitsch, JuS 2022, 18, 21.",
+  ]) {
+    assert(
+      byRule(findingsFor(text), "JOURNAL_PINPOINT_STYLE").length === 1,
+      `${text} must be recognized as a journal article independently of mapping`
+    );
+  }
+  assert(
+    byRule(findingsFor("Erb, GA 2020, 605 (611)."), "JOURNAL_PINPOINT_STYLE").length === 0,
+    "An already parenthesized journal pinpoint must remain unchanged"
+  );
+  assert(
+    byRule(findingsFor("Die Werte 2020, 605, 611 sind Beispiele."), "JOURNAL_PINPOINT_STYLE")
+      .length === 0,
+    "Arbitrary comma-separated numbers must not become journal pinpoints"
+  );
+
+  for (const [text, original, suggested] of [
+    ["vgl. Fischer, StGB, 73. Aufl. 2026.", "vgl.", "Vgl."],
+    ["Fischer, StGB, 73. Aufl. 2026; siehe Roxin, Strafrecht AT.", "siehe", "Siehe"],
+    ["„vgl. Fischer, StGB, 73. Aufl. 2026.", "vgl.", "Vgl."],
+    ["(siehe Fischer, StGB, 73. Aufl. 2026.", "siehe", "Siehe"],
+  ] as const) {
+    assertReplacement(findingsFor(text), "CITATION_BOUNDARY_CAPITALIZATION", original, suggested);
+    assert(
+      byRule(findingsFor(text), "RULE_REPLACEMENT_CONFLICT").length === 0,
+      "Capitalization and modifier normalization must agree"
+    );
+  }
+  assert(
+    byRule(findingsFor("Vgl. Fischer, StGB, 73. Aufl. 2026."), "CITATION_BOUNDARY_CAPITALIZATION")
+      .length === 0,
+    "Already-uppercase citation boundaries must remain unchanged"
+  );
+  assert(
+    byRule(
+      findingsFor("Fischer, dazu siehe Roxin, Strafrecht AT."),
+      "CITATION_BOUNDARY_CAPITALIZATION"
+    ).length === 0 &&
+      byRule(
+        findingsFor("Einleitender Hinweis: siehe Fischer, StGB."),
+        "CITATION_BOUNDARY_CAPITALIZATION"
+      ).length === 0,
+    "Capitalization must not fire after normal commas or narrative colons"
   );
 }
 
@@ -494,7 +557,11 @@ function runFormattingAndReviewCases(): void {
   );
 
   const formattedBearbeiter = snapshot(bearbeiterText, 23, [
-    { start: bearbeiterText.indexOf("Fischer"), end: bearbeiterText.indexOf("Fischer") + 7, italic: true },
+    {
+      start: bearbeiterText.indexOf("Fischer"),
+      end: bearbeiterText.indexOf("Fischer") + 7,
+      italic: true,
+    },
   ]);
   formattedBearbeiter.baseCharacterFormat = { italic: false };
   const legitimateFindings = analyzeFootnotes([formattedBearbeiter]).findings;
@@ -590,7 +657,9 @@ function runFormattingAndReviewCases(): void {
   const multiBearbeiterText = "MüKo-StGB/Regge/Pegel, § 185 Rn. 39.";
   const multiBearbeiter = snapshot(multiBearbeiterText, 35);
   multiBearbeiter.baseCharacterFormat = { italic: false };
-  const multiBearbeiterFindings = analyzeFootnotes([multiBearbeiter], { mappingData }).findings.filter(
+  const multiBearbeiterFindings = analyzeFootnotes([multiBearbeiter], {
+    mappingData,
+  }).findings.filter(
     (finding) =>
       finding.ruleId === "COMMENTARY_FORMATTING" &&
       finding.metadata?.roleResolutionSource === "SOURCE_MAPPING_HINT"
@@ -785,17 +854,11 @@ function runDeterminismAndPerformanceCases(): void {
       byRule(formattingResult.findings, "FORMAT_FONT_SIZE").length === 1200,
     "Formatting mass test must preserve both independent findings per footnote"
   );
-  assert(
-    formattingElapsed < 10_000,
-    `Formatting mass test too slow: ${formattingElapsed} ms`
-  );
+  assert(formattingElapsed < 10_000, `Formatting mass test too slow: ${formattingElapsed} ms`);
   console.log(`POC 12.3 formatting performance: 1200 footnotes in ${formattingElapsed} ms`);
 
   const multiPersonMass = Array.from({ length: 1200 }, (_, index) => {
-    const footnote = snapshot(
-      `MüKo-StGB/Regge/Pegel, § 185 Rn. ${index + 1}.`,
-      index + 4000
-    );
+    const footnote = snapshot(`MüKo-StGB/Regge/Pegel, § 185 Rn. ${index + 1}.`, index + 4000);
     footnote.baseCharacterFormat = { italic: false };
     return footnote;
   });
@@ -814,9 +877,7 @@ function runDeterminismAndPerformanceCases(): void {
     multiPersonElapsed < 10_000,
     `Multi-person formatting mass test too slow: ${multiPersonElapsed} ms`
   );
-  console.log(
-    `POC 12.3 multi-person performance: 1200 footnotes in ${multiPersonElapsed} ms`
-  );
+  console.log(`POC 12.3 multi-person performance: 1200 footnotes in ${multiPersonElapsed} ms`);
 }
 
 function runProfilePrecedenceCase(): void {
@@ -865,22 +926,12 @@ function runProfilePrecedenceCase(): void {
       4
     ),
   ]).findings;
-  assertReplacement(
-    qualifiedLongJournalPinpoint,
-    "JOURNAL_PINPOINT_STYLE",
-    ", 310",
-    " (310)"
-  );
+  assertReplacement(qualifiedLongJournalPinpoint, "JOURNAL_PINPOINT_STYLE", ", 310", " (310)");
 
   const followingPinpoint = analyzeFootnotes([
     snapshot("Korte, NZWiSt 2018, 231, 233 ff.", 5),
   ]).findings;
-  assertReplacement(
-    followingPinpoint,
-    "JOURNAL_PINPOINT_STYLE",
-    ", 233 ff.",
-    " (233 ff.)"
-  );
+  assertReplacement(followingPinpoint, "JOURNAL_PINPOINT_STYLE", ", 233 ff.", " (233 ff.)");
 
   for (const text of [
     "Korte, NZWiSt 2018, 231 (233).",
@@ -889,8 +940,7 @@ function runProfilePrecedenceCase(): void {
     "BGH, Urt. v. 05.07.2025 – 3 StR 123/25.",
   ]) {
     assert(
-      byRule(analyzeFootnotes([snapshot(text)]).findings, "JOURNAL_PINPOINT_STYLE").length ===
-        0,
+      byRule(analyzeFootnotes([snapshot(text)]).findings, "JOURNAL_PINPOINT_STYLE").length === 0,
       `Pinpoint parentheses must not be proposed without a safe journal start-page/pinpoint pair: ${text}`
     );
   }

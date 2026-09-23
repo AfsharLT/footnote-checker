@@ -28,6 +28,20 @@ export const commentaryWorkNameRule: FootnoteRule = {
     const mapping = context.sourceMapping;
     if (mapping?.status !== "MATCHED") return [];
     const extractedWork = data(context)?.work;
+    const structuredWork =
+      mapping.matchSource === "STRUCTURED_ALIAS" &&
+      mapping.matchedWorkText &&
+      mapping.matchedWorkRange &&
+      context.footnote.contentText.slice(
+        mapping.matchedWorkRange.start,
+        mapping.matchedWorkRange.end
+      ) === mapping.matchedWorkText
+        ? {
+            rawText: mapping.matchedWorkText,
+            value: mapping.matchedWorkText,
+            ...mapping.matchedWorkRange,
+          }
+        : undefined;
     const fallbackWork =
       !extractedWork &&
       mapping.matchSource === "COMMENTARY_PREFIX" &&
@@ -41,7 +55,7 @@ export const commentaryWorkNameRule: FootnoteRule = {
             ...mapping.matchedRange,
           }
         : undefined;
-    const work = extractedWork ?? fallbackWork;
+    const work = structuredWork ?? extractedWork ?? fallbackWork;
     if (!work) return [];
     const preferred = context.resolvedSettings.preferredWorkName ?? mapping.preferredName;
     if (!preferred || work.rawText === preferred) return [];
@@ -76,13 +90,19 @@ export const commentaryPersonSeparatorRule: FootnoteRule = {
   supportedCitationTypes: ["COMMENTARY"],
   evaluate(context) {
     const extraction = data(context);
-    if (!extraction?.personSequence) return [];
+    const mappedPersons = mappedCommentaryBearbeiterCandidates(context);
+    if (!extraction?.personSequence && mappedPersons.length === 0) return [];
     const safelyResolvedByMapping =
-      context.sourceMapping?.personStructureHint === "WORK_THEN_BEARBEITER";
-    if (extraction.personSequence.roleResolution !== "resolved" && !safelyResolvedByMapping) {
+      context.sourceMapping?.personStructureHint === "WORK_THEN_BEARBEITER" ||
+      context.sourceMapping?.personStructureHint === "BEARBEITER_THEN_WORK";
+    if (
+      mappedPersons.length === 0 &&
+      extraction!.personSequence!.roleResolution !== "resolved" &&
+      !safelyResolvedByMapping
+    ) {
       return [];
     }
-    const persons = extraction.personSequence.persons;
+    const persons = mappedPersons.length > 0 ? mappedPersons : extraction!.personSequence!.persons;
     const expected = settings(context).personSeparator;
     const findings: RuleFindingCandidate[] = [];
     for (let index = 1; index < persons.length; index += 1) {
@@ -116,7 +136,7 @@ export const commentaryMarginNumberRule: FootnoteRule = {
     const expected = settings(context).marginNumberAbbreviation;
     const extracted = data(context)?.marginNumbers ?? [];
     if (extracted.length === 0 && context.segment && context.sourceMapping?.kind === "COMMENTARY") {
-      const pattern = /\b(?:Rn\.|Rdnr\.|Randnummer)\s*(\d+[A-Za-z]?)(?:\s*(ff?\.?))?/gi;
+      const pattern = /\b(?:Rn\.|Rdn\.|Rdnr\.|Randnummer)\s*(\d+[A-Za-z]?)(?:\s*(ff?\.?))?/gi;
       return Array.from(context.segment.originalText.matchAll(pattern)).flatMap((match) => {
         const range = absoluteContentRangeFromSegment(
           context.segment!,
@@ -138,7 +158,7 @@ export const commentaryMarginNumberRule: FootnoteRule = {
       const range = fullLocatorRange(
         context.footnote.contentText,
         locator,
-        /\b(?:Rn\.|Rdnr\.|Randnummer)\s*\d+[A-Za-z]?(?:\s*ff?\.)?$/i
+        /\b(?:Rn\.|Rdn\.|Rdnr\.|Randnummer)\s*\d+[A-Za-z]?(?:\s*ff?\.)?$/i
       );
       const value = locator.value ?? locator.rawText;
       const suffix = locator.suffix ? ` ${locator.suffix}` : "";
@@ -162,7 +182,9 @@ export const commentaryFormattingRule: FootnoteRule = {
   evaluate(context) {
     const extraction = data(context);
     const findings: RuleFindingCandidate[] = [];
-    for (const person of extraction?.persons ?? []) {
+    for (const person of context.sourceMapping?.matchSource === "STRUCTURED_ALIAS"
+      ? []
+      : (extraction?.persons ?? [])) {
       if (person.role === "bearbeiter") {
         findings.push(
           ...formattingCandidates(

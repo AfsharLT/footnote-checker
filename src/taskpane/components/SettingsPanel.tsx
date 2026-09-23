@@ -99,20 +99,25 @@ const SECTION_OPTIONS: Array<Option<SettingsSection>> = [
 
 const LEGAL_AREA_OPTIONS: Array<Option<"ALL" | CitationSourceLegalArea>> = [
   { value: "ALL", label: "Alle Rechtsgebiete" },
-  { value: "BGB", label: "BGB" },
-  { value: "STGB", label: "StGB" },
-  { value: "STPO", label: "StPO" },
-  { value: "ZPO", label: "ZPO" },
-  { value: "GG", label: "GG" },
-  { value: "GENERAL", label: "Allgemein" },
-  { value: "UNKNOWN", label: "Unbekannt" },
+  { value: "ZIVILRECHT", label: "Zivilrecht" },
+  { value: "STRAFRECHT", label: "Strafrecht" },
+  { value: "PROZESSRECHT", label: "Prozessrecht" },
+  { value: "OEFFENTLICHES_RECHT", label: "Öffentliches Recht" },
+  { value: "EUROPARECHT", label: "Europarecht" },
+  { value: "SONSTIGE", label: "Sonstige" },
 ];
 
+function legalAreaLabel(value: CitationSourceLegalArea): string {
+  return LEGAL_AREA_OPTIONS.find((option) => option.value === value)?.label ?? "Sonstige";
+}
+
 const PERSON_HINT_OPTIONS: Array<Option<CommentaryPersonStructureHint>> = [
+  { value: "UNKNOWN", label: "Allgemeine Einstellung" },
+  { value: "BEARBEITER_THEN_WORK", label: "Bearbeiter, dann Werk" },
   { value: "WORK_THEN_BEARBEITER", label: "Werk, danach Bearbeiter" },
-  { value: "WORK_WITHOUT_BEARBEITER", label: "Werk ohne Bearbeitertrenner" },
-  { value: "AMBIGUOUS", label: "Mehrdeutig" },
-  { value: "UNKNOWN", label: "Unbekannt" },
+  { value: "WORK_WITHOUT_BEARBEITER", label: "Werk ohne Bearbeiter" },
+  { value: "EDITOR_STRUCTURE", label: "Herausgeberstruktur" },
+  { value: "AMBIGUOUS", label: "Allgemeine Einstellung (mehrdeutig)" },
 ];
 
 const SOURCE_KIND_OPTIONS: Array<Option<CitationSourceKind>> = [
@@ -127,8 +132,8 @@ function sourceKindLabel(kind: CitationSourceKind): string {
   return SOURCE_KIND_OPTIONS.find((option) => option.value === kind)?.label ?? kind;
 }
 
-function isCustomSourceKind(kind: CitationSourceKind): boolean {
-  return kind === "BOOK" || kind === "REPORT" || kind === "CUSTOM";
+function withoutFinalCitationPeriod(value: string | undefined): string {
+  return (value ?? "").replace(/\.\s*$/u, "");
 }
 
 const ABBREVIATION_LABELS: Record<CitationAbbreviationConcept, string> = {
@@ -358,6 +363,18 @@ const useStyles = makeStyles({
     backgroundColor: tokens.colorNeutralBackground2,
   },
   cardTitle: { fontWeight: tokens.fontWeightSemibold, color: "#003381" },
+  aliasCard: {
+    display: "grid",
+    gap: "10px",
+    padding: "12px",
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    borderRadius: "10px",
+    backgroundColor: tokens.colorNeutralBackground1,
+  },
+  dangerButton: {
+    justifySelf: "start",
+    color: tokens.colorPaletteRedForeground1,
+  },
   summary: { display: "flex", flexWrap: "wrap", gap: "8px 16px", fontSize: tokens.fontSizeBase300 },
   badge: {
     display: "inline-block",
@@ -1399,6 +1416,10 @@ function AliasAdder(props: { onAdd(alias: string): string | undefined }) {
           Alias hinzufügen
         </Button>
       </div>
+      <span className={styles.help}>
+        Sie können {"{Bearbeiter}"} als Platzhalter verwenden, z. B. „{"{Bearbeiter}"}, in:
+        LK-StGB“.
+      </span>
       {error && <span className={styles.error}>{error}</span>}
     </div>
   );
@@ -1417,28 +1438,13 @@ function WorkOverrideEditor(props: {
       else formatting[role] = { ...formatting[role], italic: value === "true" };
       props.onChange({ ...override, formatting });
     };
-    const setTextOverride = (
-      property: "personSeparator" | "marginNumberAbbreviation",
-      value: string
-    ) => {
-      const settings = { ...override.citationSettingsOverride };
-      if (value === "") delete settings[property];
-      else settings[property] = value;
-      props.onChange({ ...override, citationSettingsOverride: settings });
-    };
     return (
       <div className={styles.subsection}>
-        <h4 className={styles.subsectionTitle}>Werk-spezifische Overrides</h4>
+        <h4 className={styles.subsectionTitle}>Quellenspezifische Einstellungen</h4>
         <p className={styles.help}>
-          Werk-spezifische Einstellungen überschreiben die allgemeinen Einstellungen dieses
-          Quellentyps. Wenn keine werksspezifische Einstellung gesetzt ist, gilt die allgemeine
-          Einstellung für diesen Quellentyp.
+          Optional können Sie die allgemeinen Formatierungseinstellungen für diese Quelle
+          überschreiben.
         </p>
-        <TextField
-          label="Bevorzugter Werkname"
-          value={override.preferredName ?? ""}
-          onChange={(value) => props.onChange({ ...override, preferredName: value || undefined })}
-        />
         <SelectField
           label="Bearbeiter kursiv"
           value={
@@ -1467,33 +1473,16 @@ function WorkOverrideEditor(props: {
           ]}
           onChange={(value) => setItalic("editor", value)}
         />
-        <TextField
-          label="Personentrenner-Override"
-          value={override.citationSettingsOverride?.personSeparator ?? ""}
-          onChange={(value) => setTextOverride("personSeparator", value)}
-        />
-        <TextField
-          label="Randnummer-Abkürzung-Override"
-          value={override.citationSettingsOverride?.marginNumberAbbreviation ?? ""}
-          onChange={(value) => setTextOverride("marginNumberAbbreviation", value)}
-        />
       </div>
     );
   }
   const override = props.source.workOverride as WorkCitationOverride<"JOURNAL_ARTICLE">;
   return (
     <div className={styles.subsection}>
-      <h4 className={styles.subsectionTitle}>Zeitschriften-spezifische Overrides</h4>
+      <h4 className={styles.subsectionTitle}>Quellenspezifische Einstellungen</h4>
       <p className={styles.help}>
-        Werk-spezifische Einstellungen überschreiben die allgemeinen Einstellungen dieses
-        Quellentyps. Wenn keine werksspezifische Einstellung gesetzt ist, gilt die allgemeine
-        Einstellung für diesen Quellentyp.
+        Optional können Sie die allgemeine Fundstellenform für diese Quelle überschreiben.
       </p>
-      <TextField
-        label="Bevorzugter Name"
-        value={override.preferredName ?? ""}
-        onChange={(value) => props.onChange({ ...override, preferredName: value || undefined })}
-      />
       <SelectField
         label="Fundstellenstil-Override"
         value={override.citationSettingsOverride?.pinpointStyle ?? "inherit"}
@@ -1530,11 +1519,11 @@ function SourceEditor(props: {
   const update = (changes: Parameters<typeof updateCitationSource>[2]) =>
     props.onChange(updateCitationSource(props.mapping, props.source.canonicalSourceId, changes));
   return (
-    <details className={styles.card}>
+    <details className={`${styles.card} fc-settings-source-card`}>
       <summary>
         <span className={styles.cardTitle}>{props.source.preferredName}</span>
         <span className={styles.badge}>{sourceKindLabel(props.source.kind)}</span>
-        <span className={styles.badge}>{props.source.legalArea}</span>
+        <span className={styles.badge}>{legalAreaLabel(props.source.legalArea)}</span>
         <span className={styles.badge}>{aliases.length} Aliase</span>
         <span className={styles.badge}>
           {props.source.sourceOrigin === "DEFAULT"
@@ -1556,17 +1545,24 @@ function SourceEditor(props: {
       </summary>
       <div className={styles.subsection}>
         <TextField
-          label="Kanonische Quellen-ID"
-          value={props.source.canonicalSourceId}
-          readOnly
-          onChange={() => undefined}
-        />
-        <TextField
-          label="Bevorzugter Name"
+          label="Name der Quelle"
           value={props.source.preferredName}
           onChange={(preferredName) => update({ preferredName })}
           error={
-            props.source.preferredName.trim() ? undefined : "Bevorzugter Name darf nicht leer sein."
+            props.source.preferredName.trim() ? undefined : "Name der Quelle darf nicht leer sein."
+          }
+        />
+        <TextField
+          label="Bevorzugte Zitierweise"
+          value={withoutFinalCitationPeriod(props.source.examplePattern)}
+          placeholder={
+            props.source.kind === "COMMENTARY"
+              ? "z. B. LK-StGB/{Bearbeiter}, § 13 Rn. 12"
+              : "z. B. Autor, NJW 2025, 1234 (1236)"
+          }
+          helpText="Beispiel dafür, wie die Quelle im Footnote Checker bevorzugt zitiert werden soll. Ein abschließender Punkt ist nicht erforderlich."
+          onChange={(examplePattern) =>
+            update({ examplePattern: withoutFinalCitationPeriod(examplePattern) || undefined })
           }
         />
         <div className={styles.grid}>
@@ -1601,7 +1597,7 @@ function SourceEditor(props: {
         />
         {props.source.kind === "COMMENTARY" && (
           <SelectField
-            label="Personenstruktur-Hinweis"
+            label="Personenstruktur"
             value={props.source.personStructureHint ?? "UNKNOWN"}
             options={PERSON_HINT_OPTIONS}
             onChange={(personStructureHint) => update({ personStructureHint })}
@@ -1609,39 +1605,10 @@ function SourceEditor(props: {
         )}
         {props.source.kind === "COMMENTARY" && (
           <p className={styles.help}>
-            Der Hinweis unterstützt spätere Regeln, entscheidet aber nicht automatisch über die
-            tatsächliche Personenrolle im Zitat.
+            Diese Auswahl unterstützt die Erkennung und Formatierung von Bearbeitern und
+            Herausgebern.
           </p>
         )}
-        {isCustomSourceKind(props.source.kind) && (
-          <>
-            <p className={styles.help}>
-              Benutzerdefinierte Quellen können über einen eindeutigen Namen oder Marker erkannt
-              werden. Verwenden Sie möglichst spezifische Bezeichnungen, um Fehlzuordnungen zu
-              vermeiden.
-            </p>
-            <TextField
-              label="Bevorzugte vollständige Zitierform"
-              value={props.source.preferredCitationText ?? ""}
-              placeholder="z. B. Gabriel, Digitale Plattformen: Grundlagen und Erscheinungsformen, Forschungsbericht Nr. 16, S. 40."
-              helpText="Optional. Wenn angegeben, kann die vollständige Zitierform direkt mit dem Zitat verglichen werden."
-              onChange={(preferredCitationText) =>
-                update({ preferredCitationText: preferredCitationText || undefined })
-              }
-            />
-          </>
-        )}
-        <TextField
-          label="Beispiel-Sollmuster"
-          value={props.source.examplePattern ?? ""}
-          placeholder={
-            props.source.kind === "COMMENTARY"
-              ? "z. B. MüKoStGB/Bearbeiter, § 263 Rn. 12."
-              : "z. B. Autor, NJW 2025, 1234 (1236)."
-          }
-          helpText="Optionales Beispiel dafür, wie die Quelle typischerweise zitiert werden soll."
-          onChange={(examplePattern) => update({ examplePattern: examplePattern || undefined })}
-        />
         <TextField
           label="Hinweise"
           value={props.source.notes ?? ""}
@@ -1656,15 +1623,22 @@ function SourceEditor(props: {
         )}
         <div className={styles.subsection}>
           <h4 className={styles.subsectionTitle}>Aliase</h4>
+          <p className={styles.help}>
+            Erkennungsmuster für alternative oder fehlerhafte Zitierweisen dieser Quelle.
+          </p>
           {aliases.map(({ alias, index }) => (
-            <div className={styles.card} key={`${alias.legacyMappingId ?? "user"}-${index}`}>
+            <div
+              className={`${styles.aliasCard} fc-settings-alias-card`}
+              key={`${alias.legacyMappingId ?? "user"}-${index}`}
+            >
               <TextField
-                label="Aliastext"
+                label="Alias-Text / Erkennungsmuster"
                 value={alias.alias}
                 onChange={(value) =>
                   props.onChange(updateCitationSourceAlias(props.mapping, index, { alias: value }))
                 }
                 error={alias.alias.trim() ? undefined : "Aliastext darf nicht leer sein."}
+                helpText="Sie können {Bearbeiter} als Platzhalter verwenden."
               />
               {sourceConflicts
                 .filter(
@@ -1687,81 +1661,29 @@ function SourceEditor(props: {
                     </p>
                   );
                 })}
-              <div className={styles.grid}>
-                <SelectField
-                  label="Abgleichsmodus"
-                  value={alias.matchMode}
-                  options={[
-                    { value: "CASE_INSENSITIVE_TEXT", label: "Exakter Alias" },
-                    ...(isCustomSourceKind(props.source.kind)
-                      ? [{ value: "WHOLE_WORD_MARKER" as const, label: "Ganzwort-Marker im Zitat" }]
-                      : []),
-                  ]}
-                  onChange={(matchMode) =>
-                    props.onChange(updateCitationSourceAlias(props.mapping, index, { matchMode }))
-                  }
-                />
-                <CheckField
-                  label="Aktiv"
-                  checked={alias.active}
-                  onChange={(active) =>
-                    props.onChange(updateCitationSourceAlias(props.mapping, index, { active }))
-                  }
-                />
-                <CheckField
-                  label="Ganzwortsuche"
-                  checked={alias.wholeWord}
-                  onChange={(wholeWord) =>
-                    props.onChange(updateCitationSourceAlias(props.mapping, index, { wholeWord }))
-                  }
-                />
-                <SelectField
-                  label="Altdaten-Sicherheit"
-                  value={alias.legacySafetyLevel ?? "PROBABLE"}
-                  options={[
-                    { value: "PROBABLE", label: "Wahrscheinlich" },
-                    { value: "UNCERTAIN", label: "Unsicher" },
-                  ]}
-                  onChange={(legacySafetyLevel) =>
-                    props.onChange(
-                      updateCitationSourceAlias(props.mapping, index, { legacySafetyLevel })
-                    )
-                  }
-                />
-              </div>
-              <p className={styles.help}>
-                Match Mode:{" "}
-                {alias.matchMode === "WHOLE_WORD_MARKER"
-                  ? "Ganzwort-Marker im Zitat"
-                  : "Exakter Alias"}{" "}
-                · Ursprung: {alias.legacyMappingId ? "Altdaten" : "Benutzer"}
-              </p>
-              {alias.legacyMappingId && (
-                <p className={styles.help}>Altdaten-Kennung: {alias.legacyMappingId}</p>
-              )}
-              {alias.notes && <p className={styles.help}>{alias.notes}</p>}
-              {alias.legacyMappingId ? (
-                <Button
-                  size="small"
-                  onClick={() =>
+              <CheckField
+                label="Aktiv"
+                checked={alias.active}
+                onChange={(active) =>
+                  props.onChange(updateCitationSourceAlias(props.mapping, index, { active }))
+                }
+              />
+              <Button
+                className={styles.dangerButton}
+                size="small"
+                onClick={() => {
+                  if (alias.legacyMappingId) {
                     props.onChange(
                       updateCitationSourceAlias(props.mapping, index, { active: false })
-                    )
+                    );
+                    return;
                   }
-                >
-                  Altdaten-Alias deaktivieren
-                </Button>
-              ) : (
-                <Button
-                  size="small"
-                  onClick={() => {
-                    const result = removeUserCitationSourceAlias(props.mapping, index);
-                    if (result.success) props.onChange(result.value);
-                  }}
-                >
-                  Benutzer-Alias entfernen
-                </Button>
-              )}
+                  const result = removeUserCitationSourceAlias(props.mapping, index);
+                  if (result.success) props.onChange(result.value);
+                }}
+              >
+                Alias entfernen
+              </Button>
             </div>
           ))}
           <AliasAdder
@@ -1842,7 +1764,7 @@ function NewSourceEditor(props: {
   const [input, setInput] = useState<NewCitationSourceInput>({
     preferredName: "",
     kind: "COMMENTARY",
-    legalArea: "UNKNOWN",
+    legalArea: "SONSTIGE",
     personStructureHint: "UNKNOWN",
   });
   if (!open) return <Button onClick={() => setOpen(true)}>Quelle hinzufügen</Button>;
@@ -1850,11 +1772,24 @@ function NewSourceEditor(props: {
     <div className={styles.card}>
       <h3 className={styles.subsectionTitle}>Neue Quelle</h3>
       <TextField
-        label="Bevorzugter Name"
+        label="Name der Quelle"
         value={input.preferredName}
         onChange={(preferredName) => setInput({ ...input, preferredName })}
         error={
-          error && !input.preferredName.trim() ? "Bevorzugter Name darf nicht leer sein." : undefined
+          error && !input.preferredName.trim() ? "Name der Quelle darf nicht leer sein." : undefined
+        }
+      />
+      <TextField
+        label="Bevorzugte Zitierweise"
+        value={withoutFinalCitationPeriod(input.examplePattern)}
+        placeholder={
+          input.kind === "COMMENTARY"
+            ? "z. B. LK-StGB/{Bearbeiter}, § 13 Rn. 12"
+            : "z. B. Autor, NJW 2025, 1234 (1236)"
+        }
+        helpText="Beispiel dafür, wie die Quelle im Footnote Checker bevorzugt zitiert werden soll. Ein abschließender Punkt ist nicht erforderlich."
+        onChange={(examplePattern) =>
+          setInput({ ...input, examplePattern: withoutFinalCitationPeriod(examplePattern) })
         }
       />
       <SelectField
@@ -1882,39 +1817,12 @@ function NewSourceEditor(props: {
       )}
       {input.kind === "COMMENTARY" && (
         <SelectField
-          label="Personenstruktur-Hinweis"
+          label="Personenstruktur"
           value={input.personStructureHint ?? "UNKNOWN"}
           options={PERSON_HINT_OPTIONS}
           onChange={(personStructureHint) => setInput({ ...input, personStructureHint })}
         />
       )}
-      {isCustomSourceKind(input.kind) && (
-        <>
-          <p className={styles.help}>
-            Benutzerdefinierte Quellen können über einen eindeutigen Namen oder Marker erkannt
-            werden. Verwenden Sie möglichst spezifische Bezeichnungen, um Fehlzuordnungen zu
-            vermeiden.
-          </p>
-          <TextField
-            label="Bevorzugte vollständige Zitierform"
-            value={input.preferredCitationText ?? ""}
-            placeholder="z. B. Gabriel, Digitale Plattformen: Grundlagen und Erscheinungsformen, Forschungsbericht Nr. 16, S. 40."
-            helpText="Optional. Wenn angegeben, kann die vollständige Zitierform direkt mit dem Zitat verglichen werden."
-            onChange={(preferredCitationText) => setInput({ ...input, preferredCitationText })}
-          />
-        </>
-      )}
-      <TextField
-        label="Beispiel-Sollmuster"
-        value={input.examplePattern ?? ""}
-        placeholder={
-          input.kind === "COMMENTARY"
-            ? "z. B. MüKoStGB/Bearbeiter, § 263 Rn. 12."
-            : "z. B. Autor, NJW 2025, 1234 (1236)."
-        }
-        helpText="Optionales Beispiel dafür, wie die Quelle typischerweise zitiert werden soll."
-        onChange={(examplePattern) => setInput({ ...input, examplePattern })}
-      />
       <TextField
         label="Hinweise"
         value={input.notes ?? ""}
@@ -2233,7 +2141,9 @@ const LegacySettingsPanel: React.FC<SettingsPanelProps> = ({
                 className={styles.accordionTrigger}
                 type="button"
                 aria-expanded={isOpen}
-                onClick={() => setSection((current) => (current === option.value ? null : option.value))}
+                onClick={() =>
+                  setSection((current) => (current === option.value ? null : option.value))
+                }
               >
                 {isOpen ? (
                   <ChevronDown size={17} aria-hidden="true" />
@@ -2271,9 +2181,7 @@ const LegacySettingsPanel: React.FC<SettingsPanelProps> = ({
 
       {section === "MAPPING" ? (
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>
-            Werk- &amp; Zeitschriften-Mapping verwalten
-          </h2>
+          <h2 className={styles.sectionTitle}>Werk- &amp; Zeitschriften-Mapping verwalten</h2>
           <div className={styles.actionBar}>
             <Button appearance="primary" disabled={!mappingDirty} onClick={saveMapping}>
               Mapping speichern
@@ -2372,9 +2280,7 @@ const LegacySettingsPanel: React.FC<SettingsPanelProps> = ({
         </section>
       ) : section ? (
         <section className={styles.section}>
-          <h2 className={styles.sectionTitle}>
-            Zitiereinstellungen verwalten
-          </h2>
+          <h2 className={styles.sectionTitle}>Zitiereinstellungen verwalten</h2>
           <div className={styles.actionBar}>
             <Button appearance="primary" disabled={!profileDirty} onClick={saveProfile}>
               Speichern
@@ -2545,7 +2451,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     }
     const result = onSaveProfile(profile);
     setProfileMessage(
-      result.success ? "Einstellungen wurden gespeichert." : (result.error ?? "Speichern fehlgeschlagen.")
+      result.success
+        ? "Einstellungen wurden gespeichert."
+        : (result.error ?? "Speichern fehlgeschlagen.")
     );
     return result.success;
   };
@@ -2735,7 +2643,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       await handleImport(file);
                     } catch (error) {
                       setMappingMessage(
-                        error instanceof Error ? error.message : "Datei konnte nicht gelesen werden."
+                        error instanceof Error
+                          ? error.message
+                          : "Datei konnte nicht gelesen werden."
                       );
                     }
                     event.target.value = "";
@@ -2758,7 +2668,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     return (
       <section className={styles.section} id="fc-settings-help" tabIndex={-1}>
         <h2 className={styles.sectionTitle}>Hilfe &amp; Info</h2>
-        <p className={styles.help}>Weitere Informationen und Hilfestellungen werden hier ergänzt.</p>
+        <p className={styles.help}>
+          Weitere Informationen und Hilfestellungen werden hier ergänzt.
+        </p>
       </section>
     );
   };
@@ -2778,7 +2690,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </NeonButton>
       </header>
 
-      <div className={`${styles.stickyActionBar} fc-settings-action-card`} aria-label="Aktionen für Einstellungen">
+      <div
+        className={`${styles.stickyActionBar} fc-settings-action-card`}
+        aria-label="Aktionen für Einstellungen"
+      >
         <div className={styles.searchArea}>
           <label className={`${styles.searchField} fc-settings-search-field`}>
             <Search size={16} aria-hidden="true" />
@@ -2915,7 +2830,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 type="button"
                 aria-expanded={isOpen}
                 aria-controls={contentId}
-                onClick={() => setSection((current) => (current === option.value ? null : option.value))}
+                onClick={() =>
+                  setSection((current) => (current === option.value ? null : option.value))
+                }
               >
                 {isOpen ? (
                   <ChevronDown size={17} aria-hidden="true" />
@@ -2975,7 +2892,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           <div className={styles.card}>
             <h3 className={styles.subsectionTitle}>Import-Vorschau Literaturverzeichnis</h3>
             <p>
-              Schema: {mappingImport.data.schemaVersion} · Quellen: {mappingImport.data.sources.length}
+              Schema: {mappingImport.data.schemaVersion} · Quellen:{" "}
+              {mappingImport.data.sources.length}
               {" · "}Aliase: {mappingImport.data.aliases.length}
             </p>
             <p className={mappingImport.success ? styles.statusSaved : styles.error}>

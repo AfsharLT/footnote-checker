@@ -1,4 +1,5 @@
 import type { FootnoteSnapshot } from "../taskpane/taskpane";
+import { findLocalCitationCoreStart } from "./citation-core";
 import { isRangeProtected } from "./protected-ranges";
 import type {
   AnalysisProtectedRange,
@@ -243,7 +244,7 @@ function configuredSeparators(values: readonly string[] | undefined): string[] {
 function citationItemRange(
   text: string,
   clause: TextRange
-): { range: TextRange; qualifiers: CitationQualifier[] } {
+): { range: TextRange; qualifiers: CitationQualifier[]; narrativeRange?: TextRange } {
   const rawText = text.slice(clause.start, clause.end);
   const lowerCaseReferenceColon = /^(?:s\.\s*auch|s\.(?:\s+aber)?)\s*:\s*/u.exec(rawText);
   const lowerCaseReferencePlain = /^(?:s\.\s*auch|s\.(?:\s+aber)?)\s+/u.exec(rawText);
@@ -258,7 +259,16 @@ function citationItemRange(
       rawText
     );
   const prefix = colonPrefix ?? plainPrefix;
-  if (!prefix) return { range: clause, qualifiers: [] };
+  if (!prefix) {
+    const localCoreStart = findLocalCitationCoreStart(text, clause.start, clause.end);
+    return localCoreStart > clause.start
+      ? {
+          range: trimRange(text, { start: localCoreStart, end: clause.end }),
+          qualifiers: [],
+          narrativeRange: trimRange(text, { start: clause.start, end: localCoreStart }),
+        }
+      : { range: clause, qualifiers: [] };
+  }
 
   const prefixRange = { start: clause.start, end: clause.start + prefix[0].trimEnd().length };
   return {
@@ -717,6 +727,9 @@ export function segmentCitationSequences(
           const evidence = citationEvidence(
             text.slice(itemContent.range.start, itemContent.range.end)
           );
+          if (itemContent.narrativeRange && isValidRange(text, itemContent.narrativeRange)) {
+            narrativeText.push(createNarrative(footnote, itemContent.narrativeRange, "narrative"));
+          }
 
           const previousItem = draft?.items[draft.items.length - 1];
           if (

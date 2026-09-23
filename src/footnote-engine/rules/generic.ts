@@ -17,6 +17,36 @@ const MODIFIER_CONCEPTS: Partial<Record<CitationModifierType, CitationModifierCo
   criticism: "CRITICAL",
 };
 
+const SAFE_BOUNDARY_OPENERS = /[\s„“”‚‘’'"([{]/u;
+
+function firstAlphabeticAtCitationBoundary(
+  context: RuleContext
+): { start: number; end: number } | undefined {
+  if (!context.segment) return undefined;
+  let cursor = context.segment.start;
+  while (
+    cursor < context.segment.end &&
+    SAFE_BOUNDARY_OPENERS.test(context.footnote.contentText[cursor])
+  ) {
+    cursor += 1;
+  }
+  if (cursor >= context.segment.end || !/\p{L}/u.test(context.footnote.contentText[cursor])) {
+    return undefined;
+  }
+  let before = context.segment.start - 1;
+  while (before >= 0 && SAFE_BOUNDARY_OPENERS.test(context.footnote.contentText[before]))
+    before -= 1;
+  if (before >= 0 && context.footnote.contentText[before] !== ";") return undefined;
+  return { start: cursor, end: cursor + 1 };
+}
+
+function uppercaseFirstAlphabetic(value: string): string {
+  const index = value.search(/\p{L}/u);
+  return index < 0
+    ? value
+    : `${value.slice(0, index)}${value[index].toLocaleUpperCase("de-DE")}${value.slice(index + 1)}`;
+}
+
 export const modifierStyleRule: FootnoteRule = {
   ruleId: "CITATION_MODIFIER_STYLE",
   category: "citation",
@@ -32,14 +62,82 @@ export const modifierStyleRule: FootnoteRule = {
         (variant) => normalizePreferenceText(variant) === normalizePreferenceText(modifier.text)
       );
       if (!isRecognized) return [];
+      const boundary = firstAlphabeticAtCitationBoundary(context);
+      const preferredOutput =
+        boundary && boundary.start >= modifier.start && boundary.start < modifier.end
+          ? uppercaseFirstAlphabetic(preference.preferredOutput)
+          : preference.preferredOutput;
       return replacementCandidate(
         context,
         modifier,
-        preference.preferredOutput,
-        `Die bevorzugte Schreibweise des Zitierhinweises lautet „${preference.preferredOutput}“.`,
-        { modifierConcept: concept, expected: preference.preferredOutput }
+        preferredOutput,
+        `Die bevorzugte Schreibweise des Zitierhinweises lautet „${preferredOutput}“.`,
+        { modifierConcept: concept, expected: preferredOutput }
       );
     });
+  },
+};
+
+export const citationBoundaryCapitalizationRule: FootnoteRule = {
+  ruleId: "CITATION_BOUNDARY_CAPITALIZATION",
+  category: "citation",
+  priority: 199,
+  scope: "segment",
+  evaluate(context) {
+    const target = firstAlphabeticAtCitationBoundary(context);
+    if (!target) return [];
+    const current = context.footnote.contentText.slice(target.start, target.end);
+    if (current === current.toLocaleUpperCase("de-DE")) return [];
+    const modifier = context.segment?.modifiers.find(
+      (candidate) => candidate.start <= target.start && candidate.end >= target.end
+    );
+    if (modifier) {
+      const concept = MODIFIER_CONCEPTS[modifier.type];
+      const preference = concept ? context.resolvedSettings.modifiers[concept] : undefined;
+      const recognized = preference?.recognizedVariants.some(
+        (variant) => normalizePreferenceText(variant) === normalizePreferenceText(modifier.text)
+      );
+      if (preference && recognized) {
+        return replacementCandidate(
+          context,
+          modifier,
+          uppercaseFirstAlphabetic(preference.preferredOutput),
+          "Am Beginn einer Zitiereinheit muss der erste Buchstabe großgeschrieben werden.",
+          { boundary: target.start === 0 ? "FOOTNOTE_START" : "SEMICOLON" }
+        );
+      }
+    }
+    return replacementCandidate(
+      context,
+      target,
+      current.toLocaleUpperCase("de-DE"),
+      "Am Beginn einer Zitiereinheit muss der erste Buchstabe großgeschrieben werden.",
+      { boundary: target.start === 0 ? "FOOTNOTE_START" : "SEMICOLON" }
+    );
+  },
+};
+
+export const bookAuthorTitleSeparatorRule: FootnoteRule = {
+  ruleId: "BOOK_AUTHOR_TITLE_SEPARATOR",
+  category: "citation",
+  priority: 202,
+  scope: "segment",
+  evaluate(context) {
+    if (!context.segment) return [];
+    const match =
+      /^(?:[„“”‚‘’'"([{]\s*)?(\p{Lu}[\p{L}'’.-]*(?:\/\p{Lu}[\p{L}'’.-]*)*)\s+(\p{Lu}[\p{L}][^,]{2,}),\s*((?:19|20)\d{2}),\s*(?:S\.|Seite)\s*\d/iu.exec(
+        context.segment.coreText
+      );
+    if (!match || !match[1] || !match[2] || !match[3]) return [];
+    const localAuthorStart = match[0].indexOf(match[1]);
+    const position = context.segment.coreStart + localAuthorStart + match[1].length;
+    return replacementCandidate(
+      context,
+      { start: position, end: position },
+      ",",
+      "Zwischen Autor und Werktitel fehlt ein Komma.",
+      { detectedSourceFamily: "BOOK", separator: "," }
+    );
   },
 };
 
@@ -219,8 +317,10 @@ export const uncertainLegacyMappingRule: FootnoteRule = {
 };
 
 export const GENERIC_RULES: readonly FootnoteRule[] = [
+  citationBoundaryCapitalizationRule,
   modifierStyleRule,
   genericAbbreviationStyleRule,
+  bookAuthorTitleSeparatorRule,
   otherReviewRule,
   unresolvedExtractionRule,
   ambiguousMappingRule,

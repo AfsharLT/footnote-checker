@@ -1,4 +1,5 @@
 import type { FootnoteSnapshot } from "../taskpane/taskpane";
+import { findLocalCitationCoreStart } from "./citation-core";
 import { segmentCitationSequences } from "./citation-sequence-segmenter";
 import { isRangeProtected } from "./protected-ranges";
 import type {
@@ -488,7 +489,8 @@ export function segmentFootnote(
     if (trimmed.start >= trimmed.end) return;
 
     const modifiers = findCitationModifiers(text, trimmed.start, trimmed.end);
-    const coreStart = findCoreStart(text, trimmed.start, trimmed.end, modifiers);
+    const modifierAdjustedStart = findCoreStart(text, trimmed.start, trimmed.end, modifiers);
+    const coreStart = findLocalCitationCoreStart(text, modifierAdjustedStart, trimmed.end);
     const segment: CitationSegment = {
       segmentId: `segment:${footnote.id}:${trimmed.start}:${trimmed.end}:${footnote.originalTextHash}`,
       footnoteId: footnote.id,

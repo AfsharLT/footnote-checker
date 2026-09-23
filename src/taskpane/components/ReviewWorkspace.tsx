@@ -23,7 +23,9 @@ import { FilterSelect, type FilterOption } from "@/components/ui/filter-select";
 import { NeonButton } from "@/components/ui/neon-button";
 import { Progress } from "@/components/ui/progress";
 import { SpotlightCard } from "@/components/ui/spotlight-card";
+import { documentSourceForCitationItem } from "@/document-source-registry";
 import { BrandLogo } from "@/taskpane/components/BrandLogo";
+import { DocumentSourceReview } from "@/taskpane/components/DocumentSourceReview";
 import type { FootnoteEngineResult } from "@/footnote-engine/types";
 import {
   REVIEW_CLASS_LABELS,
@@ -58,11 +60,9 @@ import type {
   FootnoteReadResult,
   FootnoteSnapshot,
 } from "@/taskpane/taskpane";
+import { userMessageForReadWarning } from "@/taskpane/taskpane";
 import type { HostCapabilities } from "@/taskpane/host-capabilities";
-import type {
-  AnalysisPerformanceMetrics,
-  HostWorkState,
-} from "@/taskpane/performance";
+import type { AnalysisPerformanceMetrics, HostWorkState } from "@/taskpane/performance";
 import {
   canApplySingleReviewItem,
   batchProgressPercent,
@@ -145,6 +145,11 @@ interface ReviewWorkspaceProps {
   confirmReanalysis: boolean;
   onCancelReanalysis(): void;
   onConfirmReanalysis(): void;
+  showSourceReview: boolean;
+  onOpenSourceReview(): void;
+  onCloseSourceReview(): void;
+  onPromoteDocumentSources(documentSourceIds: string[]): void;
+  sourcePromotionMessage: string;
 }
 
 function statusIcon(status: ReviewStatus): React.ReactNode {
@@ -211,9 +216,7 @@ function FilterFields({
         <input
           type="checkbox"
           checked={filters.onlyWithFindings}
-          onChange={(event) =>
-            onChange({ ...filters, onlyWithFindings: event.target.checked })
-          }
+          onChange={(event) => onChange({ ...filters, onlyWithFindings: event.target.checked })}
         />
         <span>Nur Fußnoten mit Hinweisen</span>
       </label>
@@ -382,6 +385,28 @@ function TechnicalDetails({
           <pre>{JSON.stringify(segmentAnalysis?.sourceMappings ?? [], null, 2)}</pre>
         </dd>
       </div>
+      {item.finding.citationItemId && engineResult.documentSourceRegistry && (
+        <div>
+          <dt>Dokumentquelle</dt>
+          <dd>
+            <pre>
+              {JSON.stringify(
+                {
+                  resolution: engineResult.documentSourceRegistry.resolutions.find(
+                    (resolution) => resolution.citationItemId === item.finding.citationItemId
+                  ),
+                  source: documentSourceForCitationItem(
+                    engineResult.documentSourceRegistry,
+                    item.finding.citationItemId
+                  ),
+                },
+                null,
+                2
+              )}
+            </pre>
+          </dd>
+        </div>
+      )}
       <div>
         <dt>Formatierungsmetadaten</dt>
         <dd>
@@ -433,12 +458,22 @@ function FindingCard({
   const isApplying =
     writeBackResult?.status === "PENDING" && writeBackResult.message === "Wird durchgeführt …";
   const findingMessage = deduplicateMessages(item.finding.message)[0];
-  const writeBackMessage = deduplicateMessages(
-    item.finding.message,
-    writeBackResult?.message
-  )[1];
+  const writeBackMessage = deduplicateMessages(item.finding.message, writeBackResult?.message)[1];
   const citationPreview = citationPreviewForFinding(item.finding, engineResult);
+  const documentSource = engineResult.documentSourceRegistry
+    ? documentSourceForCitationItem(
+        engineResult.documentSourceRegistry,
+        item.finding.citationItemId
+      )
+    : undefined;
   const canManuallyCheck = canMarkManuallyChecked(item);
+  const applied = writeBackResult?.status === "APPLIED";
+  const terminalDecision =
+    applied ||
+    item.decision.explicitStatus === "MANUALLY_CHECKED" ||
+    item.decision.explicitStatus === "REJECTED" ||
+    item.decision.explicitStatus === "DEFERRED";
+  const acceptedSelected = item.decision.explicitStatus === "ACCEPTED" && !applied;
   return (
     <article className={`fc-finding fc-finding--${item.finding.severity}`}>
       <div className="fc-finding__topline">
@@ -454,6 +489,9 @@ function FindingCard({
             <ShieldAlert size={13} aria-hidden="true" />
             Konflikt
           </span>
+        )}
+        {documentSource?.status === "CONFIRMED_DOCUMENT_SOURCE" && (
+          <span className="fc-badge fc-badge--document-source">Dokumenteigene Quelle</span>
         )}
       </div>
       <h3>{title}</h3>
@@ -490,14 +528,23 @@ function FindingCard({
             {isApplying ? "Wird durchgeführt …" : writeBackResultLabel(writeBackResult)}
           </span>
           {(writeBackResult.status === "FAILED" || writeBackResult.status === "STALE") &&
-            writeBackMessage && (
-              <span className="fc-writeback-message">{writeBackMessage}</span>
-            )}
+            writeBackMessage && <span className="fc-writeback-message">{writeBackMessage}</span>}
         </div>
       )}
       {mode === "REVIEW" && item.reviewClass !== "TECHNICAL" && (
         <div className="fc-finding__actions" aria-label={`Entscheidung für ${title}`}>
-          {item.proposedAction ? (
+          {terminalDecision ? (
+            <NeonButton
+              className="fc-review-action"
+              size="sm"
+              variant="secondary"
+              disabled={batchRunning}
+              onClick={() => onClearStatus(item)}
+            >
+              <RotateCcw size={14} aria-hidden="true" />
+              Zurücksetzen
+            </NeonButton>
+          ) : item.proposedAction ? (
             <span
               title={
                 !item.canAccept
@@ -506,11 +553,12 @@ function FindingCard({
               }
             >
               <NeonButton
-                className="fc-review-action"
+                className={`fc-review-action${acceptedSelected ? " fc-review-action--selected" : ""}`}
                 size="sm"
-                variant="primary"
+                variant={acceptedSelected ? "secondary" : "primary"}
                 disabled={!item.canAccept || batchRunning}
                 onClick={() => onSetStatus(item, "ACCEPTED")}
+                aria-pressed={acceptedSelected}
               >
                 <Check size={14} aria-hidden="true" />
                 Übernehmen
@@ -532,27 +580,31 @@ function FindingCard({
               Keine sichere automatische Änderung verfügbar – bitte im Dokument prüfen.
             </span>
           )}
-          <NeonButton
-            className="fc-review-action"
-            size="sm"
-            variant="destructive"
-            disabled={batchRunning}
-            onClick={() => onSetStatus(item, "REJECTED")}
-          >
-            <X size={14} aria-hidden="true" />
-            Ablehnen
-          </NeonButton>
-          <NeonButton
-            className="fc-review-action"
-            size="sm"
-            variant="subtle"
-            disabled={batchRunning}
-            onClick={() => onSetStatus(item, "DEFERRED")}
-          >
-            <Clock3 size={14} aria-hidden="true" />
-            Später prüfen
-          </NeonButton>
-          {item.decision.explicitStatus && (
+          {!terminalDecision && (
+            <NeonButton
+              className="fc-review-action"
+              size="sm"
+              variant="destructive"
+              disabled={batchRunning}
+              onClick={() => onSetStatus(item, "REJECTED")}
+            >
+              <X size={14} aria-hidden="true" />
+              Ablehnen
+            </NeonButton>
+          )}
+          {!terminalDecision && (
+            <NeonButton
+              className="fc-review-action"
+              size="sm"
+              variant="subtle"
+              disabled={batchRunning}
+              onClick={() => onSetStatus(item, "DEFERRED")}
+            >
+              <Clock3 size={14} aria-hidden="true" />
+              Später prüfen
+            </NeonButton>
+          )}
+          {!terminalDecision && item.decision.explicitStatus && (
             <NeonButton
               className="fc-review-action"
               size="sm"
@@ -695,10 +747,29 @@ function FootnoteGroup({
               </p>
             )}
             {group.accountingStatus === "PARTIAL" && (
-              <p className="fc-footnote-accounting fc-footnote-accounting--partial">
-                <AlertTriangle size={15} aria-hidden="true" /> Die Fußnote wurde analysiert,
-                einzelne Daten konnten jedoch nicht vollständig ausgewertet werden.
-              </p>
+              <div className="fc-footnote-accounting fc-footnote-accounting--partial">
+                <AlertTriangle size={15} aria-hidden="true" />
+                <span>
+                  Die Fußnote wurde vollständig als Text gelesen. Einzelne Zusatzinformationen
+                  konnten nicht vollständig geprüft werden.
+                  {group.footnote.readWarnings.length > 0 && (
+                    <ul>
+                      {[
+                        ...new Set(
+                          group.footnote.readWarnings.map((warning) =>
+                            userMessageForReadWarning(warning)
+                          )
+                        ),
+                      ].map((message) => (
+                        <li key={message}>{message}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {group.footnote.readWarnings.some((warning) => warning.affectsCorrectness) && (
+                    <strong>Eine manuelle Prüfung wird empfohlen.</strong>
+                  )}
+                </span>
+              </div>
             )}
             {group.items.map((item) => (
               <FindingCard
@@ -767,11 +838,7 @@ function GlobalTechnicalData({
           <dt>Analyseperformance</dt>
           <dd>
             <pre>
-              {JSON.stringify(
-                { ...analysisPerformance, reviewPreparationDurationMs },
-                null,
-                2
-              )}
+              {JSON.stringify({ ...analysisPerformance, reviewPreparationDurationMs }, null, 2)}
             </pre>
           </dd>
         </div>
@@ -791,6 +858,23 @@ function GlobalTechnicalData({
             Dauer: {engineResult.durationMs ?? "–"} ms
           </dd>
         </div>
+        {engineResult.documentSourceRegistry && (
+          <div>
+            <dt>Quellen-Accounting</dt>
+            <dd>
+              <pre>
+                {JSON.stringify(
+                  {
+                    accounting: engineResult.documentSourceRegistry.accounting,
+                    auditRecords: engineResult.documentSourceRegistry.auditRecords,
+                  },
+                  null,
+                  2
+                )}
+              </pre>
+            </dd>
+          </div>
+        )}
         {batchResult && (
           <div>
             <dt>Write-back-Performance</dt>
@@ -886,10 +970,10 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
           {props.hostWorkState === "FINALIZING"
             ? "Korrekturlauf wird abgeschlossen …"
             : isCorrecting
-            ? "Sichere Korrekturen werden durchgeführt …"
-            : props.isLoading
-              ? "Fußnoten werden geprüft …"
-              : "Fußnoten prüfen"}
+              ? "Sichere Korrekturen werden durchgeführt …"
+              : props.isLoading
+                ? "Fußnoten werden geprüft …"
+                : "Fußnoten prüfen"}
         </NeonButton>
 
         {isBatchRunning && props.batchProgress ? (
@@ -957,6 +1041,29 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
         {props.reviewResult && props.engineResult && (
           <>
             <ReviewSummary result={props.reviewResult} mode={props.mode} />
+            {(props.engineResult.documentSourceRegistry?.unpromotedConfirmedSourceCount ?? 0) >
+              0 && (
+              <section className="fc-document-sources-callout" role="status">
+                <div>
+                  <strong>
+                    {props.engineResult.documentSourceRegistry!.unpromotedConfirmedSourceCount} neue
+                    dokumenteigene{" "}
+                    {props.engineResult.documentSourceRegistry!.unpromotedConfirmedSourceCount === 1
+                      ? "Quelle erkannt"
+                      : "Quellen erkannt"}
+                  </strong>
+                  <p>Diese Quellen bleiben zunächst auf das aktuelle Dokument beschränkt.</p>
+                </div>
+                <NeonButton variant="secondary" size="sm" onClick={props.onOpenSourceReview}>
+                  Quellen prüfen
+                </NeonButton>
+              </section>
+            )}
+            {props.sourcePromotionMessage && (
+              <div className="fc-notice" role="status">
+                <span>{props.sourcePromotionMessage}</span>
+              </div>
+            )}
             {!props.batchResult && (
               <div className="fc-report-actions">
                 <NeonButton
@@ -1054,159 +1161,159 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
               </section>
             )}
             <>
-                {props.mode === "REVIEW" && (
-                  <div className="fc-sticky-actions fc-sticky-actions--review">
-                    <div className="fc-sticky-actions__status">
-                      {props.reviewResult.summary.byStatus.accepted} übernommen ·{" "}
-                      {props.reviewResult.summary.byStatus.manuallyChecked} manuell geprüft ·{" "}
-                      {props.reviewResult.summary.byStatus.open} offen ·{" "}
-                      {props.reviewResult.summary.byStatus.deferred} später
-                    </div>
-                    <div className="fc-bulk-actions">
-                      <NeonButton
-                        variant="primary"
-                        size="sm"
-                        disabled={
-                          isMutationRunning || (props.currentPlan?.totals.eligible ?? 0) === 0
-                        }
-                        onClick={props.onRunReviewBatch}
-                      >
-                        {isBatchRunning ? (
-                          <LoaderCircle className="fc-spin" size={15} aria-hidden="true" />
-                        ) : (
-                          <Play size={15} aria-hidden="true" />
-                        )}
-                        {isBatchRunning
-                          ? "Änderungen werden durchgeführt …"
-                          : "Ausgewählte Änderungen durchführen"}
-                      </NeonButton>
-                      <NeonButton
-                        variant="secondary"
-                        size="sm"
-                        disabled={isBatchRunning}
-                        onClick={props.onAcceptAllAutomatic}
-                      >
-                        <CheckCheck size={15} aria-hidden="true" />
-                        Alle automatischen übernehmen
-                      </NeonButton>
-                      <NeonButton
-                        variant="secondary"
-                        size="sm"
-                        disabled={isBatchRunning || Object.keys(props.decisionState).length === 0}
-                        onClick={props.onResetDecisions}
-                      >
-                        <RotateCcw size={15} aria-hidden="true" />
-                        Entscheidungen zurücksetzen
-                      </NeonButton>
-                    </div>
-                    {(props.currentPlan?.totals.eligible ?? 0) === 0 && (
-                      <span className="fc-muted">Keine ausgewählten sicheren Änderungen.</span>
-                    )}
+              {props.mode === "REVIEW" && (
+                <div className="fc-sticky-actions fc-sticky-actions--review">
+                  <div className="fc-sticky-actions__status">
+                    {props.reviewResult.summary.byStatus.accepted} übernommen ·{" "}
+                    {props.reviewResult.summary.byStatus.manuallyChecked} manuell geprüft ·{" "}
+                    {props.reviewResult.summary.byStatus.open} offen ·{" "}
+                    {props.reviewResult.summary.byStatus.deferred} später
                   </div>
-                )}
-                {props.mode === "CORRECTION" && (
-                  <div
-                    className="fc-sticky-actions fc-sticky-actions--correction"
-                    aria-label="Korrekturergebnis"
-                  >
-                    <strong>Durchgeführt: {batchSummary?.applied ?? 0}</strong>
-                    <span>Erneut prüfen: {batchSummary?.stale ?? 0}</span>
-                    <span>Fehlgeschlagen: {batchSummary?.failed ?? 0}</span>
-                    <span>Prüfen: {props.reviewResult.summary.byClass.manual}</span>
-                    <span>Technisch blockiert: {props.reviewResult.summary.byClass.technical}</span>
-                    <span className="fc-muted">
-                      Sichere automatische Korrekturen werden sequenziell angewendet
-                    </span>
-                  </div>
-                )}
-                <section className="fc-filters" aria-label="Prüfhinweise filtern">
-                  <label className="fc-search">
-                    <span>Suche</span>
-                    <div>
-                      <Search size={16} aria-hidden="true" />
-                      <input
-                        type="search"
-                        placeholder="Fußnoten oder Prüfhinweise durchsuchen"
-                        value={filters.search}
-                        onChange={(event) => setFilters({ ...filters, search: event.target.value })}
-                      />
-                    </div>
-                  </label>
-                  <div className="fc-filters-desktop">
-                    <FilterFields filters={filters} onChange={setFilters} />
-                  </div>
-                  <div className="fc-filters-mobile">
-                    <Collapsible
-                      label={
-                        <>
-                          <Filter size={15} aria-hidden="true" />
-                          Filter
-                        </>
+                  <div className="fc-bulk-actions">
+                    <NeonButton
+                      variant="primary"
+                      size="sm"
+                      disabled={
+                        isMutationRunning || (props.currentPlan?.totals.eligible ?? 0) === 0
                       }
-                      contentClassName="fc-filter-mobile-content"
+                      onClick={props.onRunReviewBatch}
                     >
-                      <FilterFields filters={filters} onChange={setFilters} />
-                    </Collapsible>
+                      {isBatchRunning ? (
+                        <LoaderCircle className="fc-spin" size={15} aria-hidden="true" />
+                      ) : (
+                        <Play size={15} aria-hidden="true" />
+                      )}
+                      {isBatchRunning
+                        ? "Änderungen werden durchgeführt …"
+                        : "Ausgewählte Änderungen durchführen"}
+                    </NeonButton>
+                    <NeonButton
+                      variant="secondary"
+                      size="sm"
+                      disabled={isBatchRunning}
+                      onClick={props.onAcceptAllAutomatic}
+                    >
+                      <CheckCheck size={15} aria-hidden="true" />
+                      Alle automatischen übernehmen
+                    </NeonButton>
+                    <NeonButton
+                      variant="secondary"
+                      size="sm"
+                      disabled={isBatchRunning || Object.keys(props.decisionState).length === 0}
+                      onClick={props.onResetDecisions}
+                    >
+                      <RotateCcw size={15} aria-hidden="true" />
+                      Entscheidungen zurücksetzen
+                    </NeonButton>
                   </div>
-                  <div className="fc-filter-status">
-                    <span>
-                      {filteredItems.length} von {props.reviewResult.items.length} Prüfhinweisen
-                      angezeigt
-                    </span>
-                    {activeFilters && (
-                      <NeonButton
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setFilters(DEFAULT_REVIEW_FILTERS)}
-                      >
-                        Filter zurücksetzen
-                      </NeonButton>
-                    )}
+                  {(props.currentPlan?.totals.eligible ?? 0) === 0 && (
+                    <span className="fc-muted">Keine ausgewählten sicheren Änderungen.</span>
+                  )}
+                </div>
+              )}
+              {props.mode === "CORRECTION" && (
+                <div
+                  className="fc-sticky-actions fc-sticky-actions--correction"
+                  aria-label="Korrekturergebnis"
+                >
+                  <strong>Durchgeführt: {batchSummary?.applied ?? 0}</strong>
+                  <span>Erneut prüfen: {batchSummary?.stale ?? 0}</span>
+                  <span>Fehlgeschlagen: {batchSummary?.failed ?? 0}</span>
+                  <span>Prüfen: {props.reviewResult.summary.byClass.manual}</span>
+                  <span>Technisch blockiert: {props.reviewResult.summary.byClass.technical}</span>
+                  <span className="fc-muted">
+                    Sichere automatische Korrekturen werden sequenziell angewendet
+                  </span>
+                </div>
+              )}
+              <section className="fc-filters" aria-label="Prüfhinweise filtern">
+                <label className="fc-search">
+                  <span>Suche</span>
+                  <div>
+                    <Search size={16} aria-hidden="true" />
+                    <input
+                      type="search"
+                      placeholder="Fußnoten oder Prüfhinweise durchsuchen"
+                      value={filters.search}
+                      onChange={(event) => setFilters({ ...filters, search: event.target.value })}
+                    />
                   </div>
-                </section>
+                </label>
+                <div className="fc-filters-desktop">
+                  <FilterFields filters={filters} onChange={setFilters} />
+                </div>
+                <div className="fc-filters-mobile">
+                  <Collapsible
+                    label={
+                      <>
+                        <Filter size={15} aria-hidden="true" />
+                        Filter
+                      </>
+                    }
+                    contentClassName="fc-filter-mobile-content"
+                  >
+                    <FilterFields filters={filters} onChange={setFilters} />
+                  </Collapsible>
+                </div>
+                <div className="fc-filter-status">
+                  <span>
+                    {filteredItems.length} von {props.reviewResult.items.length} Prüfhinweisen
+                    angezeigt
+                  </span>
+                  {activeFilters && (
+                    <NeonButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setFilters(DEFAULT_REVIEW_FILTERS)}
+                    >
+                      Filter zurücksetzen
+                    </NeonButton>
+                  )}
+                </div>
+              </section>
 
-                {groups.length === 0 ? (
-                  <section className="fc-no-results">
-                    <h2>Keine passenden Prüfhinweise</h2>
-                    <p>Ändern oder entfernen Sie die aktiven Filter.</p>
-                  </section>
-                ) : (
-                  <div className="fc-results" aria-label="Prüfergebnisse">
-                    {visibleGroups.map((group) => (
-                      <FootnoteGroup
-                        key={group.footnote.id}
-                        group={group}
-                        mode={props.mode}
-                        engineResult={props.engineResult as FootnoteEngineResult}
-                        onSetStatus={props.onSetStatus}
-                        onClearStatus={props.onClearStatus}
-                        writeBackState={props.writeBackState}
-                        onApplySingle={props.onApplySingle}
-                        batchRunning={isMutationRunning}
-                        open={openFootnotes.has(group.footnote.id)}
-                        onOpenChange={(open) =>
-                          setOpenFootnotes((current) =>
-                            setFootnoteOpen(
-                              current,
-                              group.footnote.id,
-                              open,
-                              props.autoCloseInactiveFootnotes
-                            )
+              {groups.length === 0 ? (
+                <section className="fc-no-results">
+                  <h2>Keine passenden Prüfhinweise</h2>
+                  <p>Ändern oder entfernen Sie die aktiven Filter.</p>
+                </section>
+              ) : (
+                <div className="fc-results" aria-label="Prüfergebnisse">
+                  {visibleGroups.map((group) => (
+                    <FootnoteGroup
+                      key={group.footnote.id}
+                      group={group}
+                      mode={props.mode}
+                      engineResult={props.engineResult as FootnoteEngineResult}
+                      onSetStatus={props.onSetStatus}
+                      onClearStatus={props.onClearStatus}
+                      writeBackState={props.writeBackState}
+                      onApplySingle={props.onApplySingle}
+                      batchRunning={isMutationRunning}
+                      open={openFootnotes.has(group.footnote.id)}
+                      onOpenChange={(open) =>
+                        setOpenFootnotes((current) =>
+                          setFootnoteOpen(
+                            current,
+                            group.footnote.id,
+                            open,
+                            props.autoCloseInactiveFootnotes
                           )
-                        }
-                      />
-                    ))}
-                    {visibleGroupLimit < groups.length && (
-                      <NeonButton
-                        className="fc-load-more"
-                        variant="secondary"
-                        onClick={() => setVisibleGroupLimit((limit) => limit + 80)}
-                      >
-                        Weitere {Math.min(80, groups.length - visibleGroupLimit)} Fußnoten anzeigen
-                      </NeonButton>
-                    )}
-                  </div>
-                )}
+                        )
+                      }
+                    />
+                  ))}
+                  {visibleGroupLimit < groups.length && (
+                    <NeonButton
+                      className="fc-load-more"
+                      variant="secondary"
+                      onClick={() => setVisibleGroupLimit((limit) => limit + 80)}
+                    >
+                      Weitere {Math.min(80, groups.length - visibleGroupLimit)} Fußnoten anzeigen
+                    </NeonButton>
+                  )}
+                </div>
+              )}
             </>
             <GlobalTechnicalData
               readerMetrics={props.readerMetrics}
@@ -1235,8 +1342,8 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
                 </Heading>
                 <p>
                   Eine neue Analyse ersetzt die aktuellen Ergebnisse. Entscheidungen für
-                  unveränderte Prüfhinweise werden weiterverwendet; nicht mehr passende Entscheidungen
-                  werden verworfen.
+                  unveränderte Prüfhinweise werden weiterverwendet; nicht mehr passende
+                  Entscheidungen werden verworfen.
                 </p>
                 <div className="fc-dialog__actions">
                   <NeonButton variant="secondary" onClick={props.onCancelReanalysis}>
@@ -1249,6 +1356,16 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
               </AriaDialog>
             </Modal>
           </ModalOverlay>
+        )}
+        {props.engineResult?.documentSourceRegistry && (
+          <DocumentSourceReview
+            registry={props.engineResult.documentSourceRegistry}
+            open={props.showSourceReview}
+            onOpenChange={(open) =>
+              open ? props.onOpenSourceReview() : props.onCloseSourceReview()
+            }
+            onPromote={props.onPromoteDocumentSources}
+          />
         )}
       </div>
     </main>
