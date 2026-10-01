@@ -75,15 +75,15 @@ Stand der lokalen Vorbereitung: **1. Oktober 2026**. Git-Stand, lokale Änderung
 | 8–12 | Befunde, Quellenparser, Einstellungen, Regelwerk und Prüfentscheidungen. |
 | 13–15 | Bedienoberfläche, sichere Word-Korrekturen, Batch-Verarbeitung und CSV-Bericht. |
 | 16 / Safari-Kompatibilität | Produkthärtung und Produktionshosting; im Git-Verlauf enthalten. |
-| 16.4 | Word-Kompatibilitätsfallback; als WIP-Snapshot committed, separate Validierung nötig. |
+| 16.4 | Word-Kompatibilitätsfallback; mit `bf75519` nach main übernommen. |
 | 17.1 | Segmentierung und Prüfoberfläche gehärtet; committed. |
 | 17.4 | Einstellungen vereinfacht und Verzeichnisse strukturiert; vorgezogen und committed. |
 | 17.2 einschließlich 17.2.2/17.2.3 | Quellenregister und Zitierzuverlässigkeit; im CTO-Chat abgeschlossen, Commit `7ae0f63`. |
-| 17.3 / 17.3.2 | Erweiterte Quellenerkennung und Reliability-Fixes liegen lokal vor; noch nicht committed, Real-Word-Validierung offen. |
+| 17.3 / 17.3.2 | Erweiterte Quellenerkennung und Reliability-Fixes; committed und gepusht als `a274652`. Echte Word-/Installer-Prüfungen bleiben separat zu dokumentieren. |
 
 ### Git-Verlauf
 
-Ausgewählter, chronologisch belegter Ausschnitt des Branches `poc/17.2-source-registry`. POC-Gruppen können mehrere Unterversionen enthalten. Die Beschriftungen sind POC-Zuordnungen, keine zusätzlichen Git-Tags; uncommittete Änderungen erscheinen darunter separat. Es werden keine unbelegten Branches oder Merges ergänzt.
+Ausgewählte Meilensteine der Entwicklung bis POC 17.3.2; die POC-17-Arbeit entstand auf `poc/17.2-source-registry`. POC-Gruppen können mehrere Unterversionen enthalten. Der Graph zeigt die ausgewählten Entwicklungscommits in Reihenfolge; separate Validierungs-, Dokumentations- und Merge-Commits sind ausgelassen. Die Beschriftungen sind POC-Zuordnungen, keine zusätzlichen Git-Tags.
 
 ```mermaid
 %%{init: {'theme': 'base', 'gitGraph': {'mainBranchName': 'poc/17.2-source-registry'}, 'themeVariables': {'primaryColor': '#F7F4EC', 'primaryTextColor': '#18313A', 'lineColor': '#18313A', 'git0': '#18313A', 'gitBranchLabel0': '#F7F4EC', 'commitLabelColor': '#18313A', 'commitLabelBackground': '#F7F4EC'}}}%%
@@ -96,10 +96,11 @@ gitGraph
     commit id: "2d0ccf3" tag: "POC 16.4 WIP"
     commit id: "556238c" tag: "POC 17.1"
     commit id: "bd25554" tag: "POC 17.4"
-    commit id: "7ae0f63" tag: "POC 17.2" type: HIGHLIGHT
+    commit id: "7ae0f63" tag: "POC 17.2"
+    commit id: "a274652" tag: "POC 17.3.2" type: HIGHLIGHT
 ```
 
-**Lokal vorbereitet:** POC 17.3/17.3.2 sowie Logo, Markenfarben und Installationsdokumentation. Der Graph endet beim letzten vorhandenen Commit; nach dem tatsächlichen Commit aktualisieren. Syntax: [Mermaid GitGraph](https://mermaid.js.org/syntax/gitgraph.html).
+**Enthalten:** POC 17.3/17.3.2, README-Logo und Farbpalette, Installationsanleitung und Betapakete. Die zusätzliche Designänderung am Add-in wurde zurückgenommen: Oberfläche und Word-Symbole behalten die bisherigen Farben und Logos. Syntax: [Mermaid GitGraph](https://mermaid.js.org/syntax/gitgraph.html).
 
 **Als Nächstes geplant:** 17.5 Lade-/Fortschrittsfeedback → 17.6 Fußnotennavigation → 18 Ähnlichkeit von Quellen → 19 Literatur-Bulk-Import/Export und Report-UX → 20 kontrollierte KI-/ML-Erweiterungen. Diese Funktionen sind noch keine Produktzusagen.
 

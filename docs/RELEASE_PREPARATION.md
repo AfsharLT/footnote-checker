@@ -79,3 +79,7 @@ Ein Git-Commit veröffentlicht keinen Cloudflare-Build. Die Betapakete enthalten
 Nach erfolgreicher lokaler Word-Validierung den Diff einschließlich bereits vorhandener 17.3.2-Änderungen prüfen und nur gewünschte Dateien stagen. Commit und Push erfolgen durch den Nutzer. Ein späteres Deployment ist ein eigener Schritt; anschließend die gehostete Version erneut in Word prüfen. Die tatsächliche Commit-ID dann in README/GitGraph ergänzen.
 
 Bei dieser Vorbereitung: **kein Staging, kein Commit, kein Push, kein Deployment, keine Änderung der Repository-Sichtbarkeit.**
+
+## Nachtrag: Commit und GitHub-Übernahme
+
+Der Nutzer hat POC 17.3.2 einschließlich README, Installationsanleitung und Betapaketen als `a274652` committed und nach `origin/poc/17.2-source-registry` gepusht. Die zuvor zusätzlich geänderten Add-in-Farben und Word-Symbole sind zurückgenommen; das neue Logo bleibt ausschließlich für die README erhalten. Die oben dokumentierte lokale Vorbereitung ist ein historischer Prüfstand. Auf ausdrücklichen Nutzerauftrag wird der gepushte Stand nun nach `main` übernommen; ein Hosting-Deployment oder eine Public-Schaltung gehört nicht dazu. Echte Word-/Installertests werden durch diese Git-Übernahme nicht ersetzt.

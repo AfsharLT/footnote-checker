@@ -30,3 +30,7 @@ Webpack meldet Größenwarnungen für das Taskpane-Bundle (590 KiB) und den zuge
 Der Checkout liegt auf `poc/17.2-source-registry`, letzter Commit `7ae0f63`. POC 17.3/17.3.2 sowie Branding und Dokumentation bleiben lokal uncommitted. Vorhandene POC-Änderungen wurden erhalten. Kein Staging, kein Commit, kein Push, kein PR, kein Deployment, keine Public-Schaltung.
 
 Die Downloadpakete enthalten das Produktionsmanifest und laden den gehosteten Dienst; sie enthalten keinen eingefrorenen lokalen 17.3.2-Build. Für öffentliche Freigabe bleiben die fehlende LICENSE-Datei, verbindliche Datenschutzhinweise und Distributionsprüfung offen. Es wurde keine Lizenzentscheidung erfunden.
+
+## Nachtrag: Commit und GitHub-Übernahme
+
+Der Nutzer hat POC 17.3.2 einschließlich README, Installationsanleitung und Betapaketen als `a274652` committed und nach `origin/poc/17.2-source-registry` gepusht. Die zuvor zusätzlich geänderten Add-in-Farben und Word-Symbole sind zurückgenommen; das neue Logo bleibt ausschließlich für die README erhalten. Die oben dokumentierte lokale Vorbereitung ist ein historischer Prüfstand. Auf ausdrücklichen Nutzerauftrag wird der gepushte Stand nun nach `main` übernommen; ein Hosting-Deployment oder eine Public-Schaltung gehört nicht dazu. Echte Word-/Installertests werden durch diese Git-Übernahme nicht ersetzt.
