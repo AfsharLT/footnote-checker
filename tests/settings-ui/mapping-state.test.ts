@@ -51,11 +51,11 @@ assert(
   "Alias search failed"
 );
 assert(
-  filterCitationSources(mapping, { ...DEFAULT_MAPPING_FILTERS, kind: "COMMENTARY" }).length === 21,
+  filterCitationSources(mapping, { ...DEFAULT_MAPPING_FILTERS, kind: "COMMENTARY" }).length === 23,
   "Commentary filter failed"
 );
 assert(
-  filterCitationSources(mapping, { ...DEFAULT_MAPPING_FILTERS, kind: "JOURNAL" }).length === 4,
+  filterCitationSources(mapping, { ...DEFAULT_MAPPING_FILTERS, kind: "JOURNAL" }).length === 10,
   "Journal filter failed"
 );
 assert(
@@ -201,6 +201,7 @@ assert(
 );
 resetCitationSourceMapping(storage);
 assert(
-  loadCitationSourceMapping(storage).sources.length === 25,
+  loadCitationSourceMapping(storage).sources.length ===
+    createDefaultCitationSourceMapping().sources.length,
   "Mapping reset must restore default"
 );

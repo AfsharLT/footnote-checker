@@ -2,6 +2,7 @@ import { ADDITIONAL_TYPE_RULES } from "./additional-types";
 import { BOOK_RULES } from "./book";
 import { CASE_LAW_RULES } from "./case-law";
 import { COMMENTARY_RULES } from "./commentary";
+import { CONTRIBUTION_RULES } from "./contributions";
 import { DOCUMENT_RULES } from "./document";
 import { emptyFootnoteRule } from "./empty-footnote";
 import { finalPeriodRule } from "./final-period";
@@ -19,6 +20,7 @@ export const LOCAL_RULES: readonly FootnoteRule[] = [
   ...STATUTE_RULES,
   ...CASE_LAW_RULES,
   ...COMMENTARY_RULES,
+  ...CONTRIBUTION_RULES,
   ...BOOK_RULES,
   ...JOURNAL_RULES,
   ...ADDITIONAL_TYPE_RULES,

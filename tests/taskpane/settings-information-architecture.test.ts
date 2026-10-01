@@ -20,18 +20,21 @@ const source = readFileSync(
 const activePanel = source.slice(source.indexOf("export const SettingsPanel"));
 const css = readFileSync(join(process.cwd(), "src/taskpane/styles.css"), "utf8");
 
-assert(SETTINGS_TOP_LEVEL_SECTIONS.length === 5, "Settings must have exactly five top-level sections");
+assert(
+  SETTINGS_TOP_LEVEL_SECTIONS.length === 5,
+  "Settings must have exactly five top-level sections"
+);
 assert(
   SETTINGS_TOP_LEVEL_SECTIONS.map(({ label }) => label).join("|") ===
     "Allgemein|Zitiereinstellungen|Literaturverzeichnis|Abkürzungsverzeichnis|Hilfe & Info",
   "The five top-level labels and their order must stay stable"
 );
 assert(
-  activePanel.includes('useState<SettingsTopLevelSection | null>(null)'),
+  activePanel.includes("useState<SettingsTopLevelSection | null>(null)"),
   "All top-level sections must initially be collapsed"
 );
 assert(
-  activePanel.includes('<p className={styles.subtitle}>Einstellungen</p>'),
+  activePanel.includes("<p className={styles.subtitle}>Einstellungen</p>"),
   "The Settings page title must be Einstellungen"
 );
 
@@ -64,8 +67,9 @@ assert(
   "Citation settings must expose the requested eight nested categories"
 );
 assert(
-  activePanel.includes("Festschrift-spezifische Einstellungen werden in einem späteren Schritt ergänzt."),
-  "Festschriften must have a non-invented placeholder"
+  activePanel.includes("Der Fundstellenstil gilt auch für Buchbeiträge.") &&
+    activePanel.includes("next.bookChapter.pinpointStyle = pinpointStyle"),
+  "Festschrift pinpoint selection must update the existing book-contribution preference"
 );
 assert(
   activePanel.includes("<MappingEditor") &&
@@ -89,12 +93,30 @@ const autoCloseByLabel = searchSettings("Nicht aktive Fußnoten");
 const autoCloseByHelper = searchSettings("zuvor geöffnete Fußnote");
 const autoCloseByAlias = searchSettings("Fußnote schließen");
 const authorItalic = searchSettings("Autor kursiv");
-assert(autoCloseByLabel[0]?.id === "general.autoCloseInactiveFootnotes", "Search must match labels");
-assert(autoCloseByHelper[0]?.id === "general.autoCloseInactiveFootnotes", "Search must match helper text");
-assert(autoCloseByAlias[0]?.id === "general.autoCloseInactiveFootnotes", "Search must match aliases");
-assert(authorItalic.some(({ id }) => id === "general.formatting.author"), "Search must find formatting settings");
-assert(searchSettings("sicher-kein-treffer").length === 0, "Search must return an empty result set");
-assert(SETTINGS_SEARCH_INDEX.length >= 70, "The local search index must cover the visible settings groups");
+assert(
+  autoCloseByLabel[0]?.id === "general.autoCloseInactiveFootnotes",
+  "Search must match labels"
+);
+assert(
+  autoCloseByHelper[0]?.id === "general.autoCloseInactiveFootnotes",
+  "Search must match helper text"
+);
+assert(
+  autoCloseByAlias[0]?.id === "general.autoCloseInactiveFootnotes",
+  "Search must match aliases"
+);
+assert(
+  authorItalic.some(({ id }) => id === "general.formatting.author"),
+  "Search must find formatting settings"
+);
+assert(
+  searchSettings("sicher-kein-treffer").length === 0,
+  "Search must return an empty result set"
+);
+assert(
+  SETTINGS_SEARCH_INDEX.length >= 70,
+  "The local search index must cover the visible settings groups"
+);
 
 const authorTarget = resolveSettingsSearchSelection(
   authorItalic.find(({ id }) => id === "general.formatting.author")!
@@ -107,7 +129,7 @@ assert(
 );
 assert(
   activePanel.includes('scrollIntoView({ behavior: "smooth", block: "center" })') &&
-    activePanel.includes('target.focus({ preventScroll: true })') &&
+    activePanel.includes("target.focus({ preventScroll: true })") &&
     css.includes(".fc-settings-search-target"),
   "Search navigation must center, focus and highlight its target"
 );

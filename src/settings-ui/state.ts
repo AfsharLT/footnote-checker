@@ -315,8 +315,18 @@ function sourceIdFor(input: NewCitationSourceInput): string {
 
 function citationTypesForKind(kind: CitationSourceKind) {
   if (kind === "COMMENTARY") return ["COMMENTARY"] as const;
-  if (kind === "JOURNAL") return ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE"] as const;
-  if (kind === "BOOK") return ["BOOK", "OTHER"] as const;
+  if (kind === "JOURNAL")
+    return ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE", "FORTHCOMING"] as const;
+  if (kind === "BOOK")
+    return [
+      "BOOK",
+      "BOOK_CHAPTER",
+      "FESTSCHRIFT_CONTRIBUTION",
+      "YEARBOOK_CONTRIBUTION",
+      "OTHER",
+    ] as const;
+  if (kind === "REPORT") return ["CASE_LAW", "LEGISLATIVE_MATERIAL", "OTHER"] as const;
+  if (kind === "CUSTOM") return ["MANUSCRIPT", "FORTHCOMING", "OTHER"] as const;
   return ["OTHER"] as const;
 }
 
@@ -373,15 +383,6 @@ export function addCitationSource(
     ...(input.personStructureHint ? { personStructureHint: input.personStructureHint } : {}),
     ...(input.examplePattern?.trim() ? { examplePattern: input.examplePattern.trim() } : {}),
     ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
-    ...(input.kind === "COMMENTARY" || input.kind === "JOURNAL"
-      ? {
-          workOverride: {
-            canonicalWorkId: canonicalSourceId,
-            citationType: input.kind === "COMMENTARY" ? "COMMENTARY" : "JOURNAL_ARTICLE",
-            preferredName,
-          },
-        }
-      : {}),
   });
   next.aliases.push({
     canonicalSourceId,
@@ -433,15 +434,13 @@ export function updateCitationSource(
   Object.assign(source, changes);
   if (changes.kind) {
     source.applicableCitationTypes = [...citationTypesForKind(changes.kind)];
-    source.workOverride =
-      changes.kind === "COMMENTARY" || changes.kind === "JOURNAL"
-        ? {
-            ...source.workOverride,
-            canonicalWorkId: source.canonicalSourceId,
-            citationType: changes.kind === "COMMENTARY" ? "COMMENTARY" : "JOURNAL_ARTICLE",
-            preferredName: source.workOverride?.preferredName ?? source.preferredName,
-          }
-        : undefined;
+    const citationType =
+      changes.kind === "COMMENTARY"
+        ? "COMMENTARY"
+        : changes.kind === "JOURNAL"
+          ? "JOURNAL_ARTICLE"
+          : undefined;
+    if (source.workOverride?.citationType !== citationType) delete source.workOverride;
   }
   return next;
 }

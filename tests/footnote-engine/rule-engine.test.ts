@@ -917,12 +917,12 @@ function runProfilePrecedenceCase(): void {
   );
 
   const longJournalPinpoint = analyzeFootnotes([
-    snapshot("Pawlik, Jahrbuch für Recht und Ethik 2003, 287, 310.", 3),
+    snapshot("Pawlik, GA 2003, 287, 310.", 3),
   ]).findings;
   assertReplacement(longJournalPinpoint, "JOURNAL_PINPOINT_STYLE", ", 310", " (310)");
   const qualifiedLongJournalPinpoint = analyzeFootnotes([
     snapshot(
-      "enger: Pawlik, Jahrbuch für Recht und Ethik 2003, 287, 310: keine Entschuldigung bei deutlichem Übergewicht.",
+      "enger: Pawlik, GA 2003, 287, 310: keine Entschuldigung bei deutlichem Übergewicht.",
       4
     ),
   ]).findings;

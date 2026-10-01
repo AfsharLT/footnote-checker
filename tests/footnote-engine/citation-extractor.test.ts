@@ -313,12 +313,15 @@ function runOtherCitationTypes(): void {
 
   const chapter = extract(
     "Müller, in: Festschrift für X, 2025, S. 123 ff.",
-    "BOOK_CHAPTER"
+    "FESTSCHRIFT_CONTRIBUTION"
   ).extraction;
-  assert(chapter.type === "BOOK_CHAPTER", "Book chapter extraction mismatch");
+  assert(
+    chapter.type === "FESTSCHRIFT_CONTRIBUTION",
+    "Festschrift contribution extraction mismatch"
+  );
   assert(chapter.data.containerTitle?.value === "Festschrift für X", "Container title missing");
   assert(chapter.data.firstPage?.value === "123", "Chapter first page missing");
-  assert(chapter.data.pinpointPages[0].suffix === "ff.", "Chapter page suffix missing");
+  assert(chapter.data.firstPage?.suffix === "ff.", "Chapter page suffix missing");
 
   const legislative = extract("BT-Drs. 20/1234, S. 15 f.", "LEGISLATIVE_MATERIAL").extraction;
   assert(legislative.type === "LEGISLATIVE_MATERIAL", "Legislative extraction mismatch");

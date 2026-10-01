@@ -2,6 +2,7 @@ import { parseLegacyWorkMappingCsv } from "./csv";
 import { BUNDLED_LEGACY_WORK_MAPPING_CSV } from "./generated/legacy-work-mapping.generated";
 import { migrateLegacyWorkMapping } from "./legacy";
 import type { CitationSourceMappingData, CitationSourceMigrationReport } from "./types";
+import { mergeCorpusCoverageSources } from "./corpus-coverage";
 
 export const CITATION_SOURCE_MAPPING_DEFAULT_SOURCE = "bundled legacy CSV";
 
@@ -23,7 +24,7 @@ export function mergeBuiltInCitationSourceAdditions(
     (source) =>
       source.canonicalSourceId === "commentary-stgb-lk-stgb" || source.preferredName === "LK-StGB"
   );
-  if (!lkSource) return mapping;
+  if (!lkSource) return mergeCorpusCoverageSources(mapping);
   const additions = LK_STRUCTURED_ALIASES.filter(
     ({ alias }) =>
       !mapping.aliases.some(
@@ -31,22 +32,25 @@ export function mergeBuiltInCitationSourceAdditions(
           candidate.canonicalSourceId === lkSource.canonicalSourceId && candidate.alias === alias
       )
   );
-  if (additions.length === 0) return mapping;
-  return {
-    ...mapping,
-    aliases: [
-      ...mapping.aliases,
-      ...additions.map(({ id, alias }) => ({
-        legacyMappingId: id,
-        canonicalSourceId: lkSource.canonicalSourceId,
-        alias,
-        matchMode: "CASE_INSENSITIVE_TEXT" as const,
-        wholeWord: true,
-        active: true,
-        legacySafetyLevel: "PROBABLE" as const,
-      })),
-    ],
-  };
+  const withLk =
+    additions.length === 0
+      ? mapping
+      : {
+          ...mapping,
+          aliases: [
+            ...mapping.aliases,
+            ...additions.map(({ id, alias }) => ({
+              legacyMappingId: id,
+              canonicalSourceId: lkSource.canonicalSourceId,
+              alias,
+              matchMode: "CASE_INSENSITIVE_TEXT" as const,
+              wholeWord: true,
+              active: true,
+              legacySafetyLevel: "PROBABLE" as const,
+            })),
+          ],
+        };
+  return mergeCorpusCoverageSources(withLk);
 }
 
 export function migrateBundledLegacyCitationSourceMapping(): BundledLegacyMappingResult {

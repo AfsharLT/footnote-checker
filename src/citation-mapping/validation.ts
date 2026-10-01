@@ -31,8 +31,18 @@ function isKind(value: unknown): value is CitationSourceKind {
 
 function applicableCitationTypes(kind: CitationSourceKind) {
   if (kind === "COMMENTARY") return ["COMMENTARY"] as const;
-  if (kind === "JOURNAL") return ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE"] as const;
-  if (kind === "BOOK") return ["BOOK", "OTHER"] as const;
+  if (kind === "JOURNAL")
+    return ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE", "FORTHCOMING"] as const;
+  if (kind === "BOOK")
+    return [
+      "BOOK",
+      "BOOK_CHAPTER",
+      "FESTSCHRIFT_CONTRIBUTION",
+      "YEARBOOK_CONTRIBUTION",
+      "OTHER",
+    ] as const;
+  if (kind === "REPORT") return ["CASE_LAW", "LEGISLATIVE_MATERIAL", "OTHER"] as const;
+  if (kind === "CUSTOM") return ["MANUSCRIPT", "FORTHCOMING", "OTHER"] as const;
   return ["OTHER"] as const;
 }
 
@@ -111,15 +121,10 @@ function validatedWorkOverride(
 ): WorkCitationOverride | undefined {
   if (kind !== "COMMENTARY" && kind !== "JOURNAL") return undefined;
   const citationType = kind === "COMMENTARY" ? "COMMENTARY" : "JOURNAL_ARTICLE";
-  const fallback: WorkCitationOverride = {
-    canonicalWorkId: canonicalSourceId,
-    citationType,
-    preferredName,
-  };
-  if (value === undefined) return fallback;
+  if (value === undefined) return undefined;
   if (!isRecord(value)) {
     errors.push(`sources.${canonicalSourceId}.workOverride must be an object`);
-    return fallback;
+    return undefined;
   }
   if (value.canonicalWorkId !== canonicalSourceId) {
     errors.push(`sources.${canonicalSourceId}.workOverride.canonicalWorkId must match the source`);

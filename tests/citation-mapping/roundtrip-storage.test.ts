@@ -73,7 +73,10 @@ prePatternMapping.aliases = prePatternMapping.aliases.filter(
 assert(saveCitationSourceMapping(prePatternMapping, storage).success, "Legacy mapping must save");
 const migratedPatterns = loadCitationSourceMapping(storage);
 assert(
-  migratedPatterns.aliases.filter((alias) => alias.alias.includes("{Bearbeiter}")).length === 3,
+  migratedPatterns.aliases.filter(
+    (alias) =>
+      alias.canonicalSourceId === "commentary-stgb-lk-stgb" && alias.alias.includes("{Bearbeiter}")
+  ).length === 3,
   "Existing persisted mappings must receive additive built-in Bearbeiter patterns"
 );
 const disabledPattern = migratedPatterns.aliases.find(
@@ -105,8 +108,8 @@ assert(
   "Reset must restore the full legacy default"
 );
 assert(
-  loadCitationSourceMapping(storage).sources.length === 25 &&
-    loadCitationSourceMapping(storage).aliases.length === 74,
+  loadCitationSourceMapping(storage).sources.length === fullDefault.sources.length &&
+    loadCitationSourceMapping(storage).aliases.length === fullDefault.aliases.length,
   "Reset target must be the full legacy default"
 );
 

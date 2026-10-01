@@ -22,14 +22,14 @@ interface TextRange {
 const COURT_PATTERN =
   /\b(?:BVerfG|BGH|BAG|BFH|BVerwG|BSG|OLG(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+)?|KG|LG|AG)\b/;
 const OFFICIAL_COLLECTION_PATTERN =
-  /\b(?:BVerfGE|BGHSt|BGHZ|BAGE|BFHE|BVerwGE|BSGE)\s+\d+,\s*\d+\b/;
+  /\b(?:BVerfGE|BGHSt|BGHZ|RGSt|BAGE|BFHE|BVerwGE|BSGE)\.?\s+\d+,\s*\d+\b/;
 const DECISION_TYPE_PATTERN =
   /(?:\b(?:Urteil|Beschluss)\b|\b(?:Urt|U|Beschl|B|Entsch)\.(?=$|[\s,;:–—-]))/i;
 const DECISION_DATE_PATTERN = /\b(?:v\.|vom)\s*\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})\b/i;
 const DOCKET_NUMBER_PATTERN =
   /\b(?:(?:\d+|[IVXLCDM]+)\s+)?(?:StR|BvR|BvL|ZR|ZB|AZR|ABR|R|C|U|K|L|B|A)\s+\d+\/\d{2,4}\b/i;
 const JOURNAL_REFERENCE_PATTERN =
-  /\b(?:NJW|NStZ(?:-RR)?|JZ|JuS|JA|JR|StV|wistra|ZfIStW|KriPoZ|ZStW|GA|MDR|ZIP|NZG|GmbHR|DStR|DStZ|BB|NZWiSt|Jahrbuch\s+für\s+Recht\s+und\s+Ethik)\s+\d{4},\s*\d+\b/i;
+  /\b(?:NJW|NStZ(?:-RR)?|JZ|JuS|Jura|JA|JR|StV|wistra|ZfIStW|KriPoZ|ZStW|GA|MDR|MedR|medstra|HRRS|ZIP|NZG|GmbHR|DStR|DStZ|BB|NZWiSt)\s+\d{4},\s*\d+[a-z]?\b/i;
 const DATABASE_REFERENCE_PATTERN = /\b(?:BeckRS\s+\d{4},\s*\d+|juris|openJur)\b/i;
 const LEGISLATIVE_MATERIAL_PATTERN =
   /(?:\b(?:Bundestags-Drucksache|Bundesrats-Drucksache)\b|\b(?:BT|BR)-(?:Drs|Drucks)\.(?=$|[\s,]))/i;
@@ -44,7 +44,6 @@ const WORK_BEARBEITER_PATTERN = /^[^,]+\/[A-ZÄÖÜ][A-Za-zÄÖÜäöüß'-]+/;
 const BEARBEITER_IN_WORK_PATTERN =
   /^[A-ZÄÖÜ][\p{L}\p{M}'’.-]+(?:\s*\/\s*[A-ZÄÖÜ][\p{L}\p{M}'’.-]+)*\s*,\s*in\s*:\s*[^,;]{2,120}/iu;
 const MARGIN_NUMBER_PATTERN = /\b(?:Rn\.|Rdn\.|Rdnr\.)\s*\d+[A-Za-z]?\b/i;
-const AUTHOR_PREFIX_PATTERN = /^[A-ZÄÖÜ][A-Za-zÄÖÜäöüß'-]+(?:\/[A-ZÄÖÜ][A-Za-zÄÖÜäöüß'-]+)*\s*,/;
 const BOOK_TITLE_PATTERN =
   /\b(?:Strafrecht|Zivilrecht|Lehrbuch|Handbuch|Monografie|Grundkurs|Allgemeiner\s+Teil|Besonderer\s+Teil)\b/i;
 const EDITION_PATTERN = /\b\d+\.\s*Aufl\.(?=$|[\s,])/i;
@@ -52,6 +51,14 @@ const YEAR_PATTERN = /\b(?:19|20)\d{2}\b/;
 const BOOK_CHAPTER_IN_PATTERN = /\bin\s*:/i;
 const COLLECTION_WORK_PATTERN = /\b(?:Festschrift|Gedächtnisschrift|Sammelwerk|Handbuch|FS|GS)\b/i;
 const PAGE_PATTERN = /\bS\.\s*\d+\b/;
+const FESTSCHRIFT_PATTERN = /\b(?:Festschrift\s+für|FS\s+)[^,;]{2,80}/iu;
+const YEARBOOK_PATTERN = /\bJahrbuch\s+für\s+Recht\s+und\s+Ethik\s*,?\s*(?:19|20)\d{2}\b/iu;
+const MANUSCRIPT_PATTERN = /\(\s*Manuskript\s*\)/iu;
+const FORTHCOMING_PATTERN = /\(\s*im\s+Erscheinen\s*\)/iu;
+const BROAD_AUTHOR_PATTERN =
+  /^(?:(?:von|van|de)\s+)?(?:[A-ZÄÖÜ][\p{L}\p{M}'’.-]+|ders\.|dies\.)(?:\s*\/\s*[A-ZÄÖÜ][\p{L}\p{M}'’.-]+|\s+et\s+al\.)*\s*,/iu;
+const BOOK_STRUCTURE_PATTERN =
+  /^(?:(?:von|van|de)\s+)?(?:[A-ZÄÖÜ][\p{L}\p{M}'’.-]+|ders\.|dies\.)(?:\s*\/\s*[A-ZÄÖÜ][\p{L}\p{M}'’.-]+|\s+et\s+al\.)*\s*,?\s+[^;]{2,180}?(?:,?\s*\(\s*Anm\.\s*\d+\s*\)|,\s*(?:Bd\.\s*\d+\s*,\s*)?(?:19|20)\d{2})(?:\s*,)?\s*(?:S\.|§|Kap\.|\d+\.\s*Abschn\.|Rdn\.|Rn\.|\d+\s*ff?\.)/iu;
 const ACCESS_DATE_PATTERN =
   /\(?\s*(?:letzter|letzten|zuletzt(?:er)?)\s+(?:Aufruf|Abruf|abgerufen)\s*(?:am)?\s*\d{1,2}\.\d{1,2}\.\d{4}\s*\)?/i;
 const WEB_SOURCE_LABEL_PATTERN = /\b(?:Onlinequelle|Website|Internetquelle|YouTube)\b/i;
@@ -250,16 +257,120 @@ function detectBookChapter(segment: CitationSegment): CitationClassification | u
   };
 }
 
+function detectFestschrift(segment: CitationSegment): CitationClassification | undefined {
+  const marker = findSignal(
+    segment.coreText,
+    segment.coreStart,
+    FESTSCHRIFT_PATTERN,
+    "FESTSCHRIFT_PATTERN"
+  );
+  const author = findSignal(
+    segment.coreText,
+    segment.coreStart,
+    BROAD_AUTHOR_PATTERN,
+    "AUTHOR_PREFIX_PATTERN"
+  );
+  const page = findSignal(segment.coreText, segment.coreStart, PAGE_PATTERN, "PAGE_PATTERN");
+  const year = findSignal(
+    segment.coreText,
+    segment.coreStart,
+    YEAR_PATTERN,
+    "PUBLICATION_YEAR_PATTERN"
+  );
+  const internalReference = findSignal(
+    segment.coreText,
+    segment.coreStart,
+    /\(\s*Anm\.\s*\d+\s*\)/iu,
+    "INTERNAL_REFERENCE_PATTERN"
+  );
+  const afterMarker = marker ? segment.coreText.slice(marker.end! - segment.coreStart) : "";
+  if (!marker || !/^\s*,/u.test(afterMarker) || (!page && !year && !internalReference)) {
+    return undefined;
+  }
+  return {
+    type: "FESTSCHRIFT_CONTRIBUTION",
+    certainty: author ? "high" : "medium",
+    signals: compactSignals([author, marker, page, year, internalReference]),
+  };
+}
+
+function detectYearbook(segment: CitationSegment): CitationClassification | undefined {
+  const yearbook = findSignal(
+    segment.coreText,
+    segment.coreStart,
+    YEARBOOK_PATTERN,
+    "YEARBOOK_PATTERN"
+  );
+  const author = findSignal(
+    segment.coreText,
+    segment.coreStart,
+    BROAD_AUTHOR_PATTERN,
+    "AUTHOR_PREFIX_PATTERN"
+  );
+  if (!yearbook) return undefined;
+  return {
+    type: "YEARBOOK_CONTRIBUTION",
+    certainty: author ? "high" : "medium",
+    signals: compactSignals([author, yearbook]),
+  };
+}
+
+function detectManuscript(segment: CitationSegment): CitationClassification | undefined {
+  const marker = findSignal(
+    segment.coreText,
+    segment.coreStart,
+    MANUSCRIPT_PATTERN,
+    "MANUSCRIPT_PATTERN"
+  );
+  if (!marker) return undefined;
+  const author = findSignal(
+    segment.coreText,
+    segment.coreStart,
+    BROAD_AUTHOR_PATTERN,
+    "AUTHOR_PREFIX_PATTERN"
+  );
+  return {
+    type: "MANUSCRIPT",
+    certainty: author ? "high" : "medium",
+    signals: compactSignals([author, marker]),
+  };
+}
+
+function detectForthcoming(segment: CitationSegment): CitationClassification | undefined {
+  const state = findSignal(
+    segment.coreText,
+    segment.coreStart,
+    FORTHCOMING_PATTERN,
+    "FORTHCOMING_PATTERN"
+  );
+  if (!state) return undefined;
+  return { type: "FORTHCOMING", certainty: "medium", signals: [state] };
+}
+
 function findAuthorBeforeJournal(
   segment: CitationSegment,
   journalSignal: ClassificationSignal
 ): ClassificationSignal | undefined {
   const journalStart = journalSignal.start! - segment.coreStart;
   const prefix = segment.coreText.slice(0, journalStart).replace(/[\s,]+$/, "");
-  const authorPattern = /^[A-ZÄÖÜ][A-Za-zÄÖÜäöüß'-]+(?:\/[A-ZÄÖÜ][A-Za-zÄÖÜäöüß'-]+)*$/;
-
-  if (!authorPattern.test(prefix)) return undefined;
-  return createSignal("AUTHOR_BEFORE_JOURNAL_PATTERN", prefix, segment.coreStart);
+  const authorPattern =
+    /^(?:(?:von|van|de)\s+)?(?:[A-ZÄÖÜ][\p{L}\p{M}'’.-]+|ders\.|dies\.)(?:\s*\/\s*[A-ZÄÖÜ][\p{L}\p{M}'’.-]+|\s+et\s+al\.)*$/iu;
+  if (authorPattern.test(prefix)) {
+    return createSignal("AUTHOR_BEFORE_JOURNAL_PATTERN", prefix, segment.coreStart);
+  }
+  const comma = prefix.indexOf(",");
+  if (comma <= 0) return undefined;
+  const author = prefix.slice(0, comma).trim();
+  const interveningTitle = prefix.slice(comma + 1).trim();
+  if (!authorPattern.test(author) || interveningTitle.length < 2 || interveningTitle.length > 120) {
+    return undefined;
+  }
+  return createSignal(
+    "AUTHOR_BEFORE_JOURNAL_PATTERN",
+    author,
+    segment.coreStart,
+    segment.coreStart + author.length
+  );
 }
 
 function detectJournalArticle(
@@ -288,7 +399,7 @@ function detectBook(segment: CitationSegment): CitationClassification | undefine
   const author = findSignal(
     segment.coreText,
     segment.coreStart,
-    AUTHOR_PREFIX_PATTERN,
+    BROAD_AUTHOR_PATTERN,
     "AUTHOR_PREFIX_PATTERN"
   );
   const title = findSignal(
@@ -315,9 +426,12 @@ function detectBook(segment: CitationSegment): CitationClassification | undefine
     MARGIN_NUMBER_PATTERN,
     "MARGIN_NUMBER_PATTERN"
   );
+  const page = findSignal(segment.coreText, segment.coreStart, PAGE_PATTERN, "PAGE_PATTERN");
   const strongStructure =
     Boolean(author && edition && year) ||
-    Boolean(author && title && (edition || year || marginNumber));
+    Boolean(author && title && (edition || year || marginNumber)) ||
+    Boolean(author && page && /,\s*[^,;]{2,180},?\s*S\.\s*\d/iu.test(segment.coreText)) ||
+    BOOK_STRUCTURE_PATTERN.test(segment.coreText);
 
   if (!strongStructure) return undefined;
 
@@ -562,6 +676,18 @@ export function classifyCitationSegment(
       caseLawForm: caseLaw.form,
     };
   }
+
+  const manuscript = detectManuscript(segment);
+  if (manuscript) return manuscript;
+
+  const forthcoming = detectForthcoming(segment);
+  if (forthcoming) return forthcoming;
+
+  const festschrift = detectFestschrift(segment);
+  if (festschrift) return festschrift;
+
+  const yearbook = detectYearbook(segment);
+  if (yearbook) return yearbook;
 
   const commentary = detectCommentary(segment);
   if (commentary) return commentary;

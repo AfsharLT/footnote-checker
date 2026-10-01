@@ -2,15 +2,15 @@
 <OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0" xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="TaskPaneApp">
   <Id>e99f1e9d-b886-4eb7-a1b8-2c0561b078e8</Id>
   <Version>1.0.0.0</Version>
-  <ProviderName>Contoso</ProviderName>
-  <DefaultLocale>en-US</DefaultLocale>
-  <DisplayName DefaultValue="Footnote Checker"/>
-  <Description DefaultValue="A template to get started."/>
+  <ProviderName>Afshar Shayesteh</ProviderName>
+  <DefaultLocale>de-DE</DefaultLocale>
+  <DisplayName DefaultValue="Footnote-Checker"/>
+  <Description DefaultValue="Prüft juristische Fußnoten und unterstützt sichere, nachvollziehbare Korrekturen."/>
   <IconUrl DefaultValue="https://footnote-checker.shayesteh-afshar.workers.dev/assets/footnote-checker-32.png"/>
   <HighResolutionIconUrl DefaultValue="https://footnote-checker.shayesteh-afshar.workers.dev/assets/footnote-checker-80.png"/>
-  <SupportUrl DefaultValue="https://www.contoso.com/help"/>
+  <SupportUrl DefaultValue="https://github.com/AfsharLT/footnote-checker/issues"/>
   <AppDomains>
-    <AppDomain>https://www.contoso.com</AppDomain>
+    <AppDomain>https://footnote-checker.shayesteh-afshar.workers.dev</AppDomain>
   </AppDomains>
   <Hosts>
     <Host Name="Document"/>
@@ -72,13 +72,13 @@
         <bt:Url id="Taskpane.Url" DefaultValue="https://footnote-checker.shayesteh-afshar.workers.dev/taskpane.html"/>
       </bt:Urls>
       <bt:ShortStrings>
-        <bt:String id="GetStarted.Title" DefaultValue="Get started with your sample add-in!"/>
-        <bt:String id="CommandsGroup.Label" DefaultValue="Commands Group"/>
-        <bt:String id="TaskpaneButton.Label" DefaultValue="Footnote Checker"/>
+        <bt:String id="GetStarted.Title" DefaultValue="Footnote-Checker starten"/>
+        <bt:String id="CommandsGroup.Label" DefaultValue="Footnote-Checker"/>
+        <bt:String id="TaskpaneButton.Label" DefaultValue="Footnote-Checker"/>
       </bt:ShortStrings>
       <bt:LongStrings>
-        <bt:String id="GetStarted.Description" DefaultValue="Your add-in loaded successfully. Go to the HOME tab and click the 'Footnote Checker' button to get started."/>
-        <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Open the Footnote Checker task pane"/>
+        <bt:String id="GetStarted.Description" DefaultValue="Das Add-in ist bereit. Öffne unter Start den Footnote-Checker."/>
+        <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Juristische Fußnoten prüfen"/>
       </bt:LongStrings>
     </Resources>
   </VersionOverrides>

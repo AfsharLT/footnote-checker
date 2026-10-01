@@ -156,7 +156,16 @@ function persistentSourceCompatible(source: CitationSourceMaster, record: ItemRe
 }
 
 function persistentQueryValues(fingerprint: SourceFingerprint): string[] {
+  const work = fingerprint.normalizedWorkTitle ?? fingerprint.normalizedContainerTitle;
+  const authorWork =
+    fingerprint.normalizedAuthors.length > 0 && work
+      ? `${fingerprint.normalizedAuthors.join(" ")} ${work}`
+      : undefined;
+  const authorWorkYear =
+    authorWork && fingerprint.year ? `${authorWork} ${fingerprint.year}` : undefined;
   return [
+    authorWorkYear,
+    authorWork,
     fingerprint.normalizedWorkTitle,
     fingerprint.shortTitle,
     fingerprint.normalizedContainerTitle,
@@ -342,13 +351,31 @@ function extractionLocatorStart(
       .sort((left, right) => left - right)[0];
   }
   if (extraction.type === "BOOK") {
-    return locatorStart([...extraction.data.marginNumbers, ...extraction.data.pages], item);
+    return locatorStart(
+      [
+        ...extraction.data.marginNumbers,
+        ...extraction.data.pages,
+        ...(extraction.data.structuralLocators ?? []),
+      ],
+      item
+    );
   }
   if (extraction.type === "JOURNAL_ARTICLE") {
     return locatorStart(extraction.data.pinpointPages, item);
   }
   if (extraction.type === "BOOK_CHAPTER") {
     return locatorStart([...extraction.data.pinpointPages, ...extraction.data.marginNumbers], item);
+  }
+  if (
+    extraction.type === "FESTSCHRIFT_CONTRIBUTION" ||
+    extraction.type === "YEARBOOK_CONTRIBUTION"
+  ) {
+    return locatorStart(
+      [extraction.data.firstPage, ...extraction.data.pinpointPages].filter(
+        (value): value is CitationLocator => Boolean(value)
+      ),
+      item
+    );
   }
   if (extraction.type === "CASE_NOTE") {
     return locatorStart(extraction.data.pinpointPages, item);
@@ -506,6 +533,27 @@ export function createSourceFingerprint(
     year = componentValue(extraction.data.year) ?? year;
     volume = componentValue(extraction.data.volume);
     journalStartPage = componentValue(extraction.data.firstPage);
+  } else if (extraction?.type === "FESTSCHRIFT_CONTRIBUTION") {
+    normalizedAuthors = people(extraction.data.authors);
+    normalizedWorkTitle = normalizeIdentityText(extraction.data.containerTitle.value);
+    normalizedContainerTitle = normalizedWorkTitle;
+    year = componentValue(extraction.data.year) ?? year;
+    journalStartPage = extraction.data.firstPage?.value;
+  } else if (extraction?.type === "YEARBOOK_CONTRIBUTION") {
+    normalizedAuthors = people(extraction.data.authors);
+    normalizedWorkTitle = normalizeIdentityText(extraction.data.containerTitle.value);
+    normalizedContainerTitle = normalizedWorkTitle;
+    year = componentValue(extraction.data.year) ?? year;
+    journalStartPage = extraction.data.firstPage?.value;
+  } else if (extraction?.type === "MANUSCRIPT") {
+    normalizedAuthors = people(extraction.data.authors);
+    normalizedWorkTitle = "manuskript";
+  } else if (extraction?.type === "FORTHCOMING") {
+    normalizedContainerTitle = componentValue(extraction.data.publicationSource)
+      ? normalizeIdentityText(extraction.data.publicationSource!.value)
+      : undefined;
+    normalizedWorkTitle = normalizedContainerTitle;
+    year = componentValue(extraction.data.year) ?? year;
   } else if (extraction?.type === "CASE_NOTE") {
     normalizedAuthors = people(extraction.data.authors);
     normalizedContainerTitle = componentValue(extraction.data.journal)
@@ -1205,7 +1253,8 @@ function sourceIdsInFootnote(
 function resolveSpecialRecords(
   records: readonly ItemRecord[],
   footnoteIdByOrdinal: ReadonlyMap<number, string>,
-  state: RegistryBuildState
+  state: RegistryBuildState,
+  persistentIndex: PersistentSourceIndex
 ): void {
   for (let index = 0; index < records.length; index += 1) {
     const record = records[index];
@@ -1261,11 +1310,14 @@ function resolveSpecialRecords(
     const previous = [...records.slice(0, index)]
       .reverse()
       .map((candidate) => state.resolutionByItemId.get(candidate.item.id))
-      .find((resolution) => resolution?.documentSourceId);
+      .find((resolution) => resolution?.documentSourceId || resolution?.persistentSourceId);
     const previousSource = previous?.documentSourceId
       ? state.sources.get(previous.documentSourceId)
       : undefined;
-    if (!previousSource) {
+    const previousPersistentSource = previous?.persistentSourceId
+      ? persistentIndex.sourcesById.get(previous.persistentSourceId)
+      : undefined;
+    if (!previousSource && !previousPersistentSource) {
       unresolvedSpecial(record, "UNRESOLVED", "IMMEDIATE_CONTEXT", [], state);
       continue;
     }
@@ -1275,14 +1327,47 @@ function resolveSpecialRecords(
       .replace(/[\s,;.]+$/g, "")
       .trim();
     if (!withoutSignal) {
-      linkSpecialRecord(record, previousSource, "IMMEDIATE_CONTEXT", undefined, state);
+      if (previousSource) {
+        linkSpecialRecord(record, previousSource, "IMMEDIATE_CONTEXT", undefined, state);
+      } else {
+        addResolution(state, {
+          citationItemId: record.item.id,
+          persistentSourceId: previousPersistentSource!.canonicalSourceId,
+          resolution: "PERSISTENT_MATCH",
+          confidence: "high",
+          canEstablishIdentity: false,
+          warnings: [...(record.fingerprint?.warnings ?? [])],
+          explanation: {
+            strategy: "IMMEDIATE_CONTEXT",
+            candidateDocumentSourceIds: [previousPersistentSource!.canonicalSourceId],
+          },
+        });
+      }
       continue;
     }
     if (fingerprint && record.specialReference === "DERS_DIES") {
+      const previousAuthors = previousSource
+        ? previousSource.canonicalFingerprint.normalizedAuthors
+        : previousPersistentSource
+          ? [normalizePersonName(previousPersistentSource.preferredName.split(",")[0])]
+          : [];
       const inferred: SourceFingerprint = {
         ...fingerprint,
-        normalizedAuthors: [...previousSource.canonicalFingerprint.normalizedAuthors],
+        normalizedAuthors: [...previousAuthors],
       };
+      if (
+        previousAuthors.length > 0 &&
+        processPersistentRecord({ ...record, fingerprint: inferred }, state, persistentIndex)
+      ) {
+        const inferredResolution = state.resolutionByItemId.get(record.item.id);
+        if (inferredResolution?.finalState === "PERSISTENT_MATCH") {
+          inferredResolution.explanation = {
+            ...inferredResolution.explanation,
+            strategy: "IMMEDIATE_CONTEXT",
+          };
+        }
+        continue;
+      }
       const candidates = [...state.sources.values()]
         .filter((source) =>
           source.canonicalFingerprint.normalizedAuthors.some((author) =>
@@ -1320,7 +1405,7 @@ function resolveSpecialRecords(
       record,
       "AMBIGUOUS",
       "IMMEDIATE_CONTEXT",
-      [previousSource.documentSourceId],
+      [previousSource?.documentSourceId ?? previousPersistentSource!.canonicalSourceId],
       state
     );
   }
@@ -1373,14 +1458,13 @@ function itemRecords(input: BuildDocumentSourceRegistryInput): ItemRecord[] {
           localFailure = error instanceof Error ? error.message : "UNKNOWN_LOCAL_FAILURE";
         }
         const lower = item.rawText.trim().toLocaleLowerCase("de-DE");
-        const specialReference =
-          item.internalReferences.length > 0
+        const specialReference = /^(?:ders\.|dies\.)/u.test(lower)
+          ? "DERS_DIES"
+          : item.internalReferences.length > 0
             ? "ANM"
-            : /^(?:ders\.|dies\.)/u.test(lower)
-              ? "DERS_DIES"
-              : /^(?:ebenda|ebd\.)/u.test(lower)
-                ? "EBENDA"
-                : null;
+            : /^(?:ebenda|ebd\.)/u.test(lower)
+              ? "EBENDA"
+              : null;
         const supportedSource = !["STATUTE", "CASE_LAW"].includes(sourceType);
         const canEstablishIdentity = Boolean(
           supportedSource &&
@@ -1429,12 +1513,12 @@ export function buildDocumentSourceRegistry(
     .filter((record) => !record.specialReference)
     .forEach((record) => processRegularRecord(record, state, persistentIndex));
   records
-    .filter((record) => Boolean(record.specialReference))
+    .filter((record) => record.specialReference === "ANM")
     .forEach((record) => processPersistentRecord(record, state, persistentIndex));
   const footnoteIdByOrdinal = new Map(
     input.footnotes.map((footnote) => [footnote.ordinal, footnote.id])
   );
-  resolveSpecialRecords(records, footnoteIdByOrdinal, state);
+  resolveSpecialRecords(records, footnoteIdByOrdinal, state, persistentIndex);
   for (const record of records) {
     if (state.resolutionByItemId.has(record.item.id)) continue;
     addResolution(state, {

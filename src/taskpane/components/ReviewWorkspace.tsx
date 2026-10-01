@@ -928,7 +928,7 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
           <div className="fc-brand">
             <BrandLogo size={34} />
             <div>
-              <h1>Footnote Checker</h1>
+              <h1>Footnote-Checker</h1>
               <p>Juristische Fußnoten prüfen</p>
             </div>
           </div>

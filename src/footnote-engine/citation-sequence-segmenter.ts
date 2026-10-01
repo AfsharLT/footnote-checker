@@ -1,5 +1,5 @@
 import type { FootnoteSnapshot } from "../taskpane/taskpane";
-import { findLocalCitationCoreStart } from "./citation-core";
+import { findLocalCitationCoreStart, hasStrongCitationCoreOpening } from "./citation-core";
 import { isRangeProtected } from "./protected-ranges";
 import type {
   AnalysisProtectedRange,
@@ -190,7 +190,7 @@ function citationEvidence(rawText: string): CitationEvidence {
   const reporter = add(
     "reporter",
     2,
-    /\b(?:BVerfGE|BGHSt|BGHZ|RGSt|NJW|NStZ(?:-RR)?|JZ|JuS|JA|JR|StV|wistra|ZStW|GA|MDR|MedR|BeckRS|Jahrbuch\s+für\s+Recht\s+und\s+Ethik)\b/i
+    /\b(?:BVerfGE|BGHSt|BGHZ|RGSt|NJW|NStZ(?:-RR)?|JZ|JuS|Jura|JA|JR|StV|wistra|ZStW|GA|MDR|MedR|medstra|HRRS|BeckRS)\b/i
   );
   const statute = add("statute", 2, /(?:^|[\s,;(])(?:§§?|Art\.)\s*\d/i);
   const margin = add("marginNumber", 2, /\b(?:Rn\.|Rdn\.?|Rdnr\.)\s*\d/i);
@@ -198,7 +198,7 @@ function citationEvidence(rawText: string): CitationEvidence {
   const authorShape = add(
     "authorShape",
     1,
-    /^(?:(?:vgl\.|s\.|s\.\s*auch|dagegen|kritisch|ähnlich|hierzu|näher|so)\s+)?[A-ZÄÖÜ][\p{L}\p{M}'’-]+(?:\/[A-ZÄÖÜ][\p{L}\p{M}'’-]+)*\s*,/iu
+    /^(?:(?:vgl\.|s\.|s\.\s*auch|dagegen|kritisch|ähnlich|hierzu|näher|so)\s+)?(?:(?:von|van|de)\s+)?(?:[A-ZÄÖÜ][\p{L}\p{M}'’-]+|ders\.|dies\.)(?:\/[A-ZÄÖÜ][\p{L}\p{M}'’-]+)*\s*,/iu
   );
   add("shortAuthorReference", 1, /^(?:ders\.|dies\.)\s+/i);
   const workShape = add(
@@ -214,6 +214,10 @@ function citationEvidence(rawText: string): CitationEvidence {
   );
   const online = add("online", 2, /(?:https?:\/\/|www\.)/i);
   add("manuscript", 2, /\(Manuskript\)/i);
+  const festschrift = add("festschrift", 3, /\b(?:Festschrift\s+für|FS\s+)[^,;]{2,80}/iu);
+  const yearbook = add("yearbook", 3, /\bJahrbuch\s+für\s+Recht\s+und\s+Ethik\b/iu);
+  const manuscript = /\(Manuskript\)/i.test(text);
+  const forthcoming = add("forthcoming", 2, /\(\s*im\s+Erscheinen\s*\)/iu);
   add("sourceNoun", 1, /\b(?:Quelle|Fundstelle|Werk)\b/i);
   const yearPage = add("yearPage", 1, /\b(?:19|20)\d{2}\s*,\s*\d+/);
   const docket = add("docket", 2, /\b(?:StR|BvR|BvL|ZR|ZB|AZR|ABR)\s+\d+\/\d+/i);
@@ -221,7 +225,11 @@ function citationEvidence(rawText: string): CitationEvidence {
   add("locatorContinuation", 1, /^\d+\s*ff?\./i);
 
   let citationType: CitationType | undefined;
-  if (material) citationType = "LEGISLATIVE_MATERIAL";
+  if (festschrift) citationType = "FESTSCHRIFT_CONTRIBUTION";
+  else if (yearbook) citationType = "YEARBOOK_CONTRIBUTION";
+  else if (manuscript) citationType = "MANUSCRIPT";
+  else if (forthcoming) citationType = "FORTHCOMING";
+  else if (material) citationType = "LEGISLATIVE_MATERIAL";
   else if (administrative) citationType = "ADMINISTRATIVE_MATERIAL";
   else if (online) citationType = "ONLINE_SOURCE";
   else if (court || reporter || docket) citationType = "CASE_LAW";
@@ -313,12 +321,39 @@ function isSentenceBoundary(text: string, index: number, paragraphEnd: number): 
   if (
     character === "." &&
     /\d/.test(text[index - 1]) &&
-    /^(?:Aufl|Ed|Abschn|Alt|Var|Fall)\./i.test(text.slice(next))
+    /^(?:Aufl|Ed|Abschn|Alt|Var|Fall|S|Seite|Rn|Rdn|Rdnr|Kap)\.?(?:\s|\d)/i.test(text.slice(next))
   ) {
     return false;
   }
   if (next >= paragraphEnd) return true;
   return /[A-ZÄÖÜ„“"(§]/.test(text[next]);
+}
+
+function splitAdjacentStrongCitations(text: string, clause: TextRange): TextRange[] {
+  const ranges: TextRange[] = [];
+  let cursor = clause.start;
+  const candidatePattern =
+    /[ \t]+(?=(?:(?:von|van|de)[ \t]+)?[A-ZÄÖÜ][\p{L}\p{M}'’.-]+(?:\/[A-ZÄÖÜ][\p{L}\p{M}'’.-]+)*[ \t]*,)/gu;
+  candidatePattern.lastIndex = clause.start;
+  let match = candidatePattern.exec(text);
+  while (match && match.index < clause.end) {
+    const nextStart = match.index + match[0].length;
+    const left = trimRange(text, { start: cursor, end: match.index });
+    const rightText = text.slice(nextStart, clause.end);
+    if (
+      nextStart > cursor &&
+      isValidRange(text, left) &&
+      citationEvidence(text.slice(left.start, left.end)).score >= 2 &&
+      hasStrongCitationCoreOpening(rightText)
+    ) {
+      ranges.push(left);
+      cursor = nextStart;
+    }
+    match = candidatePattern.exec(text);
+  }
+  const tail = trimRange(text, { start: cursor, end: clause.end });
+  if (isValidRange(text, tail)) ranges.push(tail);
+  return ranges.length > 0 ? ranges : [clause];
 }
 
 function followedBySeparator(text: string, end: number, separators: readonly string[]): boolean {
@@ -455,7 +490,7 @@ function createClauseRanges(
     const narrative = trimRange(text, { start: boundary, end: clause.end });
     return [citation, narrative].filter((range) => isValidRange(text, range));
   });
-  return transitionRanges.flatMap((clause) => {
+  const narrativeSeparated = transitionRanges.flatMap((clause) => {
     const rawText = text.slice(clause.start, clause.end);
     if (!isNarrativeOpening(rawText)) return [clause];
     const embeddedPattern =
@@ -481,6 +516,7 @@ function createClauseRanges(
     const citation = trimRange(text, { start: boundary + 1, end: clause.end });
     return [narrative, citation].filter((range) => isValidRange(text, range));
   });
+  return narrativeSeparated.flatMap((clause) => splitAdjacentStrongCitations(text, clause));
 }
 
 function internalReferences(text: string, range: TextRange): CitationInternalReference[] {

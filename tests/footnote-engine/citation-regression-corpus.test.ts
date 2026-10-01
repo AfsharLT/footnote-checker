@@ -154,8 +154,8 @@ assert(
   "Fn. 49 must stop its initial citation before argumentative prose"
 );
 assert(
-  results[64].sequences.flatMap((sequence) => sequence.items).length === 17,
-  "Fn. 65 must complete as a 17-item mixed cluster"
+  results[64].sequences.flatMap((sequence) => sequence.items).length === 18,
+  "Fn. 65 must complete as an 18-item mixed cluster including the yearbook contribution"
 );
 assert(
   results[65].narrativeText.length >= 3,

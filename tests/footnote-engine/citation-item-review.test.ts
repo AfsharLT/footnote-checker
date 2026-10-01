@@ -72,7 +72,11 @@ assert(
   "The active citation profile separator must reach the production segmenter"
 );
 
-const unresolved = fn1Engine.findings.filter(
+const unresolvedFixture = inlineSnapshot(
+  "Muster, Unbekannte Quelle 2024, 12; Beispiel, Fremde Quelle 2025, 34."
+);
+const unresolvedEngine = analyzeFootnotes([unresolvedFixture]);
+const unresolved = unresolvedEngine.findings.filter(
   (finding) => finding.ruleId === "CITATION_OTHER_REVIEW"
 );
 assert(unresolved.length > 1, "Distinct unresolved sources need distinct review findings");
@@ -81,10 +85,10 @@ assert(
   "Every unresolved-source finding needs its own CitationItem identity"
 );
 for (const finding of unresolved) {
-  const preview = citationPreviewForFinding(finding, fn1Engine);
+  const preview = citationPreviewForFinding(finding, unresolvedEngine);
   assert(preview !== undefined, "Every item-bound finding needs an exact source preview");
   assert(
-    preview === fn1.contentText.slice(finding.citationStart, finding.citationEnd),
+    preview === unresolvedFixture.contentText.slice(finding.citationStart, finding.citationEnd),
     "Source previews must resolve through original offsets"
   );
   assert(
@@ -171,7 +175,7 @@ assert(
 const manualFinding = unresolved[0];
 const initialReview = runReviewEngine({
   findings: [manualFinding],
-  footnotes: [fn1],
+  footnotes: [unresolvedFixture],
   mode: "REVIEW",
 });
 const manualItem = initialReview.items[0];
@@ -179,7 +183,7 @@ assert(canMarkManuallyChecked(manualItem), "A manual-only source finding must be
 const manuallyCheckedState = setReviewStatus({}, manualItem, "MANUALLY_CHECKED");
 const checkedReview = runReviewEngine({
   findings: [manualFinding],
-  footnotes: [fn1],
+  footnotes: [unresolvedFixture],
   mode: "REVIEW",
   decisionState: manuallyCheckedState,
 });

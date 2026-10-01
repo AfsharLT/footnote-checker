@@ -125,10 +125,10 @@ export const bookAuthorTitleSeparatorRule: FootnoteRule = {
   evaluate(context) {
     if (!context.segment) return [];
     const match =
-      /^(?:[„“”‚‘’'"([{]\s*)?(\p{Lu}[\p{L}'’.-]*(?:\/\p{Lu}[\p{L}'’.-]*)*)\s+(\p{Lu}[\p{L}][^,]{2,}),\s*((?:19|20)\d{2}),\s*(?:S\.|Seite)\s*\d/iu.exec(
+      /^(?:[„“”‚‘’'"([{]\s*)?(\p{Lu}[\p{L}'’.-]*(?:\/\p{Lu}[\p{L}'’.-]*)*)\s+(\p{Lu}[\p{L}][^,]{2,}?)(?=\s*(?:\(\s*Anm\.\s*\d+\s*\)|,\s*(?:19|20)\d{2}))(?:(?:\s*\(\s*Anm\.\s*\d+\s*\))|(?:,\s*((?:19|20)\d{2})))(?:\s*,)?\s*(?:S\.|Seite|§|Kap\.|\d+\.\s*Abschn\.|Rn\.|Rdn\.?|Rdnr\.)\s*\d/iu.exec(
         context.segment.coreText
       );
-    if (!match || !match[1] || !match[2] || !match[3]) return [];
+    if (!match || !match[1] || !match[2]) return [];
     const localAuthorStart = match[0].indexOf(match[1]);
     const position = context.segment.coreStart + localAuthorStart + match[1].length;
     return replacementCandidate(
@@ -202,14 +202,33 @@ export const otherReviewRule: FootnoteRule = {
   category: "citation",
   priority: 210,
   scope: "segment",
-  supportedCitationTypes: ["OTHER"],
   evaluate(context) {
     if (!context.segment) return [];
+    const hasAmbiguousMapping = context.sourceMappings.some(
+      (mapping) => mapping.resolution.status === "AMBIGUOUS"
+    );
+    if (context.effectiveCitationType !== "OTHER" && !hasAmbiguousMapping) return [];
     if (context.sourceMapping?.status === "MATCHED") return [];
     return informationalCandidate(
       context,
       { start: context.segment.coreStart, end: context.segment.coreEnd },
       "Die Quelle konnte keinem bekannten Zitiermuster sicher zugeordnet werden und sollte manuell geprüft werden."
+    );
+  },
+};
+
+export const anaphoricReferenceReviewRule: FootnoteRule = {
+  ruleId: "ANAPHORIC_REFERENCE_REVIEW",
+  category: "citation",
+  priority: 209,
+  scope: "segment",
+  evaluate(context) {
+    if (!context.segment || !/^(?:ders\.|dies\.)\s*,?/iu.test(context.segment.coreText)) return [];
+    return informationalCandidate(
+      context,
+      { start: context.segment.coreStart, end: context.segment.coreEnd },
+      "Der anaphorische Autorenverweis kann nur mit eindeutigem vorherigem Autorenkontext aufgelöst werden.",
+      { requiresManualReview: true, reason: "ANAPHORIC_CONTEXT_REQUIRED" }
     );
   },
 };
@@ -321,6 +340,7 @@ export const GENERIC_RULES: readonly FootnoteRule[] = [
   modifierStyleRule,
   genericAbbreviationStyleRule,
   bookAuthorTitleSeparatorRule,
+  anaphoricReferenceReviewRule,
   otherReviewRule,
   unresolvedExtractionRule,
   ambiguousMappingRule,

@@ -1,8 +1,9 @@
 const PERSON_TOKEN = String.raw`[A-ZÄÖÜ][\p{L}\p{M}'’.-]*`;
 const PERSON_SEQUENCE = String.raw`${PERSON_TOKEN}(?:\s*\/\s*${PERSON_TOKEN})*`;
-const JOURNAL_TOKEN = String.raw`(?:NJW|NStZ(?:-RR)?|JZ|JuS|JA|JR|StV|wistra|ZfIStW|KriPoZ|ZStW|GA|MDR|ZIP|NZG|GmbHR|DStR|DStZ|BB|NZWiSt|Jahrbuch\s+für\s+Recht\s+und\s+Ethik)`;
+const JOURNAL_TOKEN = String.raw`(?:NJW|NStZ(?:-RR)?|JZ|JuS|Jura|JA|JR|StV|wistra|ZfIStW|KriPoZ|ZStW|GA|MDR|MedR|medstra|HRRS|ZIP|NZG|GmbHR|DStR|DStZ|BB|NZWiSt)`;
 
 const STRONG_CITATION_OPENINGS: readonly RegExp[] = [
+  /^(?:BVerfGE|BGHSt|BGHZ|RGSt|BAGE|BFHE|BVerwGE|BSGE)\.?\s+\d+,\s*\d+/iu,
   new RegExp(
     String.raw`^${PERSON_SEQUENCE}\s*,\s*${JOURNAL_TOKEN}\s+(?:19|20)\d{2}\s*,\s*\d+`,
     "iu"
@@ -16,6 +17,15 @@ const STRONG_CITATION_OPENINGS: readonly RegExp[] = [
     String.raw`^${PERSON_SEQUENCE}\s*,\s*[^,;]{2,100},\s*(?:\d+\.\s*Aufl\.\s*)?(?:19|20)\d{2}\s*,\s*S\.\s*\d`,
     "iu"
   ),
+  new RegExp(
+    String.raw`^(?:${PERSON_SEQUENCE}|ders\.|dies\.)\s*,\s*(?:Festschrift\s+für|FS\s+)[^,;]{2,80}(?:,\s*(?:19|20)\d{2})?(?:,|\s)`,
+    "iu"
+  ),
+  new RegExp(
+    String.raw`^(?:${PERSON_SEQUENCE}|ders\.|dies\.)\s*,?\s+[^,;]{2,120}\(\s*Anm\.\s*\d+\s*\)\s*,?\s*(?:S\.|§|Kap\.|\d+\.\s*Abschn\.|Rdn\.|Rn\.)`,
+    "iu"
+  ),
+  new RegExp(String.raw`^${PERSON_SEQUENCE}\s*,?\s*\(\s*Manuskript\s*\)`, "iu"),
 ];
 
 export function hasStrongCitationCoreOpening(value: string): boolean {
@@ -41,6 +51,8 @@ export function findLocalCitationCoreStart(text: string, start: number, end: num
   let candidateStart = start;
   for (let index = start; index < end; index += 1) {
     if (text[index] !== ":") continue;
+    const beforeColon = text.slice(start, index).trimEnd();
+    if (/\bin$/iu.test(beforeColon)) continue;
     let afterColon = index + 1;
     while (afterColon < end && /\s/u.test(text[afterColon])) afterColon += 1;
     if (
@@ -50,6 +62,15 @@ export function findLocalCitationCoreStart(text: string, start: number, end: num
     ) {
       candidateStart = afterColon;
     }
+  }
+  const candidate = text.slice(candidateStart, end);
+  const narrativeLead =
+    /^(?:auch\s*:|auch|S\.\s+eingehend\s+auch|überindividuelle\s+Ansätze\s+hingegen\s+bei)\s+/iu.exec(
+      candidate
+    );
+  if (narrativeLead) {
+    const afterLead = candidateStart + narrativeLead[0].length;
+    if (hasStrongCitationCoreOpening(text.slice(afterLead, end))) candidateStart = afterLead;
   }
   return candidateStart;
 }

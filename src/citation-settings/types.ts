@@ -222,6 +222,10 @@ export type SettingsCitationType =
   | "BOOK"
   | "JOURNAL_ARTICLE"
   | "BOOK_CHAPTER"
+  | "FESTSCHRIFT_CONTRIBUTION"
+  | "YEARBOOK_CONTRIBUTION"
+  | "MANUSCRIPT"
+  | "FORTHCOMING"
   | "CASE_NOTE"
   | "LEGISLATIVE_MATERIAL"
   | "ONLINE_SOURCE"
@@ -235,6 +239,10 @@ export interface CitationSettingsByType {
   BOOK: BookCitationSettings;
   JOURNAL_ARTICLE: JournalArticleCitationSettings;
   BOOK_CHAPTER: BookChapterCitationSettings;
+  FESTSCHRIFT_CONTRIBUTION: BookChapterCitationSettings;
+  YEARBOOK_CONTRIBUTION: BookChapterCitationSettings;
+  MANUSCRIPT: BookCitationSettings;
+  FORTHCOMING: JournalArticleCitationSettings;
   CASE_NOTE: CaseNoteCitationSettings;
   LEGISLATIVE_MATERIAL: LegislativeMaterialCitationSettings;
   ONLINE_SOURCE: OnlineSourceCitationSettings;

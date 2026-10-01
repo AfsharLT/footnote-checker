@@ -347,15 +347,24 @@ function applyDocumentSourceRegistryFindings(
     )
   );
   const footnoteById = new Map(footnotes.map((footnote) => [footnote.id, footnote]));
+  const mappingAmbiguousItemIds = new Set(
+    findings
+      .filter((finding) => finding.ruleId === "SOURCE_MAPPING_AMBIGUOUS")
+      .map((finding) => finding.citationItemId)
+      .filter((itemId): itemId is string => Boolean(itemId))
+  );
   const retained = findings.flatMap((finding) => {
-    if (finding.ruleId !== "CITATION_OTHER_REVIEW" || !finding.citationItemId) {
+    const isRegistryResolvableReview =
+      finding.ruleId === "CITATION_OTHER_REVIEW" || finding.ruleId === "ANAPHORIC_REFERENCE_REVIEW";
+    if (!isRegistryResolvableReview || !finding.citationItemId) {
       return [finding];
     }
+    if (mappingAmbiguousItemIds.has(finding.citationItemId)) return [finding];
     const resolution = resolutionByItemId.get(finding.citationItemId);
     const source = resolution?.documentSourceId
       ? sourceById.get(resolution.documentSourceId)
       : undefined;
-    const safelyResolved =
+    const safelyResolvedOther =
       resolution &&
       !resolution.warnings.includes("SUSPICIOUS_NARRATIVE_PREFIX") &&
       (resolution.finalState === "PERSISTENT_MATCH" ||
@@ -363,6 +372,13 @@ function applyDocumentSourceRegistryFindings(
           (resolution.canEstablishIdentity ||
             resolution.explanation.strategy === "ANM_REFERENCE" ||
             resolution.explanation.strategy === "IMMEDIATE_CONTEXT")));
+    const safelyResolvedAnaphor =
+      resolution &&
+      !resolution.warnings.includes("SUSPICIOUS_NARRATIVE_PREFIX") &&
+      resolution.explanation.strategy === "IMMEDIATE_CONTEXT" &&
+      (resolution.finalState === "PERSISTENT_MATCH" || Boolean(source));
+    const safelyResolved =
+      finding.ruleId === "ANAPHORIC_REFERENCE_REVIEW" ? safelyResolvedAnaphor : safelyResolvedOther;
     if (safelyResolved) return [];
     return [
       resolution?.resolution === "AMBIGUOUS"

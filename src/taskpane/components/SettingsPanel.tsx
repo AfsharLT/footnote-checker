@@ -1425,18 +1425,43 @@ function AliasAdder(props: { onAdd(alias: string): string | undefined }) {
   );
 }
 
+function isJournalOverride(
+  override: WorkCitationOverride | undefined
+): override is WorkCitationOverride<"JOURNAL_ARTICLE"> {
+  return override?.citationType === "JOURNAL_ARTICLE";
+}
+
 function WorkOverrideEditor(props: {
   source: CitationSourceMaster;
   onChange(override: CitationSourceMaster["workOverride"]): void;
 }) {
   const styles = useStyles();
   if (props.source.kind === "COMMENTARY") {
-    const override = props.source.workOverride as WorkCitationOverride<"COMMENTARY">;
+    const override =
+      props.source.workOverride?.citationType === "COMMENTARY"
+        ? props.source.workOverride
+        : undefined;
     const setItalic = (role: "bearbeiter" | "editor", value: "inherit" | "true" | "false") => {
-      const formatting = { ...override.formatting };
+      if (value === "inherit" && !override) return;
+      const formatting = { ...override?.formatting };
       if (value === "inherit") delete formatting[role];
       else formatting[role] = { ...formatting[role], italic: value === "true" };
-      props.onChange({ ...override, formatting });
+      if (
+        Object.keys(formatting).length === 0 &&
+        Object.keys(override?.citationSettingsOverride ?? {}).length === 0 &&
+        (!override?.preferredName || override.preferredName === props.source.preferredName)
+      ) {
+        props.onChange(undefined);
+        return;
+      }
+      const next: WorkCitationOverride<"COMMENTARY"> = {
+        ...override,
+        canonicalWorkId: props.source.canonicalSourceId,
+        citationType: "COMMENTARY",
+        ...(Object.keys(formatting).length > 0 ? { formatting } : {}),
+      };
+      if (Object.keys(formatting).length === 0) delete next.formatting;
+      props.onChange(next);
     };
     return (
       <div className={styles.subsection}>
@@ -1448,9 +1473,11 @@ function WorkOverrideEditor(props: {
         <SelectField
           label="Bearbeiter kursiv"
           value={
-            override.formatting?.bearbeiter?.italic === undefined
+            override?.formatting?.bearbeiter?.italic === undefined
               ? "inherit"
-              : (String(override.formatting.bearbeiter.italic) as "true" | "false")
+              : override.formatting.bearbeiter.italic
+                ? "true"
+                : "false"
           }
           options={[
             { value: "inherit", label: "Allgemeine Einstellung verwenden" },
@@ -1462,9 +1489,11 @@ function WorkOverrideEditor(props: {
         <SelectField
           label="Herausgeber kursiv"
           value={
-            override.formatting?.editor?.italic === undefined
+            override?.formatting?.editor?.italic === undefined
               ? "inherit"
-              : (String(override.formatting.editor.italic) as "true" | "false")
+              : override.formatting.editor.italic
+                ? "true"
+                : "false"
           }
           options={[
             { value: "inherit", label: "Allgemeine Einstellung verwenden" },
@@ -1476,7 +1505,9 @@ function WorkOverrideEditor(props: {
       </div>
     );
   }
-  const override = props.source.workOverride as WorkCitationOverride<"JOURNAL_ARTICLE">;
+  const override = isJournalOverride(props.source.workOverride)
+    ? props.source.workOverride
+    : undefined;
   return (
     <div className={styles.subsection}>
       <h4 className={styles.subsectionTitle}>Quellenspezifische Einstellungen</h4>
@@ -1485,18 +1516,38 @@ function WorkOverrideEditor(props: {
       </p>
       <SelectField
         label="Fundstellenstil-Override"
-        value={override.citationSettingsOverride?.pinpointStyle ?? "inherit"}
+        value={override?.citationSettingsOverride?.pinpointStyle ?? "inherit"}
         options={[
           { value: "inherit", label: "Allgemeine Einstellung verwenden" },
           { value: "parentheses", label: "Klammern" },
           { value: "comma", label: "Komma" },
         ]}
-        onChange={(value) =>
-          props.onChange({
+        onChange={(value) => {
+          if (value === "inherit" && !override) return;
+          const citationSettingsOverride = { ...override?.citationSettingsOverride };
+          if (value === "inherit") delete citationSettingsOverride.pinpointStyle;
+          else citationSettingsOverride.pinpointStyle = value;
+          if (
+            Object.keys(citationSettingsOverride).length === 0 &&
+            Object.keys(override?.formatting ?? {}).length === 0 &&
+            (!override?.preferredName || override.preferredName === props.source.preferredName)
+          ) {
+            props.onChange(undefined);
+            return;
+          }
+          const next: WorkCitationOverride<"JOURNAL_ARTICLE"> = {
             ...override,
-            citationSettingsOverride: value === "inherit" ? {} : { pinpointStyle: value },
-          })
-        }
+            canonicalWorkId: props.source.canonicalSourceId,
+            citationType: "JOURNAL_ARTICLE",
+            ...(Object.keys(citationSettingsOverride).length > 0
+              ? { citationSettingsOverride }
+              : {}),
+          };
+          if (Object.keys(citationSettingsOverride).length === 0) {
+            delete next.citationSettingsOverride;
+          }
+          props.onChange(next);
+        }}
       />
     </div>
   );
@@ -1560,7 +1611,7 @@ function SourceEditor(props: {
               ? "z. B. LK-StGB/{Bearbeiter}, § 13 Rn. 12"
               : "z. B. Autor, NJW 2025, 1234 (1236)"
           }
-          helpText="Beispiel dafür, wie die Quelle im Footnote Checker bevorzugt zitiert werden soll. Ein abschließender Punkt ist nicht erforderlich."
+          helpText="Beispiel dafür, wie die Quelle im Footnote-Checker bevorzugt zitiert werden soll. Ein abschließender Punkt ist nicht erforderlich."
           onChange={(examplePattern) =>
             update({ examplePattern: withoutFinalCitationPeriod(examplePattern) || undefined })
           }
@@ -1787,7 +1838,7 @@ function NewSourceEditor(props: {
             ? "z. B. LK-StGB/{Bearbeiter}, § 13 Rn. 12"
             : "z. B. Autor, NJW 2025, 1234 (1236)"
         }
-        helpText="Beispiel dafür, wie die Quelle im Footnote Checker bevorzugt zitiert werden soll. Ein abschließender Punkt ist nicht erforderlich."
+        helpText="Beispiel dafür, wie die Quelle im Footnote-Checker bevorzugt zitiert werden soll. Ein abschließender Punkt ist nicht erforderlich."
         onChange={(examplePattern) =>
           setInput({ ...input, examplePattern: withoutFinalCitationPeriod(examplePattern) })
         }
@@ -2017,7 +2068,7 @@ const LegacySettingsPanel: React.FC<SettingsPanelProps> = ({
         <div className={styles.identity}>
           <BrandLogo className={styles.logo} size={36} />
           <div>
-            <h1 className={styles.title}>Footnote Checker</h1>
+            <h1 className={styles.title}>Footnote-Checker</h1>
             <p className={styles.subtitle}>Zitiereinstellungen</p>
           </div>
         </div>
@@ -2581,9 +2632,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               ) : (
                 <section className={styles.section}>
                   <h2 className={styles.sectionTitle}>Festschriften</h2>
-                  <p className={styles.help}>
-                    Festschrift-spezifische Einstellungen werden in einem späteren Schritt ergänzt.
-                  </p>
+                  <p className={styles.help}>Der Fundstellenstil gilt auch für Buchbeiträge.</p>
+                  <SelectField
+                    label="Konkrete Fundstelle"
+                    value={profile.bookChapter.pinpointStyle}
+                    options={[
+                      { value: "pagePrefix", label: "Seitenpräfix" },
+                      { value: "parentheses", label: "Klammern" },
+                      { value: "comma", label: "Komma" },
+                    ]}
+                    onChange={(pinpointStyle) => {
+                      const next = cloneCitationStyleProfile(profile);
+                      next.bookChapter.pinpointStyle = pinpointStyle;
+                      updateProfile(next);
+                    }}
+                  />
                 </section>
               )
             );
@@ -2681,7 +2744,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         <div className={styles.identity}>
           <BrandLogo className={styles.logo} size={36} />
           <div>
-            <h1 className={styles.title}>Footnote Checker</h1>
+            <h1 className={styles.title}>Footnote-Checker</h1>
             <p className={styles.subtitle}>Einstellungen</p>
           </div>
         </div>

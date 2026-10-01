@@ -317,25 +317,41 @@ export function parseCitationSourceMappingCsv(
           kind === "COMMENTARY"
             ? ["COMMENTARY"]
             : kind === "JOURNAL"
-              ? ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE"]
+              ? ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE", "FORTHCOMING"]
               : kind === "BOOK"
-                ? ["BOOK", "OTHER"]
-                : ["OTHER"],
+                ? [
+                    "BOOK",
+                    "BOOK_CHAPTER",
+                    "FESTSCHRIFT_CONTRIBUTION",
+                    "YEARBOOK_CONTRIBUTION",
+                    "OTHER",
+                  ]
+                : kind === "REPORT"
+                  ? ["CASE_LAW", "LEGISLATIVE_MATERIAL", "OTHER"]
+                  : ["MANUSCRIPT", "FORTHCOMING", "OTHER"],
         active: sourceActive,
         ...(optional(valueAt(row, "examplePattern"))
           ? { examplePattern: valueAt(row, "examplePattern") }
           : {}),
         ...(optional(valueAt(row, "notes")) ? { notes: valueAt(row, "notes") } : {}),
         ...(personHint ? { personStructureHint: personHint } : {}),
-        ...(kind === "COMMENTARY" || kind === "JOURNAL"
+        ...((kind === "COMMENTARY" &&
+          (optional(valueAt(row, "overridePreferredName")) ||
+            overrideBearbeiterItalic !== undefined ||
+            overrideEditorItalic !== undefined ||
+            optional(valueAt(row, "overridePersonSeparator")) ||
+            optional(valueAt(row, "overrideMarginNumberAbbreviation")))) ||
+        (kind === "JOURNAL" &&
+          (optional(valueAt(row, "overridePreferredName")) || overridePinpointStyle))
           ? {
               workOverride:
                 kind === "COMMENTARY"
                   ? {
                       canonicalWorkId: canonicalSourceId,
                       citationType: "COMMENTARY",
-                      preferredName:
-                        optional(valueAt(row, "overridePreferredName")) ?? preferredName,
+                      ...(optional(valueAt(row, "overridePreferredName"))
+                        ? { preferredName: valueAt(row, "overridePreferredName") }
+                        : {}),
                       ...(overrideBearbeiterItalic !== undefined ||
                       overrideEditorItalic !== undefined
                         ? {
@@ -371,8 +387,9 @@ export function parseCitationSourceMappingCsv(
                   : {
                       canonicalWorkId: canonicalSourceId,
                       citationType: "JOURNAL_ARTICLE",
-                      preferredName:
-                        optional(valueAt(row, "overridePreferredName")) ?? preferredName,
+                      ...(optional(valueAt(row, "overridePreferredName"))
+                        ? { preferredName: valueAt(row, "overridePreferredName") }
+                        : {}),
                       ...(overridePinpointStyle === "parentheses" ||
                       overridePinpointStyle === "comma"
                         ? {

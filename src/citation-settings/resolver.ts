@@ -337,6 +337,16 @@ export function resolveCitationSettings<TType extends SettingsCitationType>({
         workSettings as DeepPartial<BookChapterCitationSettings> | undefined
       );
       break;
+    case "FESTSCHRIFT_CONTRIBUTION":
+    case "YEARBOOK_CONTRIBUTION":
+      settings = resolveBookChapter(defaults, profile, formatting);
+      break;
+    case "MANUSCRIPT":
+      settings = resolveBook(defaults, profile, formatting);
+      break;
+    case "FORTHCOMING":
+      settings = resolveJournalArticle(defaults, profile, formatting);
+      break;
     case "CASE_NOTE":
       settings = resolveCaseNote(defaults, profile, formatting);
       break;

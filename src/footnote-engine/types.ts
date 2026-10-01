@@ -123,7 +123,10 @@ export type CitationLocatorType =
   | "halfSentence"
   | "alternative"
   | "variant"
-  | "case";
+  | "case"
+  | "chapter"
+  | "division"
+  | "footnote";
 
 export interface CitationLocator {
   type: CitationLocatorType;
@@ -230,6 +233,7 @@ export interface BookExtraction {
   workSection?: ExtractedComponent<string>;
   marginNumbers: CitationLocator[];
   pages: CitationLocator[];
+  structuralLocators?: CitationLocator[];
 }
 
 export interface JournalArticleExtraction {
@@ -255,6 +259,35 @@ export interface BookChapterExtraction {
   pinpointPages: CitationLocator[];
   workSection?: ExtractedComponent<string>;
   marginNumbers: CitationLocator[];
+}
+
+export interface FestschriftContributionExtraction {
+  authors: PersonReference[];
+  marker: ExtractedComponent<string>;
+  honoree: ExtractedComponent<string>;
+  containerTitle: ExtractedComponent<string>;
+  year?: ExtractedComponent<string>;
+  firstPage?: CitationLocator;
+  pinpointPages: CitationLocator[];
+}
+
+export interface YearbookContributionExtraction {
+  authors: PersonReference[];
+  containerTitle: ExtractedComponent<string>;
+  year?: ExtractedComponent<string>;
+  firstPage?: CitationLocator;
+  pinpointPages: CitationLocator[];
+}
+
+export interface ManuscriptExtraction {
+  authors: PersonReference[];
+  manuscriptMarker: ExtractedComponent<string>;
+}
+
+export interface ForthcomingExtraction {
+  publicationSource?: ExtractedComponent<string>;
+  year?: ExtractedComponent<string>;
+  publicationState: ExtractedComponent<string>;
 }
 
 export interface CaseNoteExtraction {
@@ -319,6 +352,10 @@ export type CitationExtractionResult =
   | CitationExtractionEnvelope<"BOOK", BookExtraction>
   | CitationExtractionEnvelope<"JOURNAL_ARTICLE", JournalArticleExtraction>
   | CitationExtractionEnvelope<"BOOK_CHAPTER", BookChapterExtraction>
+  | CitationExtractionEnvelope<"FESTSCHRIFT_CONTRIBUTION", FestschriftContributionExtraction>
+  | CitationExtractionEnvelope<"YEARBOOK_CONTRIBUTION", YearbookContributionExtraction>
+  | CitationExtractionEnvelope<"MANUSCRIPT", ManuscriptExtraction>
+  | CitationExtractionEnvelope<"FORTHCOMING", ForthcomingExtraction>
   | CitationExtractionEnvelope<"CASE_NOTE", CaseNoteExtraction>
   | CitationExtractionEnvelope<"LEGISLATIVE_MATERIAL", LegislativeMaterialExtraction>
   | CitationExtractionEnvelope<"ONLINE_SOURCE", OnlineSourceExtraction>
@@ -332,6 +369,10 @@ export type CitationType =
   | "BOOK"
   | "JOURNAL_ARTICLE"
   | "BOOK_CHAPTER"
+  | "FESTSCHRIFT_CONTRIBUTION"
+  | "YEARBOOK_CONTRIBUTION"
+  | "MANUSCRIPT"
+  | "FORTHCOMING"
   | "CASE_NOTE"
   | "LEGISLATIVE_MATERIAL"
   | "ONLINE_SOURCE"

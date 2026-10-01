@@ -1,5 +1,5 @@
 import type { FootnoteSnapshot } from "../taskpane/taskpane";
-import { findLocalCitationCoreStart } from "./citation-core";
+import { findLocalCitationCoreStart, hasStrongCitationCoreOpening } from "./citation-core";
 import { segmentCitationSequences } from "./citation-sequence-segmenter";
 import { isRangeProtected } from "./protected-ranges";
 import type {
@@ -295,6 +295,31 @@ function createSegmentBoundaries(
         priority: 1,
       });
     }
+  }
+
+  const adjacentSourcePattern =
+    /[ \t]+(?=(?:(?:von|van|de)[ \t]+)?[A-ZÄÖÜ][\p{L}\p{M}'’.-]+(?:\/[A-ZÄÖÜ][\p{L}\p{M}'’.-]+)*[ \t]*,)/gu;
+  let adjacent = adjacentSourcePattern.exec(text);
+  while (adjacent) {
+    const nextStart = adjacent.index + adjacent[0].length;
+    const prefix = text.slice(0, adjacent.index).trimEnd();
+    const hasCompletedLocator =
+      /(?:\bS\.\s*\d+(?:\s*,\s*\d+)*(?:\s*ff?\.)?|\b\d{4}\s*,\s*\d+(?:\s*,\s*\d+)*(?:\s*ff?\.)?)$/u.test(
+        prefix
+      );
+    if (
+      hasCompletedLocator &&
+      enclosureCoverage[adjacent.index] === 0 &&
+      !isRangeProtected(adjacent.index, nextStart, protectedRanges) &&
+      hasStrongCitationCoreOpening(text.slice(nextStart))
+    ) {
+      addBoundary(boundaries, {
+        position: adjacent.index,
+        nextStart,
+        priority: 2,
+      });
+    }
+    adjacent = adjacentSourcePattern.exec(text);
   }
 
   return Array.from(boundaries.values()).sort(
