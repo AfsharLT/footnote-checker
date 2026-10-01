@@ -216,34 +216,6 @@ flowchart LR
 
 Die gestrichelte Roadmap beschreibt die weitere Planung. **Für 17.6 existiert noch kein Implementierungscommit.** Diese Funktionen sind noch keine Produktzusagen. Der Repository-Stand enthält das neue FNC-Logo und die dezenten Petrol-Akzente auf weißem Hintergrund aus 17.5; der gehostete Dienst wurde damit noch nicht aktualisiert. [17.5-Abschlussbericht und Word-Testanleitung](docs/POC_17_5_VALIDATION.md).
 
-## Entwicklung und Validierung
-
-React · TypeScript · Office.js · Webpack · Cloudflare Workers Static Assets. Große Dokumente werden gebündelt verarbeitet; unsichere Dokumentbereiche werden geschützt.
-
-Mit einer aktuellen Node.js-LTS-Version und npm im Repository arbeiten. Die vorhandenen Scripts verwenden aktuelle Werkzeuge; Node 24 wurde bei dieser Vorbereitung eingesetzt.
-
-```bash
-npm ci
-npm start
-```
-
-`npm ci` installiert die im Lockfile festgelegten Abhängigkeiten und ersetzt vorhandene `node_modules`. `npm start` startet die lokale Word-Entwicklungsinstallation, kann lokale Entwicklungszertifikate einrichten und Word öffnen. Erfolg: Das lokale Add-in lädt von `https://localhost:3000`. Beenden mit `npm stop`; dabei wird die Entwicklungsinstallation gestoppt. Die Beta-Pakete verwenden dagegen die gehostete URL.
-
-Nach Änderungen:
-
-```bash
-npm run typecheck
-npm run lint
-npm test
-npm run build
-npm run validate
-git diff --check
-```
-
-Die Befehle prüfen Typen, Codequalität, Tests, Produktionsbuild, Entwicklungsmanifest und Whitespace. Mapping-Generierung und Build schreiben generierte Dateien; diese Änderungen ebenfalls prüfen. Erfolg: Alle Checks enden mit Exit-Code 0. Das Produktionsmanifest zusätzlich mit `npx --no-install office-addin-manifest validate manifest.production.xml` prüfen; das prüft die XML-Konfiguration, nicht die Word-Laufzeit.
-
-**Ein erfolgreicher Build genügt nicht.** Reale Word-Prüfung auf macOS und Windows, bei relevanten Änderungen auf älteren Hosts und mit großen Dokumenten durchführen. [Freigabecheckliste für 17.3.2 und die neuen Pakete](docs/RELEASE_PREPARATION.md).
-
 ## Daten, Beta und Feedback
 
 Die Analyse läuft im Add-in regelbasiert; Einstellungen und Quellenverwaltung werden lokal im Add-in-Speicher abgelegt. Die Weboberfläche und Office.js werden über das Internet geladen. Der lokale Speicher ist kein dokumentübergreifend synchronisiertes Konto: Vor Rechnerwechsel oder Cachebereinigung Einstellungen exportieren. Eine verbindliche Datenschutzinformation für öffentliche Distribution ist noch zu finalisieren.
