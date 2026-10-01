@@ -7,9 +7,8 @@
     "jsx": "react",
     "module": "ES2020",
     "moduleResolution": "bundler",
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     },
     "noImplicitReturns": true,
     "noUnusedParameters": true,

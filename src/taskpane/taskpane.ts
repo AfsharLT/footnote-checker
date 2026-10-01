@@ -152,7 +152,16 @@ export interface FootnoteReadResult {
 }
 
 export interface FootnoteReadProgress {
-  phase: "initializing" | "reading" | "analyzing" | "correcting" | "complete";
+  phase:
+    | "initializing"
+    | "reading"
+    | "enriching"
+    | "analyzing"
+    | "resolving"
+    | "checking"
+    | "finalizing"
+    | "correcting"
+    | "complete";
   processed: number;
   total: number;
   percent: number;
@@ -210,18 +219,20 @@ export function createFootnoteReadProgress(
 ): FootnoteReadProgress {
   const safeTotal = Math.max(0, total);
   const safeProcessed = Math.min(Math.max(0, processed), safeTotal);
-  const percent =
-    phase === "complete"
-      ? 100
-      : phase === "correcting"
-        ? safeTotal > 0
-          ? Math.round((safeProcessed / safeTotal) * 100)
-          : 100
-        : phase === "analyzing"
-          ? 95
-          : phase === "reading" && safeTotal > 0
-            ? Math.round((safeProcessed / safeTotal) * 90)
-            : 0;
+  const ratio = safeTotal > 0 ? safeProcessed / safeTotal : 0;
+  const stages = {
+    initializing: [0, 0],
+    reading: [0, 60],
+    enriching: [60, 60],
+    analyzing: [60, 72],
+    resolving: [72, 82],
+    checking: [82, 95],
+    finalizing: [95, 99],
+    correcting: [0, 99],
+    complete: [100, 100],
+  };
+  const [start, end] = stages[phase];
+  const percent = Math.round(start + ratio * (end - start));
   return { phase, processed: safeProcessed, total: safeTotal, percent };
 }
 
@@ -1781,6 +1792,9 @@ export async function readFootnotes(
   const optionalFeatureFailures: NonNullable<
     FootnoteReadResult["readerMetrics"]["optionalFeatureFailures"]
   > = [];
+  onProgress?.(
+    createFootnoteReadProgress("enriching", footnoteSnapshots.length, footnoteSnapshots.length)
+  );
   if (supportsDesktop13 && footnoteSnapshots.length > 0) {
     const optionalHyperlinks = await loadOptionalHyperlinks(footnoteSnapshots.length);
     optionalSyncCount = optionalHyperlinks.syncCount;

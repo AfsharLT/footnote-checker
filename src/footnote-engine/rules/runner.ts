@@ -1,3 +1,4 @@
+import { finishWork, type WorkProgress } from "../cooperative";
 import { isRangeProtected } from "../protected-ranges";
 import type { Finding } from "../types";
 import { createFormattingRuleOutputs } from "./formatting";
@@ -229,14 +230,19 @@ function deduplicateAndResolve(findings: readonly PrioritizedFinding[]): Finding
     .sort(compareFindings);
 }
 
-export function runRules(
+export function* runRulesWork(
   footnoteContexts: readonly RuleContext[],
   segmentContexts: readonly RuleContext[],
   document: Omit<DocumentRuleContext, "findingsSoFar" | "occurrences">
-): Finding[] {
+): Generator<WorkProgress, Finding[], void> {
   const findings: PrioritizedFinding[] = [];
+  const total =
+    footnoteContexts.length * 2 + segmentContexts.length + REGISTERED_DOCUMENT_RULES.length;
+  let processed = 0;
+  yield { phase: "checking", processed, total };
   const emptyFootnoteIds = new Set<string>();
   for (const context of footnoteContexts) {
+    yield { phase: "checking", processed: processed++, total };
     for (const rule of LOCAL_RULES) {
       if (rule.scope !== "footnote") continue;
       const evaluated = evaluateRule(context, rule);
@@ -248,6 +254,7 @@ export function runRules(
   }
 
   for (const context of segmentContexts) {
+    yield { phase: "checking", processed: processed++, total };
     if (emptyFootnoteIds.has(context.footnote.id)) continue;
     for (const rule of LOCAL_RULES) {
       if (rule.scope !== "segment") continue;
@@ -268,6 +275,7 @@ export function runRules(
     else segmentsByFootnote.set(context.footnote.id, [context]);
   }
   for (const context of footnoteContexts) {
+    yield { phase: "checking", processed: processed++, total };
     const outputs = createFormattingRuleOutputs(
       context,
       segmentsByFootnote.get(context.footnote.id) ?? [],
@@ -295,6 +303,7 @@ export function runRules(
 
   let validatedSoFar = deduplicateAndResolve(findings);
   for (const rule of REGISTERED_DOCUMENT_RULES) {
+    yield { phase: "checking", processed: processed++, total };
     const context: DocumentRuleContext = {
       ...document,
       occurrences: segmentContexts,
@@ -317,5 +326,14 @@ export function runRules(
     }
     validatedSoFar = deduplicateAndResolve(findings);
   }
+  yield { phase: "checking", processed: total, total };
   return validatedSoFar;
+}
+
+export function runRules(
+  footnoteContexts: readonly RuleContext[],
+  segmentContexts: readonly RuleContext[],
+  document: Omit<DocumentRuleContext, "findingsSoFar" | "occurrences">
+): Finding[] {
+  return finishWork(runRulesWork(footnoteContexts, segmentContexts, document));
 }

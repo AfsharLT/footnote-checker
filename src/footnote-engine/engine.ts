@@ -1,5 +1,11 @@
 /* global performance */
 
+import {
+  finishWork,
+  finishWorkAsync,
+  type CooperativeOptions,
+  type WorkProgress,
+} from "./cooperative";
 import type { FootnoteSnapshot } from "../taskpane/taskpane";
 import { createDefaultCitationSourceMapping } from "../citation-mapping/default-mapping";
 import {
@@ -12,7 +18,7 @@ import { createDefaultCitationStyleProfile } from "../citation-settings/defaults
 import { resolveCitationSettings } from "../citation-settings/resolver";
 import type { CitationStyleProfile } from "../citation-settings/types";
 import {
-  buildDocumentSourceRegistry,
+  buildDocumentSourceRegistryWork,
   type DocumentSourceRegistry,
 } from "../document-source-registry";
 import { classifyFootnoteParseResult } from "./citation-classifier";
@@ -23,7 +29,7 @@ import { deriveEffectiveCitationClassification } from "./effective-classificatio
 import { findPlainTextUrls } from "./patterns";
 export { isRangeProtected } from "./protected-ranges";
 import { deriveDocumentFootnoteFormattingBaseline } from "./rules/formatting";
-import { runRules } from "./rules/runner";
+import { runRulesWork } from "./rules/runner";
 import type { RuleContext } from "./rules/types";
 import type {
   AnalysisProtectedRange,
@@ -460,10 +466,10 @@ export interface AnalyzeFootnotesOptions {
   mappingIndex?: CitationSourceMappingIndex;
 }
 
-export function analyzeFootnotes(
+function* analyzeFootnotesWork(
   footnotes: readonly FootnoteSnapshot[],
   options: AnalyzeFootnotesOptions = {}
-): FootnoteEngineResult {
+): Generator<WorkProgress, FootnoteEngineResult, void> {
   const startedAt = getTimestamp();
   const footnoteAnalyses: FootnoteAnalysisResult[] = [];
   const parseResults: FootnoteParseResult[] = [];
@@ -477,7 +483,10 @@ export function analyzeFootnotes(
   let plainTextUrlCount = 0;
   let engineProtectedRangeCount = 0;
 
+  let processed = 0;
+  yield { phase: "analyzing", processed, total: footnotes.length };
   for (const footnote of footnotes) {
+    yield { phase: "analyzing", processed: processed++, total: footnotes.length };
     let analysis: FootnoteAnalysisResult;
     try {
       analysis = createFootnoteAnalysis(footnote);
@@ -558,21 +567,21 @@ export function analyzeFootnotes(
     }
   }
 
-  const documentSourceRegistry = buildDocumentSourceRegistry({
+  yield { phase: "analyzing", processed: footnotes.length, total: footnotes.length };
+  const documentSourceRegistry = yield* buildDocumentSourceRegistryWork({
     footnotes,
     parseResults,
     segmentAnalyses,
     mappingData,
   });
+  const ruleFindings = yield* runRulesWork(footnoteContexts, segmentContexts, {
+    footnotes,
+    profile,
+    mappingData,
+  });
+  yield { phase: "finalizing", processed: 0, total: footnotes.length };
   const findings = applyDocumentSourceRegistryFindings(
-    associateFindingsWithCitationItems(
-      runRules(footnoteContexts, segmentContexts, {
-        footnotes,
-        profile,
-        mappingData,
-      }),
-      parseResults
-    ),
+    associateFindingsWithCitationItems(ruleFindings, parseResults),
     documentSourceRegistry,
     parseResults,
     footnotes
@@ -602,4 +611,18 @@ export function analyzeFootnotes(
     registryDurationMs: documentSourceRegistry.durationMs,
     durationMs: Number((getTimestamp() - startedAt).toFixed(3)),
   };
+}
+
+export function analyzeFootnotes(
+  footnotes: readonly FootnoteSnapshot[],
+  options: AnalyzeFootnotesOptions = {}
+): FootnoteEngineResult {
+  return finishWork(analyzeFootnotesWork(footnotes, options));
+}
+
+export function analyzeFootnotesAsync(
+  footnotes: readonly FootnoteSnapshot[],
+  options: AnalyzeFootnotesOptions & CooperativeOptions = {}
+): Promise<FootnoteEngineResult> {
+  return finishWorkAsync(analyzeFootnotesWork(footnotes, options), options);
 }

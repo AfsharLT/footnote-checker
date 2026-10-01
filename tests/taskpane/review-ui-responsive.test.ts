@@ -95,7 +95,7 @@ assert(
 );
 assert(
   app.includes('className="fc-shell fc-shell--settings"') &&
-    workspace.includes('<div className="fc-shell">') &&
+    workspace.includes('className="fc-shell"') && workspace.includes("ref={scrollOwnerRef}") &&
     settings.includes('position: "sticky"') &&
     settings.includes('top: "0px"'),
   "Settings and review sticky bars must live inside the same real scroll viewport"
@@ -108,7 +108,7 @@ assert(
   "Result groups must render lazily and default to collapsed"
 );
 assert(
-  brandLogo.includes('"assets/footnote-checker-80.png"') &&
+  brandLogo.includes('"assets/fnc-logo-160.png"') &&
     workspace.includes("<BrandLogo") &&
     settings.includes("<BrandLogo") &&
     !workspace.includes("logo-filled.png") &&
@@ -121,9 +121,9 @@ assert(
 );
 assert(
   webpack.includes('from: "assets/*"') &&
-    manifest.includes("assets/footnote-checker-16.png") &&
-    manifest.includes("assets/footnote-checker-32.png") &&
-    manifest.includes("assets/footnote-checker-80.png"),
+    manifest.includes("assets/fnc-icon-16.png") &&
+    manifest.includes("assets/fnc-icon-32.png") &&
+    manifest.includes("assets/fnc-icon-80.png"),
   "Webpack and the ribbon manifest must continue to deliver the Footnote Checker assets"
 );
 assert(
@@ -175,7 +175,7 @@ assert(
 );
 assert(
   workspace.includes("(props.currentPlan?.totals.eligible ?? 0) === 0") &&
-    workspace.includes("disabled={isMutationRunning") &&
+    workspace.includes("disabled={props.isLoading || isMutationRunning") &&
     workspace.includes("Änderungen werden durchgeführt …"),
   "The review batch action must be disabled without eligible selections and during mutations"
 );
