@@ -1,4 +1,6 @@
 import type { FootnoteSnapshot } from "../taskpane/taskpane";
+import { findLocalCitationCoreStart, hasStrongCitationCoreOpening } from "./citation-core";
+import { segmentCitationSequences } from "./citation-sequence-segmenter";
 import { isRangeProtected } from "./protected-ranges";
 import type {
   AnalysisProtectedRange,
@@ -39,8 +41,12 @@ const MODIFIER_DEFINITIONS: readonly ModifierDefinition[] = [
   { type: "detail", pattern: /ausführlich/gi },
   { type: "approval", pattern: /zust\./gi },
   { type: "criticism", pattern: /krit\./gi },
+  { type: "criticism", pattern: /kritisch(?=\s*:)/gi },
   { type: "similarity", pattern: /ähnlich/gi },
   { type: "agreement", pattern: /ebenso/gi },
+  { type: "context", pattern: /enger(?=\s*:)/gi },
+  { type: "context", pattern: /weiter(?=\s*:)/gi },
+  { type: "disagreement", pattern: /ablehnend(?=\s*:)/gi },
 ];
 
 const CONSERVATIVE_CITATION_START =
@@ -150,6 +156,8 @@ function findCoreStart(
     const modifier = modifiers.find((candidate) => candidate.start === cursor);
     if (!modifier) break;
     cursor = modifier.end;
+    while (cursor < end && /\s/.test(text[cursor])) cursor += 1;
+    if (text[cursor] === ":") cursor += 1;
   }
 
   while (cursor < end && /\s/.test(text[cursor])) cursor += 1;
@@ -287,6 +295,31 @@ function createSegmentBoundaries(
         priority: 1,
       });
     }
+  }
+
+  const adjacentSourcePattern =
+    /[ \t]+(?=(?:(?:von|van|de)[ \t]+)?[A-ZÄÖÜ][\p{L}\p{M}'’.-]+(?:\/[A-ZÄÖÜ][\p{L}\p{M}'’.-]+)*[ \t]*,)/gu;
+  let adjacent = adjacentSourcePattern.exec(text);
+  while (adjacent) {
+    const nextStart = adjacent.index + adjacent[0].length;
+    const prefix = text.slice(0, adjacent.index).trimEnd();
+    const hasCompletedLocator =
+      /(?:\bS\.\s*\d+(?:\s*,\s*\d+)*(?:\s*ff?\.)?|\b\d{4}\s*,\s*\d+(?:\s*,\s*\d+)*(?:\s*ff?\.)?)$/u.test(
+        prefix
+      );
+    if (
+      hasCompletedLocator &&
+      enclosureCoverage[adjacent.index] === 0 &&
+      !isRangeProtected(adjacent.index, nextStart, protectedRanges) &&
+      hasStrongCitationCoreOpening(text.slice(nextStart))
+    ) {
+      addBoundary(boundaries, {
+        position: adjacent.index,
+        nextStart,
+        priority: 2,
+      });
+    }
+    adjacent = adjacentSourcePattern.exec(text);
   }
 
   return Array.from(boundaries.values()).sort(
@@ -464,9 +497,13 @@ export function isValidCitationSegment(segment: CitationSegment, contentText: st
 
 export function segmentFootnote(
   footnote: FootnoteSnapshot,
-  protectedRanges: readonly AnalysisProtectedRange[]
+  protectedRanges: readonly AnalysisProtectedRange[],
+  citationSeparators?: readonly string[]
 ): FootnoteParseResult {
   const text = footnote.contentText;
+  const sequenceResult = segmentCitationSequences(footnote, protectedRanges, {
+    citationSeparators,
+  });
   const segments: CitationSegment[] = [];
   const boundaries = createSegmentBoundaries(footnote, protectedRanges);
   let rangeStart = 0;
@@ -477,7 +514,8 @@ export function segmentFootnote(
     if (trimmed.start >= trimmed.end) return;
 
     const modifiers = findCitationModifiers(text, trimmed.start, trimmed.end);
-    const coreStart = findCoreStart(text, trimmed.start, trimmed.end, modifiers);
+    const modifierAdjustedStart = findCoreStart(text, trimmed.start, trimmed.end, modifiers);
+    const coreStart = findLocalCitationCoreStart(text, modifierAdjustedStart, trimmed.end);
     const segment: CitationSegment = {
       segmentId: `segment:${footnote.id}:${trimmed.start}:${trimmed.end}:${footnote.originalTextHash}`,
       footnoteId: footnote.id,
@@ -517,5 +555,9 @@ export function segmentFootnote(
     footnoteId: footnote.id,
     sourceTextHash: footnote.originalTextHash,
     segments,
+    sequences: sequenceResult.sequences,
+    narrativeText: sequenceResult.narrativeText,
+    segmentationWarnings: sequenceResult.warnings,
+    segmentationStatus: sequenceResult.status,
   };
 }

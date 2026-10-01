@@ -66,6 +66,30 @@ assert(
   loadCitationSourceMapping(storage).sources[0].preferredName === "Local preferred name",
   "Saved mapping must load"
 );
+const prePatternMapping = createDefaultCitationSourceMapping();
+prePatternMapping.aliases = prePatternMapping.aliases.filter(
+  (alias) => !alias.alias.includes("{Bearbeiter}")
+);
+assert(saveCitationSourceMapping(prePatternMapping, storage).success, "Legacy mapping must save");
+const migratedPatterns = loadCitationSourceMapping(storage);
+assert(
+  migratedPatterns.aliases.filter(
+    (alias) =>
+      alias.canonicalSourceId === "commentary-stgb-lk-stgb" && alias.alias.includes("{Bearbeiter}")
+  ).length === 3,
+  "Existing persisted mappings must receive additive built-in Bearbeiter patterns"
+);
+const disabledPattern = migratedPatterns.aliases.find(
+  (alias) => alias.alias === "{Bearbeiter}, in: LK-StGB"
+)!;
+disabledPattern.active = false;
+assert(saveCitationSourceMapping(migratedPatterns, storage).success, "Disabled pattern must save");
+assert(
+  loadCitationSourceMapping(storage).aliases.find(
+    (alias) => alias.alias === "{Bearbeiter}, in: LK-StGB"
+  )?.active === false,
+  "An explicitly disabled built-in pattern must not be re-added or reactivated"
+);
 
 storage.setItem(CITATION_SOURCE_MAPPING_STORAGE_KEY, "{broken");
 assert(
@@ -84,8 +108,8 @@ assert(
   "Reset must restore the full legacy default"
 );
 assert(
-  loadCitationSourceMapping(storage).sources.length === 25 &&
-    loadCitationSourceMapping(storage).aliases.length === 71,
+  loadCitationSourceMapping(storage).sources.length === fullDefault.sources.length &&
+    loadCitationSourceMapping(storage).aliases.length === fullDefault.aliases.length,
   "Reset target must be the full legacy default"
 );
 

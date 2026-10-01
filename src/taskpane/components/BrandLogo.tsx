@@ -13,7 +13,7 @@ export function BrandLogo({
   size = 34,
   className,
   decorative = true,
-  alt = "Footnote Checker",
+  alt = "Footnote-Checker",
 }: BrandLogoProps) {
   return (
     <img

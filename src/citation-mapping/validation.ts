@@ -31,21 +31,58 @@ function isKind(value: unknown): value is CitationSourceKind {
 
 function applicableCitationTypes(kind: CitationSourceKind) {
   if (kind === "COMMENTARY") return ["COMMENTARY"] as const;
-  if (kind === "JOURNAL") return ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE"] as const;
-  if (kind === "BOOK") return ["BOOK", "OTHER"] as const;
+  if (kind === "JOURNAL")
+    return ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE", "FORTHCOMING"] as const;
+  if (kind === "BOOK")
+    return [
+      "BOOK",
+      "BOOK_CHAPTER",
+      "FESTSCHRIFT_CONTRIBUTION",
+      "YEARBOOK_CONTRIBUTION",
+      "OTHER",
+    ] as const;
+  if (kind === "REPORT") return ["CASE_LAW", "LEGISLATIVE_MATERIAL", "OTHER"] as const;
+  if (kind === "CUSTOM") return ["MANUSCRIPT", "FORTHCOMING", "OTHER"] as const;
   return ["OTHER"] as const;
 }
 
-function isArea(value: unknown): value is CitationSourceLegalArea {
-  return ["BGB", "STGB", "STPO", "ZPO", "GG", "GENERAL", "UNKNOWN"].includes(
-    value as CitationSourceLegalArea
-  );
+export function normalizeCitationSourceLegalArea(
+  value: unknown
+): CitationSourceLegalArea | undefined {
+  switch (value) {
+    case "ZIVILRECHT":
+    case "BGB":
+      return "ZIVILRECHT";
+    case "STRAFRECHT":
+    case "STGB":
+      return "STRAFRECHT";
+    case "PROZESSRECHT":
+    case "STPO":
+    case "ZPO":
+      return "PROZESSRECHT";
+    case "OEFFENTLICHES_RECHT":
+    case "GG":
+      return "OEFFENTLICHES_RECHT";
+    case "EUROPARECHT":
+      return "EUROPARECHT";
+    case "SONSTIGE":
+    case "GENERAL":
+    case "UNKNOWN":
+      return "SONSTIGE";
+    default:
+      return undefined;
+  }
 }
 
 function isHint(value: unknown): value is CommentaryPersonStructureHint {
-  return ["WORK_THEN_BEARBEITER", "WORK_WITHOUT_BEARBEITER", "AMBIGUOUS", "UNKNOWN"].includes(
-    value as CommentaryPersonStructureHint
-  );
+  return [
+    "WORK_THEN_BEARBEITER",
+    "BEARBEITER_THEN_WORK",
+    "WORK_WITHOUT_BEARBEITER",
+    "EDITOR_STRUCTURE",
+    "AMBIGUOUS",
+    "UNKNOWN",
+  ].includes(value as CommentaryPersonStructureHint);
 }
 
 function isSafety(value: unknown): value is LegacySafetyLevel {
@@ -84,15 +121,10 @@ function validatedWorkOverride(
 ): WorkCitationOverride | undefined {
   if (kind !== "COMMENTARY" && kind !== "JOURNAL") return undefined;
   const citationType = kind === "COMMENTARY" ? "COMMENTARY" : "JOURNAL_ARTICLE";
-  const fallback: WorkCitationOverride = {
-    canonicalWorkId: canonicalSourceId,
-    citationType,
-    preferredName,
-  };
-  if (value === undefined) return fallback;
+  if (value === undefined) return undefined;
   if (!isRecord(value)) {
     errors.push(`sources.${canonicalSourceId}.workOverride must be an object`);
-    return fallback;
+    return undefined;
   }
   if (value.canonicalWorkId !== canonicalSourceId) {
     errors.push(`sources.${canonicalSourceId}.workOverride.canonicalWorkId must match the source`);
@@ -187,7 +219,7 @@ function validateSource(
     !isKind(value.kind) ||
     typeof value.preferredName !== "string" ||
     value.preferredName.trim() === "" ||
-    !isArea(value.legalArea) ||
+    !normalizeCitationSourceLegalArea(value.legalArea) ||
     typeof value.active !== "boolean"
   ) {
     errors.push(`sources[${index}] has invalid required fields`);
@@ -217,7 +249,7 @@ function validateSource(
     ...(optionalString(value.preferredCitationText)
       ? { preferredCitationText: value.preferredCitationText as string }
       : {}),
-    legalArea: value.legalArea,
+    legalArea: normalizeCitationSourceLegalArea(value.legalArea)!,
     ...(optionalString(value.commentedLaw) ? { commentedLaw: value.commentedLaw as string } : {}),
     applicableCitationTypes: [...applicableCitationTypes(kind)],
     active: value.active,

@@ -1,6 +1,9 @@
 /* global window */
 
-import { createDefaultCitationSourceMapping } from "./default-mapping";
+import {
+  createDefaultCitationSourceMapping,
+  mergeBuiltInCitationSourceAdditions,
+} from "./default-mapping";
 import type {
   CitationSourceMappingData,
   CitationSourceMappingStorage,
@@ -46,7 +49,9 @@ export function loadCitationSourceMapping(
   } else {
     json = inMemoryMappingJson;
   }
-  return json ? parseCitationSourceMapping(json).data : createDefaultCitationSourceMapping();
+  return json
+    ? mergeBuiltInCitationSourceAdditions(parseCitationSourceMapping(json).data)
+    : createDefaultCitationSourceMapping();
 }
 
 export function saveCitationSourceMapping(

@@ -193,12 +193,28 @@ export function parseCitationSourceMappingCsv(
       `${path}.kind`,
       errors
     );
-    const area = enumValue<CitationSourceLegalArea>(
-      valueAt(row, "legalArea"),
-      ["BGB", "STGB", "STPO", "ZPO", "GG", "GENERAL", "UNKNOWN"],
-      `${path}.legalArea`,
-      errors
-    );
+    const areaValue = valueAt(row, "legalArea");
+    const area = (
+      {
+        BGB: "ZIVILRECHT",
+        STGB: "STRAFRECHT",
+        STPO: "PROZESSRECHT",
+        ZPO: "PROZESSRECHT",
+        GG: "OEFFENTLICHES_RECHT",
+        GENERAL: "SONSTIGE",
+        UNKNOWN: "SONSTIGE",
+        ZIVILRECHT: "ZIVILRECHT",
+        STRAFRECHT: "STRAFRECHT",
+        PROZESSRECHT: "PROZESSRECHT",
+        OEFFENTLICHES_RECHT: "OEFFENTLICHES_RECHT",
+        EUROPARECHT: "EUROPARECHT",
+        SONSTIGE: "SONSTIGE",
+      } as const
+    )[
+      areaValue as
+        CitationSourceLegalArea | "BGB" | "STGB" | "STPO" | "ZPO" | "GG" | "GENERAL" | "UNKNOWN"
+    ];
+    if (!area) errors.push(`${path}.legalArea has an unsupported value`);
     const preferredName = valueAt(row, "preferredName");
     const aliasText = valueAt(row, "alias");
     const matchMode = enumValue(
@@ -218,7 +234,14 @@ export function parseCitationSourceMappingCsv(
     const personHint = hint
       ? enumValue<CommentaryPersonStructureHint>(
           hint,
-          ["WORK_THEN_BEARBEITER", "WORK_WITHOUT_BEARBEITER", "AMBIGUOUS", "UNKNOWN"],
+          [
+            "WORK_THEN_BEARBEITER",
+            "BEARBEITER_THEN_WORK",
+            "WORK_WITHOUT_BEARBEITER",
+            "EDITOR_STRUCTURE",
+            "AMBIGUOUS",
+            "UNKNOWN",
+          ],
           `${path}.personStructureHint`,
           errors
         )
@@ -294,25 +317,41 @@ export function parseCitationSourceMappingCsv(
           kind === "COMMENTARY"
             ? ["COMMENTARY"]
             : kind === "JOURNAL"
-              ? ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE"]
+              ? ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE", "FORTHCOMING"]
               : kind === "BOOK"
-                ? ["BOOK", "OTHER"]
-                : ["OTHER"],
+                ? [
+                    "BOOK",
+                    "BOOK_CHAPTER",
+                    "FESTSCHRIFT_CONTRIBUTION",
+                    "YEARBOOK_CONTRIBUTION",
+                    "OTHER",
+                  ]
+                : kind === "REPORT"
+                  ? ["CASE_LAW", "LEGISLATIVE_MATERIAL", "OTHER"]
+                  : ["MANUSCRIPT", "FORTHCOMING", "OTHER"],
         active: sourceActive,
         ...(optional(valueAt(row, "examplePattern"))
           ? { examplePattern: valueAt(row, "examplePattern") }
           : {}),
         ...(optional(valueAt(row, "notes")) ? { notes: valueAt(row, "notes") } : {}),
         ...(personHint ? { personStructureHint: personHint } : {}),
-        ...(kind === "COMMENTARY" || kind === "JOURNAL"
+        ...((kind === "COMMENTARY" &&
+          (optional(valueAt(row, "overridePreferredName")) ||
+            overrideBearbeiterItalic !== undefined ||
+            overrideEditorItalic !== undefined ||
+            optional(valueAt(row, "overridePersonSeparator")) ||
+            optional(valueAt(row, "overrideMarginNumberAbbreviation")))) ||
+        (kind === "JOURNAL" &&
+          (optional(valueAt(row, "overridePreferredName")) || overridePinpointStyle))
           ? {
               workOverride:
                 kind === "COMMENTARY"
                   ? {
                       canonicalWorkId: canonicalSourceId,
                       citationType: "COMMENTARY",
-                      preferredName:
-                        optional(valueAt(row, "overridePreferredName")) ?? preferredName,
+                      ...(optional(valueAt(row, "overridePreferredName"))
+                        ? { preferredName: valueAt(row, "overridePreferredName") }
+                        : {}),
                       ...(overrideBearbeiterItalic !== undefined ||
                       overrideEditorItalic !== undefined
                         ? {
@@ -348,8 +387,9 @@ export function parseCitationSourceMappingCsv(
                   : {
                       canonicalWorkId: canonicalSourceId,
                       citationType: "JOURNAL_ARTICLE",
-                      preferredName:
-                        optional(valueAt(row, "overridePreferredName")) ?? preferredName,
+                      ...(optional(valueAt(row, "overridePreferredName"))
+                        ? { preferredName: valueAt(row, "overridePreferredName") }
+                        : {}),
                       ...(overridePinpointStyle === "parentheses" ||
                       overridePinpointStyle === "comma"
                         ? {

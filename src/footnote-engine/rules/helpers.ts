@@ -214,14 +214,39 @@ export function formattingCandidates(
 }
 
 export function mappedCommentaryBearbeiterCandidates(context: RuleContext): PersonReference[] {
-  if (
-    !context.segment ||
-    context.sourceMapping?.status !== "MATCHED" ||
-    context.sourceMapping.personStructureHint !== "WORK_THEN_BEARBEITER"
-  ) {
+  if (!context.segment || context.sourceMapping?.status !== "MATCHED") {
     return [];
   }
   const contentText = context.footnote.contentText;
+  const structuredRange = context.sourceMapping.matchedBearbeiterRange;
+  if (
+    structuredRange &&
+    structuredRange.start >= context.segment.coreStart &&
+    structuredRange.end <= context.segment.coreEnd &&
+    contentText.slice(structuredRange.start, structuredRange.end) ===
+      context.sourceMapping.matchedBearbeiter
+  ) {
+    const candidates: PersonReference[] = [];
+    let partStart = structuredRange.start;
+    for (let cursor = structuredRange.start; cursor <= structuredRange.end; cursor += 1) {
+      if (cursor < structuredRange.end && contentText[cursor] !== "/") continue;
+      const rawText = contentText.slice(partStart, cursor).trim();
+      const start = contentText.indexOf(rawText, partStart);
+      const end = start + rawText.length;
+      if (rawText && start >= structuredRange.start && end <= structuredRange.end) {
+        candidates.push({
+          rawText,
+          start,
+          end,
+          role: "bearbeiter",
+          roleSignals: ["STRUCTURED_ALIAS"],
+        });
+      }
+      partStart = cursor + 1;
+    }
+    return candidates;
+  }
+  if (context.sourceMapping.personStructureHint !== "WORK_THEN_BEARBEITER") return [];
   const searchStart = Math.max(
     context.segment.coreStart,
     context.sourceMapping.matchedRange?.end ?? context.segment.coreStart

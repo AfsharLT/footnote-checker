@@ -39,7 +39,7 @@ assert(
   fixture.sources.filter((source) => source.kind === "JOURNAL").length === 4,
   "Fixture journal count mismatch"
 );
-assert(fixture.aliases.length === 45, "Starter fixture alias count mismatch");
+assert(fixture.aliases.length === 48, "Starter fixture alias count mismatch");
 assert(
   fixture.aliases.filter((alias) => alias.legacySafetyLevel === "UNCERTAIN").length === 7,
   "Uncertain aliases must remain seven"
@@ -166,7 +166,7 @@ function ambiguousSource(id: string, name: string): CitationSourceMaster {
     canonicalSourceId: id,
     kind: "JOURNAL",
     preferredName: name,
-    legalArea: "GENERAL",
+    legalArea: "SONSTIGE",
     applicableCitationTypes: ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE"],
     active: true,
   };

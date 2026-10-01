@@ -37,10 +37,15 @@ assert(loadCitationStyleProfile(storage).id === "default-de-legal", "Missing sto
 const customized = createDefaultCitationStyleProfile();
 customized.name = "Local profile";
 customized.caseLaw.decisionTypeOutput.JUDGMENT = "Urteil";
+customized.global.autoCloseInactiveFootnotes = false;
 assert(saveCitationStyleProfile(customized, storage).success, "Valid profile must save");
 const loaded = loadCitationStyleProfile(storage);
 assert(loaded.name === "Local profile", "Saved name must load");
 assert(loaded.caseLaw.decisionTypeOutput.JUDGMENT === "Urteil", "Saved setting must load");
+assert(
+  loaded.global.autoCloseInactiveFootnotes === false,
+  "Accordion preference must persist through the existing settings storage"
+);
 
 storage.setItem(CITATION_STYLE_PROFILE_STORAGE_KEY, "{broken");
 assert(loadCitationStyleProfile(storage).id === "default-de-legal", "Corrupt JSON must default");
@@ -67,6 +72,10 @@ assert(sanitized.name === "Partial", "Valid partial values must survive");
 assert(sanitized.statute.paragraphStyle === "abbreviation", "Invalid enum must default");
 assert(sanitized.caseLaw.dateFormat === "DD.MM.YYYY", "Invalid date enum must default");
 assert(sanitized.commentary.marginNumberAbbreviation === "Rn.", "Missing fields must default");
+assert(
+  sanitized.global.autoCloseInactiveFootnotes === true,
+  "Older profiles without the accordion preference must migrate to the ON default"
+);
 
 saveCitationStyleProfile(customized, storage);
 resetCitationStyleProfile(storage);

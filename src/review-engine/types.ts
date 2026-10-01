@@ -3,7 +3,7 @@ import type { FootnoteSnapshot } from "../taskpane/taskpane";
 import type { AnalysisProtectedRange } from "../footnote-engine/types";
 
 export type ReviewClass = "AUTO" | "MANUAL" | "TECHNICAL" | "INFO";
-export type ReviewStatus = "UNREVIEWED" | "ACCEPTED" | "REJECTED" | "DEFERRED";
+export type ReviewStatus = "UNREVIEWED" | "ACCEPTED" | "MANUALLY_CHECKED" | "REJECTED" | "DEFERRED";
 export type ReviewMode = "ANALYSIS" | "REVIEW" | "CORRECTION";
 export type ReviewDecisionSource = "USER" | "MODE_DEFAULT";
 
@@ -137,6 +137,7 @@ export interface ReviewSummary {
   byStatus: {
     open: number;
     accepted: number;
+    manuallyChecked: number;
     rejected: number;
     deferred: number;
   };

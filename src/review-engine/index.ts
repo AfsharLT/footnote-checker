@@ -1,6 +1,7 @@
 export { runReviewEngine } from "./runner";
 export {
   acceptAllAutomatic,
+  canMarkManuallyChecked,
   clearExplicitReviewStatus,
   reconcileReviewDecisions,
   resetAllDecisions,

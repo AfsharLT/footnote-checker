@@ -11,8 +11,13 @@ import type { CitationSourceMappingData } from "../citation-mapping/types";
 import { createDefaultCitationStyleProfile } from "../citation-settings/defaults";
 import { resolveCitationSettings } from "../citation-settings/resolver";
 import type { CitationStyleProfile } from "../citation-settings/types";
+import {
+  buildDocumentSourceRegistry,
+  type DocumentSourceRegistry,
+} from "../document-source-registry";
 import { classifyFootnoteParseResult } from "./citation-classifier";
 import { extractFootnoteParseResult } from "./citation-extractor";
+import { SEGMENTATION_USER_MESSAGE } from "./citation-sequence-segmenter";
 import { segmentFootnote } from "./citation-segmenter";
 import { deriveEffectiveCitationClassification } from "./effective-classification";
 import { findPlainTextUrls } from "./patterns";
@@ -22,12 +27,20 @@ import { runRules } from "./rules/runner";
 import type { RuleContext } from "./rules/types";
 import type {
   AnalysisProtectedRange,
+  CitationItem,
+  CitationSequence,
   EngineProtectedRange,
+  Finding,
   FootnoteAnalysisResult,
   FootnoteEngineResult,
   FootnoteParseResult,
   TextPatternMatch,
 } from "./types";
+
+interface CitationItemLocation {
+  sequence: CitationSequence;
+  item: CitationItem;
+}
 
 function getTimestamp(): number {
   return typeof performance === "undefined" ? Date.now() : performance.now();
@@ -159,6 +172,288 @@ function createFootnoteAnalysis(footnote: FootnoteSnapshot): FootnoteAnalysisRes
   };
 }
 
+function addUncertainSegmentationProtection(
+  footnote: FootnoteSnapshot,
+  analysis: FootnoteAnalysisResult,
+  parseResult: FootnoteParseResult
+): void {
+  const ranges = [
+    ...(parseResult.sequences ?? []).flatMap((sequence) =>
+      sequence.items
+        .filter((item) => item.status === "uncertain" || item.status === "failed")
+        .map((item) => ({ start: item.start, end: item.end }))
+    ),
+    ...(parseResult.narrativeText ?? [])
+      .filter((narrative) => narrative.status !== "recognized")
+      .map((narrative) => ({ start: narrative.start, end: narrative.end })),
+  ];
+
+  for (const range of ranges) {
+    if (
+      range.start < range.end &&
+      !analysis.engineProtectedRanges.some(
+        (existing) => existing.start === range.start && existing.end === range.end
+      )
+    ) {
+      analysis.engineProtectedRanges.push({
+        type: "uncertainCitation",
+        start: range.start,
+        end: range.end,
+        text: footnote.contentText.slice(range.start, range.end),
+      });
+      analysis.protectedRanges.push({ source: "engine", type: "uncertainCitation", ...range });
+    }
+  }
+  analysis.protectedRanges.sort(compareProtectedRanges);
+}
+
+function failedFootnoteParseResult(footnote: FootnoteSnapshot): FootnoteParseResult {
+  const end = footnote.contentText.length;
+  const warning = {
+    code: "CITATION_FOOTNOTE_FAILED",
+    message: SEGMENTATION_USER_MESSAGE,
+    stage: "footnote" as const,
+    start: 0,
+    end,
+  };
+  return {
+    footnoteId: footnote.id,
+    sourceTextHash: footnote.originalTextHash,
+    segments: [],
+    sequences: [],
+    narrativeText:
+      end > 0
+        ? [
+            {
+              id: `narrative:${footnote.id}:0:${end}:${footnote.originalTextHash}`,
+              footnoteId: footnote.id,
+              ordinal: footnote.ordinal,
+              start: 0,
+              end,
+              rawText: footnote.contentText,
+              reason: "footnoteFailure",
+              status: "failed",
+              warnings: [warning],
+            },
+          ]
+        : [],
+    segmentationWarnings: [warning],
+    segmentationStatus: "failed",
+  };
+}
+
+function rangesOverlap(
+  left: { start: number; end: number },
+  right: { start: number; end: number }
+): boolean {
+  if (left.start === left.end) return left.start >= right.start && left.start <= right.end;
+  return left.start < right.end && left.end > right.start;
+}
+
+function associateFindingsWithCitationItems(
+  findings: readonly Finding[],
+  parseResults: readonly FootnoteParseResult[]
+): Finding[] {
+  const locationsByFootnote = new Map<string, CitationItemLocation[]>();
+  const narrativeByFootnote = new Map<string, NonNullable<FootnoteParseResult["narrativeText"]>>();
+  const segmentRanges = new Map<string, { start: number; end: number }>();
+  for (const result of parseResults) {
+    locationsByFootnote.set(
+      result.footnoteId,
+      (result.sequences ?? []).flatMap((sequence) =>
+        sequence.items.map((item) => ({ sequence, item }))
+      )
+    );
+    narrativeByFootnote.set(result.footnoteId, result.narrativeText ?? []);
+    for (const segment of result.segments) {
+      segmentRanges.set(`${result.footnoteId}:${segment.segmentId}`, {
+        start: segment.coreStart,
+        end: segment.coreEnd,
+      });
+    }
+  }
+
+  const associated = findings.flatMap((finding) => {
+    if (!finding.citationSegmentId) return [finding];
+    if (
+      (narrativeByFootnote.get(finding.footnoteId) ?? []).some(
+        (narrative) => narrative.start <= finding.start && narrative.end >= finding.end
+      )
+    ) {
+      return [];
+    }
+    const locations = locationsByFootnote.get(finding.footnoteId) ?? [];
+    const segmentRange = segmentRanges.get(`${finding.footnoteId}:${finding.citationSegmentId}`);
+    const relevant = locations.filter(({ item }) => rangesOverlap(item, segmentRange ?? finding));
+    if (relevant.length === 0) return [finding];
+
+    const associations =
+      finding.ruleId === "CITATION_OTHER_REVIEW"
+        ? relevant
+        : [
+            relevant.find(({ item }) => item.start <= finding.start && item.end >= finding.end) ??
+              [...relevant].sort(
+                (left, right) =>
+                  Math.min(right.item.end, finding.end) -
+                  Math.max(right.item.start, finding.start) -
+                  (Math.min(left.item.end, finding.end) - Math.max(left.item.start, finding.start))
+              )[0],
+          ];
+
+    return associations.map(({ sequence, item }) => ({
+      ...finding,
+      ...(finding.ruleId === "CITATION_OTHER_REVIEW"
+        ? {
+            findingId: `${finding.findingId}:item:${item.id}`,
+            start: item.start,
+            end: item.end,
+            originalText: item.rawText,
+            message:
+              "Diese Quelle konnte keiner bekannten Zitierweise sicher zugeordnet werden. Bitte prüfen Sie sie manuell.",
+          }
+        : {}),
+      citationSequenceId: sequence.id,
+      citationItemId: item.id,
+      citationStart: item.start,
+      citationEnd: item.end,
+    }));
+  });
+  const unique = new Map<string, Finding>();
+  for (const finding of associated) {
+    const key =
+      finding.ruleId === "CITATION_OTHER_REVIEW" && finding.citationItemId
+        ? `${finding.footnoteId}:${finding.ruleId}:${finding.citationItemId}`
+        : finding.findingId;
+    if (!unique.has(key)) unique.set(key, finding);
+  }
+  return [...unique.values()];
+}
+
+function applyDocumentSourceRegistryFindings(
+  findings: readonly Finding[],
+  registry: DocumentSourceRegistry,
+  parseResults: readonly FootnoteParseResult[],
+  footnotes: readonly FootnoteSnapshot[]
+): Finding[] {
+  const sourceById = new Map(registry.sources.map((source) => [source.documentSourceId, source]));
+  const resolutionByItemId = new Map(
+    registry.resolutions.map((resolution) => [resolution.citationItemId, resolution])
+  );
+  const itemById = new Map(
+    parseResults.flatMap((result) =>
+      (result.sequences ?? []).flatMap((sequence) =>
+        sequence.items.map((item) => [item.id, item] as const)
+      )
+    )
+  );
+  const footnoteById = new Map(footnotes.map((footnote) => [footnote.id, footnote]));
+  const mappingAmbiguousItemIds = new Set(
+    findings
+      .filter((finding) => finding.ruleId === "SOURCE_MAPPING_AMBIGUOUS")
+      .map((finding) => finding.citationItemId)
+      .filter((itemId): itemId is string => Boolean(itemId))
+  );
+  const retained = findings.flatMap((finding) => {
+    const isRegistryResolvableReview =
+      finding.ruleId === "CITATION_OTHER_REVIEW" || finding.ruleId === "ANAPHORIC_REFERENCE_REVIEW";
+    if (!isRegistryResolvableReview || !finding.citationItemId) {
+      return [finding];
+    }
+    if (mappingAmbiguousItemIds.has(finding.citationItemId)) return [finding];
+    const resolution = resolutionByItemId.get(finding.citationItemId);
+    const source = resolution?.documentSourceId
+      ? sourceById.get(resolution.documentSourceId)
+      : undefined;
+    const safelyResolvedOther =
+      resolution &&
+      !resolution.warnings.includes("SUSPICIOUS_NARRATIVE_PREFIX") &&
+      (resolution.finalState === "PERSISTENT_MATCH" ||
+        (source?.status === "CONFIRMED_DOCUMENT_SOURCE" &&
+          (resolution.canEstablishIdentity ||
+            resolution.explanation.strategy === "ANM_REFERENCE" ||
+            resolution.explanation.strategy === "IMMEDIATE_CONTEXT")));
+    const safelyResolvedAnaphor =
+      resolution &&
+      !resolution.warnings.includes("SUSPICIOUS_NARRATIVE_PREFIX") &&
+      resolution.explanation.strategy === "IMMEDIATE_CONTEXT" &&
+      (resolution.finalState === "PERSISTENT_MATCH" || Boolean(source));
+    const safelyResolved =
+      finding.ruleId === "ANAPHORIC_REFERENCE_REVIEW" ? safelyResolvedAnaphor : safelyResolvedOther;
+    if (safelyResolved) return [];
+    return [
+      resolution?.resolution === "AMBIGUOUS"
+        ? {
+            ...finding,
+            message:
+              "Die Quelle konnte nicht eindeutig einer bereits verwendeten Quelle zugeordnet werden.",
+          }
+        : finding,
+    ];
+  });
+  const consistencyFindings: Finding[] = [];
+  for (const resolution of registry.resolutions) {
+    if (!resolution.documentSourceId || !resolution.canEstablishIdentity) continue;
+    const source = sourceById.get(resolution.documentSourceId);
+    const item = itemById.get(resolution.citationItemId);
+    if (!source || !item || source.status !== "CONFIRMED_DOCUMENT_SOURCE") continue;
+    if (
+      !resolution.normalizedBibliographicCore ||
+      resolution.normalizedBibliographicCore === source.canonicalVariant.normalizedBibliographicCore
+    ) {
+      continue;
+    }
+    const footnote = footnoteById.get(item.footnoteId);
+    if (!footnote) continue;
+    consistencyFindings.push({
+      findingId: `document-source-variant:${item.id}:${source.documentSourceId}`,
+      footnoteId: item.footnoteId,
+      footnoteOrdinal: footnote.ordinal,
+      sourceTextHash: footnote.originalTextHash,
+      ruleId: "SOURCE_CITATION_VARIANT_CONSISTENCY",
+      category: "citation",
+      start: item.start,
+      end: item.end,
+      originalText: item.rawText,
+      severity: "warning",
+      message: "Diese Quelle wird im übrigen Dokument überwiegend anders zitiert.",
+      citationSequenceId: item.sequenceId,
+      citationItemId: item.id,
+      citationStart: item.start,
+      citationEnd: item.end,
+      metadata: {
+        documentSourceId: source.documentSourceId,
+        canonicalDocumentCitation: source.canonicalDisplayCitation,
+        requiresManualReview: true,
+      },
+    });
+  }
+  return [...retained, ...consistencyFindings];
+}
+
+function attachSourceAuditFindings(
+  registry: DocumentSourceRegistry,
+  findings: readonly Finding[]
+): void {
+  const findingIdsByItem = new Map<string, string[]>();
+  findings.forEach((finding) => {
+    if (!finding.citationItemId) return;
+    const ids = findingIdsByItem.get(finding.citationItemId) ?? [];
+    ids.push(finding.findingId);
+    findingIdsByItem.set(finding.citationItemId, ids);
+  });
+  registry.auditRecords.forEach((record) => {
+    record.associatedFindingIds = [...(findingIdsByItem.get(record.citationItemId) ?? [])].sort();
+    record.noFindingReason =
+      record.associatedFindingIds.length === 0
+        ? record.finalState === "PERSISTENT_MATCH"
+          ? "KNOWN_PERSISTENT_SOURCE_WITHOUT_STYLE_FINDING"
+          : record.finalState === "DOCUMENT_MATCH"
+            ? "DOCUMENT_SOURCE_WITHOUT_STYLE_FINDING"
+            : "SOURCE_ACCOUNTED_WITHOUT_RULE_FINDING"
+        : undefined;
+  });
+}
+
 export interface AnalyzeFootnotesOptions {
   profile?: CitationStyleProfile;
   mappingData?: CitationSourceMappingData;
@@ -183,17 +478,28 @@ export function analyzeFootnotes(
   let engineProtectedRangeCount = 0;
 
   for (const footnote of footnotes) {
-    const analysis = createFootnoteAnalysis(footnote);
+    let analysis: FootnoteAnalysisResult;
+    try {
+      analysis = createFootnoteAnalysis(footnote);
+    } catch {
+      analysis = { footnoteId: footnote.id, engineProtectedRanges: [], protectedRanges: [] };
+    }
     footnoteAnalyses.push(analysis);
-    const classifiedParseResult = classifyFootnoteParseResult(
-      segmentFootnote(footnote, analysis.protectedRanges),
-      analysis.protectedRanges
-    );
-    const parseResult = extractFootnoteParseResult(
-      classifiedParseResult,
-      footnote,
-      analysis.protectedRanges
-    );
+    let parseResult: FootnoteParseResult;
+    try {
+      const classifiedParseResult = classifyFootnoteParseResult(
+        segmentFootnote(footnote, analysis.protectedRanges, [profile.global.citationSeparator]),
+        analysis.protectedRanges
+      );
+      parseResult = extractFootnoteParseResult(
+        classifiedParseResult,
+        footnote,
+        analysis.protectedRanges
+      );
+    } catch {
+      parseResult = failedFootnoteParseResult(footnote);
+    }
+    addUncertainSegmentationProtection(footnote, analysis, parseResult);
     parseResults.push(parseResult);
     engineProtectedRangeCount += analysis.engineProtectedRanges.length;
 
@@ -202,6 +508,8 @@ export function analyzeFootnotes(
         plainTextUrlCount += 1;
       }
     }
+
+    if (parseResult.segmentationStatus === "failed") continue;
 
     footnoteContexts.push({
       footnote,
@@ -250,11 +558,26 @@ export function analyzeFootnotes(
     }
   }
 
-  const findings = runRules(footnoteContexts, segmentContexts, {
+  const documentSourceRegistry = buildDocumentSourceRegistry({
     footnotes,
-    profile,
+    parseResults,
+    segmentAnalyses,
     mappingData,
   });
+  const findings = applyDocumentSourceRegistryFindings(
+    associateFindingsWithCitationItems(
+      runRules(footnoteContexts, segmentContexts, {
+        footnotes,
+        profile,
+        mappingData,
+      }),
+      parseResults
+    ),
+    documentSourceRegistry,
+    parseResults,
+    footnotes
+  );
+  attachSourceAuditFindings(documentSourceRegistry, findings);
 
   const findingsBySeverity = {
     info: 0,
@@ -275,6 +598,8 @@ export function analyzeFootnotes(
     plainTextUrlCount,
     engineProtectedRangeCount,
     findingsBySeverity,
+    documentSourceRegistry,
+    registryDurationMs: documentSourceRegistry.durationMs,
     durationMs: Number((getTimestamp() - startedAt).toFixed(3)),
   };
 }

@@ -1,0 +1,23 @@
+Footnote-Checker – Branding und GitHub-Beta-Vorbereitung
+
+Kontext: React/TypeScript/Office.js-Word-Add-in, aktuelle Beta. Aktuelles Repository ist /Users/afsharshayesteh/Footnote Checker mit origin AfsharLT/footnote-checker. Älteren Checkout unter Documents nicht bearbeiten. Lokale POC-17.3/17.3.2-Änderungen erhalten.
+
+Problem und verifizierte Fakten: Neues FNC_LOGO.png soll bestehendes Symbol ersetzen; UI bisher blau. README fehlt. Produktionsmanifest enthält Template-Platzhalter. Letzter vorhandener Commit ist 7ae0f63 (17.2); 17.4 wurde vorgezogen. Festschrift-/Override-Tests für 17.3.2 sind lokal vorhanden, Real-Word-Validierung noch gesondert nötig.
+
+Ziel: Logo unverändert übernehmen, technische Größenvarianten für bestehende Assetpfade erzeugen. UI-Palette Petrol #18313A, Papierweiß #F7F4EC, Erfolg #43B7A3, Hinweise sparsam #E88B72. Logo nicht mit weiteren Farben versehen. Produkt Footnote-Checker nennen, Kurzform FNC. Keine Parser-/Engine-Änderung für Branding.
+
+Scope: vorhandene Branding-/Theme-Dateien, nötige Produktmetadaten, README, textbasierte Installationsanleitung, GitGraph, Beta-Installerquellen und Download-ZIPs/Prüfsummen. Preserve bestehende Dateipfade, Add-in-ID, Berechtigungen, Produktionshost. Keine zusätzlichen Dependencies oder neue Architektur.
+
+README: kurze Produktbeschreibung, Modi, sichere Korrekturen, echte Grenzen, Mac/Windows-Schritte, Troubleshooting-Link, funktionierende Downloads nach Push. Dokumentierte Git-Commits mit Mermaid gitGraph darstellen; keine erfundenen Branches, Merges, Commits oder abgeschlossenen lokalen POCs. Geplante Funktionen getrennt nennen. Git-Push und Hosting-Deployment unterscheiden.
+
+Installer: nur Manifestinstallation, keine Downloads/Serverstarts. Mac nur Benutzerordner, Word vorher schließen, vorhandenes Manifest sichern. Windows Konto bei Elevation prüfen, fremde Freigaben/Kataloge nicht überschreiben, nur eigenes Konto berechtigen. Nicht auf dem Arbeitsrechner ausführen. Manuelle Mac-Alternative per Finder dokumentieren. Keine globale Abschaltung von Gatekeeper oder PowerShell-Richtlinien.
+
+Constraints: bestehende Safari-15-/Word-Kompatibilität, schmale Taskpane, zugänglicher Kontrast, keine Performanceänderung im Reader/Write-back. Kein context.sync je Fußnote und keine parallelen Word.run-Aufrufe. sources/ read-only. Keine ungeprüfte Lizenz-/Datenschutz-Zusage; tatsächliche Template-Platzhalter als Freigabepunkte dokumentieren.
+
+Checks: npm run typecheck, npm run lint, npm test, npm run build, npm run validate, Produktionsmanifest-Validierung, git diff --check. Vor Script-Ausführung package.json lesen. Logo-Ausgabedimensionen, ZIP-Inhalte/Manifestgleichheit/Prüfsummen, lokale Markdown-Linkziele, Mermaid-Parse prüfen. Build genügt nicht.
+
+Real Word: beide 17.3.2-Fälle und Einstellungen-Vererbung, Ribbon-/Taskpane-/Settings-Logo, enge Breite, Tastaturbedienung auf macOS/Windows prüfen. Installer in tatsächlicher Downloadform auf beiden Plattformen testen. Große Dokumente/ältere Hosts bei relevanten Veränderungen. Fehlenden Zugang ausdrücklich dokumentieren.
+
+Acceptance: passende Assets ausgeliefert; Petrol/Papierweiß im Theme; README und Installation nachvollziehbar; Downloads ohne erfundene Release-URLs; belegter GitGraph; sichere Paketquellen; Checks erfolgreich. Nicht durchgeführte Real-Word-/Installer-Tests bleiben offen.
+
+Final report: Änderungen/Dateien, Checks und Exit-Codes, tatsächliche Word-Tests, offene Distributionsthemen, lokaler Git-Stand. Kein Staging, kein Commit, kein Push, kein PR, kein Deploy, kein Public-Schalten. Nutzer prüft und veröffentlicht separat.

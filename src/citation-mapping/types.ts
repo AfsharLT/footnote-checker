@@ -5,9 +5,14 @@ export const CURRENT_CITATION_SOURCE_MAPPING_SCHEMA_VERSION = 1 as const;
 
 export type CitationSourceKind = "COMMENTARY" | "JOURNAL" | "BOOK" | "REPORT" | "CUSTOM";
 export type CitationSourceLegalArea =
-  "BGB" | "STGB" | "STPO" | "ZPO" | "GG" | "GENERAL" | "UNKNOWN";
+  "ZIVILRECHT" | "STRAFRECHT" | "PROZESSRECHT" | "OEFFENTLICHES_RECHT" | "EUROPARECHT" | "SONSTIGE";
 export type CommentaryPersonStructureHint =
-  "WORK_THEN_BEARBEITER" | "WORK_WITHOUT_BEARBEITER" | "AMBIGUOUS" | "UNKNOWN";
+  | "WORK_THEN_BEARBEITER"
+  | "BEARBEITER_THEN_WORK"
+  | "WORK_WITHOUT_BEARBEITER"
+  | "EDITOR_STRUCTURE"
+  | "AMBIGUOUS"
+  | "UNKNOWN";
 export type SourceMatchMode = "CASE_INSENSITIVE_TEXT" | "WHOLE_WORD_MARKER";
 export type LegacySafetyLevel = "PROBABLE" | "UNCERTAIN";
 export type CitationSourceOrigin = "DEFAULT" | "USER" | "IMPORTED";
@@ -127,7 +132,12 @@ export interface CitationSourceMigrationResult extends CitationSourceMappingVali
 
 export type MappingResolutionStatus = "MATCHED" | "AMBIGUOUS" | "UNMATCHED";
 export type CitationSourceMatchSource =
-  "PREFERRED_NAME" | "ALIAS" | "FALLBACK_CORE_TEXT" | "COMMENTARY_PREFIX" | "WHOLE_WORD_MARKER";
+  | "PREFERRED_NAME"
+  | "ALIAS"
+  | "STRUCTURED_ALIAS"
+  | "FALLBACK_CORE_TEXT"
+  | "COMMENTARY_PREFIX"
+  | "WHOLE_WORD_MARKER";
 
 export interface CitationSourceMappingResolution {
   status: MappingResolutionStatus;
@@ -141,6 +151,16 @@ export interface CitationSourceMappingResolution {
     end: number;
   };
   matchedAlias?: string;
+  matchedBearbeiter?: string;
+  matchedBearbeiterRange?: {
+    start: number;
+    end: number;
+  };
+  matchedWorkText?: string;
+  matchedWorkRange?: {
+    start: number;
+    end: number;
+  };
   matchSource?: CitationSourceMatchSource;
   legalArea?: CitationSourceLegalArea;
   commentedLaw?: string;

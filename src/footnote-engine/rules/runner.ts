@@ -82,6 +82,7 @@ function technicalFinding(
     sourceTextHash: context.footnote.originalTextHash,
     ruleId: "RULE_OUTPUT_INVALID",
     priority,
+    ...(context.segment ? { citationSegmentId: context.segment.segmentId } : {}),
     ...candidate,
   };
 }
@@ -117,6 +118,7 @@ function validateCandidate(
     sourceTextHash: context.footnote.originalTextHash,
     ruleId,
     priority,
+    ...(context.segment ? { citationSegmentId: context.segment.segmentId } : {}),
     ...candidate,
   };
 }

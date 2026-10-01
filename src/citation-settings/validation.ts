@@ -162,6 +162,12 @@ export function sanitizeCitationStyleProfile(value: unknown): CitationStyleProfi
         errors,
         "global.personSeparator"
       ),
+      autoCloseInactiveFootnotes: booleanValue(
+        global.autoCloseInactiveFootnotes,
+        fallback.global.autoCloseInactiveFootnotes,
+        errors,
+        "global.autoCloseInactiveFootnotes"
+      ),
       trimAroundSeparators: booleanValue(
         global.trimAroundSeparators,
         fallback.global.trimAroundSeparators,

@@ -7,7 +7,7 @@ const webpack = require("webpack");
 const path = require("path");
 
 const urlDev = "https://localhost:3000/";
-const urlProd = "https://www.contoso.com/"; // CHANGE THIS TO YOUR PRODUCTION DEPLOYMENT LOCATION
+const urlProd = "https://footnote-checker.shayesteh-afshar.workers.dev/";
 const safari15TranspileDependencies = [
   path.dirname(require.resolve("react-aria-components/package.json")),
   path.dirname(require.resolve("react-aria/package.json")),
@@ -85,6 +85,7 @@ module.exports = async (env, options) => {
         patterns: [
           {
             from: "assets/*",
+            globOptions: { ignore: ["**/FNC_LOGO.png"] },
             to: "assets/[name][ext][query]",
           },
           {

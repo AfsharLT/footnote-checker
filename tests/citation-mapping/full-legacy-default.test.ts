@@ -6,6 +6,7 @@ import {
   createDefaultCitationSourceMapping,
   migrateBundledLegacyCitationSourceMapping,
 } from "../../src/citation-mapping/default-mapping";
+import { POC_17_3_CORPUS_SOURCES } from "../../src/citation-mapping/corpus-coverage";
 import {
   BUNDLED_LEGACY_WORK_MAPPING_CSV,
   BUNDLED_LEGACY_WORK_MAPPING_SHA256,
@@ -56,8 +57,11 @@ assert(migrated.report.uncertainAliases === 7, "Expected seven uncertain aliases
 const bundled = migrateBundledLegacyCitationSourceMapping();
 assert(bundled.report.legacyRows === 71, "Bundled migration must read all rows");
 const defaults = createDefaultCitationSourceMapping();
-assert(defaults.sources.length === 25, "Full default must contain 25 sources");
-assert(defaults.aliases.length === 71, "Full default must contain 71 aliases");
+assert(defaults.sources.length >= 25, "Full default must retain all 25 migrated legacy sources");
+assert(
+  defaults.aliases.length >= 74,
+  "Full default must retain 71 legacy and three structured aliases"
+);
 
 const expectedPreferredNames = [
   "MüKoBGB",
@@ -87,15 +91,20 @@ const expectedPreferredNames = [
   "wistra",
 ].sort();
 assert(
-  defaults.sources
-    .map((source) => source.preferredName)
-    .sort()
-    .join("\n") === expectedPreferredNames.join("\n"),
-  "Canonical source list differs from the legacy CSV expectation"
+  expectedPreferredNames.every((name) =>
+    defaults.sources.some((source) => source.preferredName === name)
+  ),
+  "Canonical source list no longer contains every legacy source"
+);
+assert(
+  POC_17_3_CORPUS_SOURCES.every((definition) =>
+    defaults.sources.some((source) => source.canonicalSourceId === definition.id)
+  ),
+  "POC 17.3 corpus sources must be present in the additive default mapping"
 );
 
 const sourceIds = new Set(defaults.sources.map((source) => source.canonicalSourceId));
-assert(sourceIds.size === 25, "canonicalSourceIds must be unique");
+assert(sourceIds.size === defaults.sources.length, "canonicalSourceIds must be unique");
 assert(
   defaults.aliases.every((alias) => sourceIds.has(alias.canonicalSourceId)),
   "Every alias must reference an existing master"

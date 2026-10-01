@@ -51,15 +51,18 @@ assert(
   "Alias search failed"
 );
 assert(
-  filterCitationSources(mapping, { ...DEFAULT_MAPPING_FILTERS, kind: "COMMENTARY" }).length === 21,
+  filterCitationSources(mapping, { ...DEFAULT_MAPPING_FILTERS, kind: "COMMENTARY" }).length === 23,
   "Commentary filter failed"
 );
 assert(
-  filterCitationSources(mapping, { ...DEFAULT_MAPPING_FILTERS, kind: "JOURNAL" }).length === 4,
+  filterCitationSources(mapping, { ...DEFAULT_MAPPING_FILTERS, kind: "JOURNAL" }).length === 10,
   "Journal filter failed"
 );
 assert(
-  filterCitationSources(mapping, { ...DEFAULT_MAPPING_FILTERS, legalArea: "GG" }).length === 2,
+  filterCitationSources(mapping, {
+    ...DEFAULT_MAPPING_FILTERS,
+    legalArea: "OEFFENTLICHES_RECHT",
+  }).length === 2,
   "Legal-area filter failed"
 );
 assert(
@@ -93,7 +96,7 @@ assert(!mapping.aliases[legacyAliasIndex].active, "Legacy alias must be deactiva
 const sourceAddition = addCitationSource(mapping, {
   preferredName: "Test Kommentar",
   kind: "COMMENTARY",
-  legalArea: "STGB",
+  legalArea: "STRAFRECHT",
   commentedLaw: "StGB",
   personStructureHint: "UNKNOWN",
 });
@@ -122,7 +125,7 @@ assert(
   !addCitationSource(mapping, {
     preferredName: "Test Kommentar",
     kind: "COMMENTARY",
-    legalArea: "STGB",
+    legalArea: "STRAFRECHT",
   }).success,
   "Canonical source ID collision must be rejected"
 );
@@ -198,6 +201,7 @@ assert(
 );
 resetCitationSourceMapping(storage);
 assert(
-  loadCitationSourceMapping(storage).sources.length === 25,
+  loadCitationSourceMapping(storage).sources.length ===
+    createDefaultCitationSourceMapping().sources.length,
   "Mapping reset must restore default"
 );

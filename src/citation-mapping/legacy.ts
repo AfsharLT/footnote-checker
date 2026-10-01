@@ -36,33 +36,33 @@ function sourceKind(workType: string): CitationSourceKind {
 function legalArea(value: string): CitationSourceLegalArea {
   switch (normalizeCitationSourceText(value)) {
     case "bgb":
-      return "BGB";
+      return "ZIVILRECHT";
     case "stgb":
-      return "STGB";
+      return "STRAFRECHT";
     case "stpo":
-      return "STPO";
+      return "PROZESSRECHT";
     case "zpo":
-      return "ZPO";
+      return "PROZESSRECHT";
     case "gg":
-      return "GG";
+      return "OEFFENTLICHES_RECHT";
     case "allgemein":
-      return "GENERAL";
+      return "SONSTIGE";
     default:
-      return "UNKNOWN";
+      return "SONSTIGE";
   }
 }
 
-function commentedLaw(area: CitationSourceLegalArea): string | undefined {
-  switch (area) {
-    case "BGB":
+function commentedLaw(value: string): string | undefined {
+  switch (normalizeCitationSourceText(value)) {
+    case "bgb":
       return "BGB";
-    case "STGB":
+    case "stgb":
       return "StGB";
-    case "STPO":
+    case "stpo":
       return "StPO";
-    case "ZPO":
+    case "zpo":
       return "ZPO";
-    case "GG":
+    case "gg":
       return "GG";
     default:
       return undefined;
@@ -96,10 +96,21 @@ function personStructureHint(rows: readonly LegacyWorkMappingRow[]): CommentaryP
 function sourceId(
   kind: CitationSourceKind,
   area: CitationSourceLegalArea,
-  preferredName: string
+  preferredName: string,
+  legacyAreaValue?: string
 ): string {
   const prefix = kind === "JOURNAL" ? "journal" : "commentary";
-  const areaPart = kind === "JOURNAL" ? "" : `${area.toLowerCase()}-`;
+  const normalizedLegacyArea = normalizeCitationSourceText(legacyAreaValue ?? "");
+  const legacyArea = ["bgb", "stgb", "stpo", "zpo", "gg"].includes(normalizedLegacyArea)
+    ? normalizedLegacyArea
+    : area === "ZIVILRECHT"
+      ? "bgb"
+      : area === "STRAFRECHT"
+        ? "stgb"
+        : area === "OEFFENTLICHES_RECHT"
+          ? "gg"
+          : "general";
+  const areaPart = kind === "JOURNAL" ? "" : `${legacyArea}-`;
   return `${prefix}-${areaPart}${createCanonicalSourceSlug(preferredName)}`;
 }
 
@@ -180,7 +191,7 @@ export function migrateLegacyWorkMapping(
     const kind = sourceKind(first.workType);
     const area = legalArea(first.legalArea);
     const preferredName = first.canonicalCitation.trim();
-    const canonicalSourceId = sourceId(kind, area, preferredName);
+    const canonicalSourceId = sourceId(kind, area, preferredName, first.legalArea);
     const existingKey = sourceIdKeys.get(canonicalSourceId);
     if (existingKey && existingKey !== groupingKey) {
       errors.push(`canonicalSourceId collision: ${canonicalSourceId}`);
@@ -201,7 +212,7 @@ export function migrateLegacyWorkMapping(
       kind,
       preferredName,
       legalArea: area,
-      ...(commentedLaw(area) ? { commentedLaw: commentedLaw(area) } : {}),
+      ...(commentedLaw(first.legalArea) ? { commentedLaw: commentedLaw(first.legalArea) } : {}),
       applicableCitationTypes:
         kind === "COMMENTARY" ? ["COMMENTARY"] : ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE"],
       active: sourceRows.some((row) => yes(row.active)),

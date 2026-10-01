@@ -12,6 +12,7 @@ export type BatchExclusionReason =
   | "NOT_ACCEPTED"
   | "USER_REJECTED"
   | "USER_DEFERRED"
+  | "USER_MANUALLY_CHECKED"
   | "MANUAL_REVIEW_REQUIRED"
   | "TECHNICAL_BLOCK"
   | "INFORMATION_ONLY"
@@ -30,6 +31,7 @@ export interface WriteBackPlanTotals {
   info: number;
   rejected: number;
   deferred: number;
+  manuallyChecked: number;
   alreadyApplied: number;
 }
 
@@ -103,6 +105,7 @@ export interface BatchWriteBackSummary {
   info: number;
   rejected: number;
   deferred: number;
+  manuallyChecked: number;
   notActionable: number;
 }
 

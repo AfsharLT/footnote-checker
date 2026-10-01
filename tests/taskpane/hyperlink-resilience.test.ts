@@ -137,27 +137,32 @@ async function run(): Promise<void> {
     ambiguousWarnings.some(
       (warning) =>
         warning.code === "HYPERLINK_RANGE_CONSERVATIVE" &&
-        warning.message === CONSERVATIVE_HYPERLINK_USER_MESSAGE
+        warning.message === CONSERVATIVE_HYPERLINK_USER_MESSAGE &&
+        warning.category === "LINK_INFORMATION" &&
+        warning.affectsCorrectness
     ),
     "Conservative URL protection must create the plain-language INFO notice"
   );
 
   const unresolvedWarnings: FootnoteReadWarning[] = [];
-  resolveHyperlinkFallback("Verlinkte Quelle", [{ target: "https://example.test" }], unresolvedWarnings);
+  resolveHyperlinkFallback(
+    "Verlinkte Quelle",
+    [{ target: "https://example.test" }],
+    unresolvedWarnings
+  );
   assert(
     unresolvedWarnings.some(
       (warning) =>
         warning.code === "HYPERLINK_METADATA_PARTIAL" &&
-        warning.message === PARTIAL_HYPERLINK_USER_MESSAGE
+        warning.message === PARTIAL_HYPERLINK_USER_MESSAGE &&
+        warning.category === "LINK_INFORMATION"
     ),
     "An unmappable OOXML hyperlink must be marked partial without aborting the footnote"
   );
 
   const batch = Array.from({ length: 1_000 }, (_, index) => {
     const contentText =
-      index === 166
-        ? "Quelle https://example.test/beta"
-        : `MüKo-StGB/Fischer Rdnr. ${index + 1}.`;
+      index === 166 ? "Quelle https://example.test/beta" : `MüKo-StGB/Fischer Rdnr. ${index + 1}.`;
     return snapshot(contentText, index + 1, resolveHyperlinkFallback(contentText, []));
   });
   assert(batch.length === 1_000, "All snapshots must remain available after feature degradation");
@@ -217,7 +222,12 @@ async function run(): Promise<void> {
       syncCount: 1,
     },
   });
-  assert(notice === CONSERVATIVE_HYPERLINK_USER_MESSAGE, "The user must receive the INFO notice");
+  assert(
+    notice.includes("vollständig als Text gelesen") &&
+      notice.includes("Linkinformationen") &&
+      notice.includes("manuelle Prüfung"),
+    "The user must receive a precise plain-language PARTIAL notice"
+  );
   assert(
     !/(RichApi|Office\.js|Range\.hyperlinks|NotImplemented)/i.test(notice),
     "User-facing warnings must not expose implementation jargon"

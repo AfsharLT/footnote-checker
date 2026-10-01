@@ -1,9 +1,9 @@
 {
-  "name": "office-addin-taskpane-react",
+  "name": "footnote-checker",
   "version": "0.0.1",
   "repository": {
     "type": "git",
-    "url": "https://github.com/OfficeDev/Office-Addin-TaskPane-React.git"
+    "url": "https://github.com/AfsharLT/footnote-checker.git"
   },
   "license": "MIT",
   "config": {
@@ -95,5 +95,6 @@
     "last 2 Chrome versions",
     "last 2 Edge versions",
     "last 2 Firefox versions"
-  ]
+  ],
+  "description": "Word-Add-in zur Pr\u00fcfung juristischer Fu\u00dfnoten"
 }

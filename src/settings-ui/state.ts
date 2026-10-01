@@ -295,14 +295,38 @@ export function findAliasConflicts(mapping: CitationSourceMappingData): AliasCon
 function sourceIdFor(input: NewCitationSourceInput): string {
   const slug = createCanonicalSourceSlug(input.preferredName);
   if (input.kind === "JOURNAL") return `journal-${slug}`;
-  if (input.kind === "COMMENTARY") return `commentary-${input.legalArea.toLowerCase()}-${slug}`;
+  if (input.kind === "COMMENTARY") {
+    const law = createCanonicalSourceSlug(input.commentedLaw ?? "");
+    const area =
+      law ||
+      (input.legalArea === "ZIVILRECHT"
+        ? "zivilrecht"
+        : input.legalArea === "STRAFRECHT"
+          ? "strafrecht"
+          : input.legalArea === "PROZESSRECHT"
+            ? "prozessrecht"
+            : input.legalArea === "OEFFENTLICHES_RECHT"
+              ? "oeffentliches-recht"
+              : input.legalArea.toLowerCase());
+    return `commentary-${area}-${slug}`;
+  }
   return `${input.kind.toLowerCase()}-${slug}`;
 }
 
 function citationTypesForKind(kind: CitationSourceKind) {
   if (kind === "COMMENTARY") return ["COMMENTARY"] as const;
-  if (kind === "JOURNAL") return ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE"] as const;
-  if (kind === "BOOK") return ["BOOK", "OTHER"] as const;
+  if (kind === "JOURNAL")
+    return ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE", "FORTHCOMING"] as const;
+  if (kind === "BOOK")
+    return [
+      "BOOK",
+      "BOOK_CHAPTER",
+      "FESTSCHRIFT_CONTRIBUTION",
+      "YEARBOOK_CONTRIBUTION",
+      "OTHER",
+    ] as const;
+  if (kind === "REPORT") return ["CASE_LAW", "LEGISLATIVE_MATERIAL", "OTHER"] as const;
+  if (kind === "CUSTOM") return ["MANUSCRIPT", "FORTHCOMING", "OTHER"] as const;
   return ["OTHER"] as const;
 }
 
@@ -313,6 +337,19 @@ export function addCitationSource(
   const preferredName = input.preferredName.trim();
   if (!preferredName) {
     return { success: false, value: mapping, error: "Preferred Name darf nicht leer sein." };
+  }
+  if (
+    mapping.sources.some(
+      (source) =>
+        normalizeCitationSourceText(source.preferredName) ===
+        normalizeCitationSourceText(preferredName)
+    )
+  ) {
+    return {
+      success: false,
+      value: mapping,
+      error: "Eine Quelle mit diesem bevorzugten Namen existiert bereits.",
+    };
   }
   const canonicalSourceId = sourceIdFor({ ...input, preferredName });
   if (!canonicalSourceId.replace(/^(journal|commentary-[a-z]+|book|report|custom)-/, "")) {
@@ -346,15 +383,6 @@ export function addCitationSource(
     ...(input.personStructureHint ? { personStructureHint: input.personStructureHint } : {}),
     ...(input.examplePattern?.trim() ? { examplePattern: input.examplePattern.trim() } : {}),
     ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
-    ...(input.kind === "COMMENTARY" || input.kind === "JOURNAL"
-      ? {
-          workOverride: {
-            canonicalWorkId: canonicalSourceId,
-            citationType: input.kind === "COMMENTARY" ? "COMMENTARY" : "JOURNAL_ARTICLE",
-            preferredName,
-          },
-        }
-      : {}),
   });
   next.aliases.push({
     canonicalSourceId,
@@ -406,15 +434,13 @@ export function updateCitationSource(
   Object.assign(source, changes);
   if (changes.kind) {
     source.applicableCitationTypes = [...citationTypesForKind(changes.kind)];
-    source.workOverride =
-      changes.kind === "COMMENTARY" || changes.kind === "JOURNAL"
-        ? {
-            ...source.workOverride,
-            canonicalWorkId: source.canonicalSourceId,
-            citationType: changes.kind === "COMMENTARY" ? "COMMENTARY" : "JOURNAL_ARTICLE",
-            preferredName: source.workOverride?.preferredName ?? source.preferredName,
-          }
-        : undefined;
+    const citationType =
+      changes.kind === "COMMENTARY"
+        ? "COMMENTARY"
+        : changes.kind === "JOURNAL"
+          ? "JOURNAL_ARTICLE"
+          : undefined;
+    if (source.workOverride?.citationType !== citationType) delete source.workOverride;
   }
   return next;
 }

@@ -15,10 +15,13 @@ import type {
   DatabaseCitation,
   ExtractedComponent,
   ExtractedTextSpan,
+  FestschriftContributionExtraction,
+  ForthcomingExtraction,
   FootnoteParseResult,
   JournalArticleExtraction,
   JournalCaseCitation,
   LegislativeMaterialExtraction,
+  ManuscriptExtraction,
   OfficialCollectionCitation,
   OnlineSourceExtraction,
   OtherExtraction,
@@ -26,6 +29,7 @@ import type {
   StatuteExtraction,
   StatuteReferenceCandidate,
   StatuteSectionReference,
+  YearbookContributionExtraction,
 } from "./types";
 
 interface TextRange {
@@ -49,13 +53,16 @@ const DOCKET_NUMBER_PATTERN =
 const PANEL_PATTERN = /\b\d+\.\s*(?:Strafsenat|Zivilsenat|Senat)\b/i;
 const ECLI_PATTERN = /\bECLI:[A-Z]{2}:[A-Z0-9.:-]+\b/i;
 const JOURNAL_PUBLICATION_PATTERN =
-  /\b(NJW|NStZ(?:-RR)?|JZ|JuS|JA|JR|StV|wistra|ZfIStW|KriPoZ|ZStW|GA|MDR|ZIP|NZG|GmbHR|DStR|DStZ|BB|NZWiSt)\s+(\d{4}),\s*(\d+)(?:\s*(?:\(([^)]*)\)|,\s*(\d+(?:\s*ff?\.)?)|(ff?\.)))?/gi;
+  /\b(NJW|NStZ(?:-RR)?|JZ|JuS|Jura|JA|JR|StV|wistra|ZfIStW|KriPoZ|ZStW|GA|MDR|MedR|medstra|HRRS|ZIP|NZG|GmbHR|DStR|DStZ|BB|NZWiSt)\s+(\d{4}),\s*(\d+)v?(?:\s*(?:\(([^)]*)\)|,\s*(\d+(?:\s*ff?\.)?)|(ff?\.)))?/gi;
 const OFFICIAL_PUBLICATION_PATTERN =
-  /\b(BVerfGE|BGHSt|BGHZ|BAGE|BFHE|BVerwGE|BSGE)\s+(\d+),\s*(\d+)(?:\s*(?:\(([^)]*)\)|,\s*(\d+(?:\s*ff?\.)?)|(ff?\.)))?/g;
+  /\b(BVerfGE|BGHSt|BGHZ|RGSt|BAGE|BFHE|BVerwGE|BSGE)\.?\s+(\d+),\s*(\d+)(?:\s*(?:\(([^)]*)\)|,\s*(\d+(?:\s*ff?\.)?)|(ff?\.)))?/g;
 const DATABASE_PUBLICATION_PATTERN = /\b(BeckRS)\s+(\d{4}),\s*(\d+)\b|\b(juris|openJur)\b/gi;
 const PINPOINT_ITEM_PATTERN = /(\d+)(?:\s*(ff?\.?))?/g;
-const MARGIN_LOCATOR_PATTERN = /\b(?:Rn\.|Rdnr\.|Randnummer)\s*(\d+[A-Za-z]?)(?:\s*(ff?\.?))?/gi;
-const PAGE_LOCATOR_PATTERN = /\b(?:S\.|Seite)\s*(\d+)(?:\s*(ff?\.?))?/gi;
+const MARGIN_LOCATOR_PATTERN =
+  /\b(?:Rn\.|Rdn\.|Rdnr\.|Randnummer)\s*(\d+[A-Za-z]?)(?:\s*(ff?\.?))?/gi;
+const PAGE_LOCATOR_PATTERN = /\b(?:S\.|[Ss]eite)\s*(\d+)(?:\s*(ff?\.?))?/g;
+const PAGE_SERIES_PATTERN =
+  /\b(?:S\.|[Ss]eite)\s*(\d+)(?:\s*(ff?\.?))?(?:(?:\s*,\s*|\s*\(\s*)(\d+)(?![\p{L}\p{N}])(?:\s*(ff?\.?))?(?:\s*\))?)?/gu;
 const EDITION_PATTERN = /\b(\d+)\.\s*(?:Aufl\.|Auflage\b)/i;
 const YEAR_PATTERN = /\b(?:19|20)\d{2}\b/;
 const VOLUME_PATTERN = /\b(?:Bd\.|Band)\s*([A-Za-z0-9.-]+)\b/i;
@@ -70,6 +77,7 @@ const OFFICIAL_COLLECTION_COURTS: Readonly<Record<string, string>> = {
   BFHE: "BFH",
   BVerwGE: "BVerwG",
   BSGE: "BSG",
+  RGSt: "RG",
 };
 
 function createComponent<T>(
@@ -266,6 +274,118 @@ function findAllLocators(
     match = pattern.exec(segment.coreText);
   }
   return locators;
+}
+
+function findPageSeriesLocators(contentText: string, segment: CitationSegment): CitationLocator[] {
+  const locators: CitationLocator[] = [];
+  PAGE_SERIES_PATTERN.lastIndex = 0;
+  let match = PAGE_SERIES_PATTERN.exec(segment.coreText);
+  while (match) {
+    const firstStart = segment.coreStart + match.index;
+    const firstSuffixOffset = match[2]
+      ? match[0].indexOf(match[2], match[0].indexOf(match[1]) + match[1].length)
+      : -1;
+    const firstEnd =
+      firstSuffixOffset >= 0
+        ? segment.coreStart + match.index + firstSuffixOffset + match[2].length
+        : segment.coreStart + match.index + match[0].indexOf(match[1]) + match[1].length;
+    locators.push({
+      type: "page",
+      rawText: contentText.slice(firstStart, firstEnd),
+      start: firstStart,
+      end: firstEnd,
+      value: match[1],
+      ...(match[2] ? { suffix: match[2] as CitationLocator["suffix"] } : {}),
+    });
+    if (match[3]) {
+      const secondOffset = match[0].indexOf(match[3], firstEnd - segment.coreStart - match.index);
+      const secondStart = segment.coreStart + match.index + secondOffset;
+      const secondSuffixOffset = match[4]
+        ? match[0].indexOf(match[4], secondOffset + match[3].length)
+        : -1;
+      const secondEnd =
+        secondSuffixOffset >= 0
+          ? segment.coreStart + match.index + secondSuffixOffset + match[4].length
+          : secondStart + match[3].length;
+      locators.push({
+        type: "page",
+        rawText: contentText.slice(secondStart, secondEnd),
+        start: secondStart,
+        end: secondEnd,
+        value: match[3],
+        ...(match[4] ? { suffix: match[4] as CitationLocator["suffix"] } : {}),
+      });
+    }
+    match = PAGE_SERIES_PATTERN.exec(segment.coreText);
+  }
+  return locators;
+}
+
+function findBookStructuralLocators(
+  contentText: string,
+  segment: CitationSegment
+): CitationLocator[] {
+  const definitions: Array<{ type: CitationLocator["type"]; pattern: RegExp }> = [
+    { type: "chapter", pattern: /\bKap\.\s*(\d+[A-Za-z]?)/giu },
+    { type: "division", pattern: /\b(\d+)\.\s*Abschn\./giu },
+    { type: "footnote", pattern: /\bFn\.\s*(\d+[A-Za-z]?)/giu },
+    { type: "division", pattern: /\b(\d+\/\d+)\b/gu },
+  ];
+  return definitions.flatMap(({ type, pattern }) => {
+    const result: CitationLocator[] = [];
+    pattern.lastIndex = 0;
+    let match = pattern.exec(segment.coreText);
+    while (match) {
+      const start = segment.coreStart + match.index;
+      result.push({
+        type,
+        rawText: contentText.slice(start, start + match[0].length),
+        start,
+        end: start + match[0].length,
+        value: match[1],
+      });
+      match = pattern.exec(segment.coreText);
+    }
+    return result;
+  });
+}
+
+function findBareContributionLocators(
+  contentText: string,
+  segment: CitationSegment
+): CitationLocator[] {
+  const match =
+    /(?:\(\s*Anm\.\s*\d+\s*\)|(?:19|20)\d{2})\s*,\s*(\d+)(?!\s*\.\s*Abschn|[/.]\d)(?:\s*(ff?\.?))?(?:\s*,\s*(\d+)(?!\s*\.\s*Abschn|[/.]\d)(?:\s*(ff?\.?))?)?/iu.exec(
+      segment.coreText
+    );
+  if (!match) return [];
+  const result: CitationLocator[] = [];
+  for (const [valueGroup, suffixGroup] of [
+    [1, 2],
+    [3, 4],
+  ] as const) {
+    const value = match[valueGroup];
+    if (!value) continue;
+    const searchFrom = result.length === 0 ? 0 : result[result.length - 1].end - segment.coreStart;
+    const localStart = match[0].indexOf(value, Math.max(0, searchFrom - match.index));
+    if (localStart < 0) continue;
+    const start = segment.coreStart + match.index + localStart;
+    const suffix = match[suffixGroup];
+    const suffixStart = suffix ? match[0].indexOf(suffix, localStart + value.length) : -1;
+    const end =
+      suffixStart >= 0
+        ? segment.coreStart + match.index + suffixStart + suffix.length
+        : start + value.length;
+    result.push({
+      type: "page",
+      rawText: contentText.slice(start, end),
+      start,
+      end,
+      value,
+      ...(suffix ? { suffix: suffix as CitationLocator["suffix"] } : {}),
+    });
+  }
+  return result;
 }
 
 function extractStatute(
@@ -774,21 +894,41 @@ function extractCommentary(
   segment: CitationSegment
 ): CitationExtractionResult {
   const consumed: TextRange[] = [];
+  const bearbeiterInWork =
+    /^([A-ZÄÖÜ][\p{L}\p{M}'’.-]+(?:\s*\/\s*[A-ZÄÖÜ][\p{L}\p{M}'’.-]+)*)\s*,\s*in\s*:\s*([^,;]{2,120})/iu.exec(
+      segment.coreText
+    );
   const comma = segment.coreText.indexOf(",");
   const headEnd = comma >= 0 ? segment.coreStart + comma : segment.coreEnd;
   const head = contentText.slice(segment.coreStart, headEnd);
   const slash = head.indexOf("/");
-  const workEnd = slash >= 0 ? segment.coreStart + slash : headEnd;
+  const workStart = bearbeiterInWork
+    ? segment.coreStart + bearbeiterInWork[0].indexOf(bearbeiterInWork[2])
+    : segment.coreStart;
+  const workEnd = bearbeiterInWork
+    ? workStart + bearbeiterInWork[2].trimEnd().length
+    : slash >= 0
+      ? segment.coreStart + slash
+      : headEnd;
   const work = createComponent(
     contentText,
-    segment.coreStart,
+    workStart,
     workEnd,
-    contentText.slice(segment.coreStart, workEnd)
+    contentText.slice(workStart, workEnd)
   );
   consumed.push(...rangeOf(work));
 
-  const persons =
-    slash >= 0 ? extractSlashPersons(contentText, footnote, workEnd + 1, headEnd, "unknown") : [];
+  const persons = bearbeiterInWork
+    ? extractSlashPersons(
+        contentText,
+        footnote,
+        segment.coreStart,
+        segment.coreStart + bearbeiterInWork[1].length,
+        "bearbeiter"
+      )
+    : slash >= 0
+      ? extractSlashPersons(contentText, footnote, workEnd + 1, headEnd, "unknown")
+      : [];
   consumed.push(...persons);
 
   let commentedLaw: ExtractedComponent<string> | undefined;
@@ -851,7 +991,12 @@ function extractCommentary(
     editors: persons.filter((person) => person.role === "editor"),
     bearbeiters: persons.filter((person) => person.role === "bearbeiter"),
     ...(persons.length > 0
-      ? { personSequence: { persons, roleResolution: "ambiguous" as const } }
+      ? {
+          personSequence: {
+            persons,
+            roleResolution: bearbeiterInWork ? ("resolved" as const) : ("ambiguous" as const),
+          },
+        }
       : {}),
     ...(volume ? { volume } : {}),
     ...(edition ? { edition } : {}),
@@ -903,18 +1048,35 @@ function extractBook(
   segment: CitationSegment
 ): CitationExtractionResult {
   const consumed: TextRange[] = [];
-  const authors = extractAuthorPrefix(contentText, footnote, segment);
+  const missingSeparator =
+    /^(?:(?:von|van|de)\s+)?([A-ZÄÖÜ][\p{L}\p{M}'’.-]+(?:\/[A-ZÄÖÜ][\p{L}\p{M}'’.-]+)*)\s+(?=[A-ZÄÖÜ][^,;]{2,100}\(\s*Anm\.\s*\d+\s*\))/iu.exec(
+      segment.coreText
+    );
+  const authors = extractAuthorPrefix(
+    contentText,
+    footnote,
+    segment,
+    missingSeparator
+      ? segment.coreStart +
+          missingSeparator[0].indexOf(missingSeparator[1]) +
+          missingSeparator[1].length
+      : undefined
+  );
   consumed.push(...authors);
   const authorEnd = authors[authors.length - 1]?.end ?? segment.coreStart;
   const editionMatch = EDITION_PATTERN.exec(segment.coreText);
   const yearMatch = YEAR_PATTERN.exec(segment.coreText);
   const firstCandidate = segment.embeddedStatuteReferences[0];
   const marginMatch = MARGIN_LOCATOR_PATTERN.exec(segment.coreText);
+  const volumeMatch = VOLUME_PATTERN.exec(segment.coreText);
+  const internalReferenceMatch = /\(\s*Anm\.\s*\d+\s*\)/iu.exec(segment.coreText);
   const boundaries = [
     editionMatch ? segment.coreStart + editionMatch.index : segment.coreEnd,
     yearMatch ? segment.coreStart + yearMatch.index : segment.coreEnd,
     firstCandidate?.start ?? segment.coreEnd,
     marginMatch ? segment.coreStart + marginMatch.index : segment.coreEnd,
+    internalReferenceMatch ? segment.coreStart + internalReferenceMatch.index : segment.coreEnd,
+    volumeMatch ? segment.coreStart + volumeMatch.index : segment.coreEnd,
   ];
   const title = findTitleBetween(contentText, authorEnd + 1, Math.min(...boundaries));
   consumed.push(...rangeOf(title));
@@ -933,7 +1095,12 @@ function extractBook(
     ? componentFromMatch(contentText, segment.coreStart, yearMatch)
     : undefined;
   consumed.push(...rangeOf(year));
-  const volumeMatch = VOLUME_PATTERN.exec(segment.coreText);
+  if (internalReferenceMatch) {
+    consumed.push({
+      start: segment.coreStart + internalReferenceMatch.index,
+      end: segment.coreStart + internalReferenceMatch.index + internalReferenceMatch[0].length,
+    });
+  }
   const volume = volumeMatch
     ? componentFromMatch(
         contentText,
@@ -958,8 +1125,10 @@ function extractBook(
     : undefined;
   if (workCandidate) consumed.push(workCandidate);
   const margins = findAllLocators(contentText, segment, MARGIN_LOCATOR_PATTERN, "marginNumber");
-  const pages = findAllLocators(contentText, segment, PAGE_LOCATOR_PATTERN, "page");
-  consumed.push(...margins, ...pages);
+  const pages = findPageSeriesLocators(contentText, segment);
+  if (pages.length === 0) pages.push(...findBareContributionLocators(contentText, segment));
+  const structuralLocators = findBookStructuralLocators(contentText, segment);
+  consumed.push(...margins, ...pages, ...structuralLocators);
 
   const bookType: BookExtraction["bookType"] = title
     ? /Handbuch/i.test(title.rawText)
@@ -978,6 +1147,7 @@ function extractBook(
     ...(workSection ? { workSection } : {}),
     marginNumbers: margins,
     pages,
+    ...(structuralLocators.length > 0 ? { structuralLocators } : {}),
   };
   const remainder = collectUnparsedRemainder(segment, contentText, consumed);
   return {
@@ -1023,6 +1193,186 @@ function extractJournalArticle(
         Number(Boolean(publication?.firstPage)),
       remainder
     ),
+    data,
+    unparsedRemainder: remainder,
+  };
+}
+
+function extractFestschriftContribution(
+  contentText: string,
+  footnote: FootnoteSnapshot,
+  segment: CitationSegment
+): CitationExtractionResult {
+  const consumed: TextRange[] = [];
+  const markerMatch = /\b(Festschrift\s+für|FS\s+)([^,;()]{2,80})/iu.exec(segment.coreText);
+  const markerStart = markerMatch ? segment.coreStart + markerMatch.index : segment.coreStart;
+  const authorComma = segment.coreText.indexOf(",");
+  const authors = extractAuthorPrefix(
+    contentText,
+    footnote,
+    segment,
+    authorComma >= 0 && segment.coreStart + authorComma < markerStart
+      ? segment.coreStart + authorComma
+      : markerStart
+  );
+  consumed.push(...authors);
+  const inMarker = /\bin\s*:\s*$/iu.exec(contentText.slice(segment.coreStart, markerStart));
+  if (inMarker) {
+    consumed.push({
+      start: markerStart - inMarker[0].length,
+      end: markerStart,
+    });
+  }
+  const marker = markerMatch
+    ? componentFromGroup(contentText, segment.coreStart, markerMatch, 1, markerMatch[1].trim())
+    : undefined;
+  const honoree = markerMatch
+    ? componentFromGroup(
+        contentText,
+        segment.coreStart,
+        markerMatch,
+        2,
+        markerMatch[2].trim(),
+        undefined,
+        markerMatch[0].indexOf(markerMatch[2])
+      )
+    : undefined;
+  const containerTitle =
+    markerMatch && marker && honoree
+      ? createComponent(
+          contentText,
+          marker.start,
+          honoree.end,
+          contentText.slice(marker.start, honoree.end)
+        )
+      : undefined;
+  consumed.push(...rangeOf(containerTitle));
+  const yearMatch = YEAR_PATTERN.exec(segment.coreText);
+  const year = yearMatch
+    ? componentFromMatch(contentText, segment.coreStart, yearMatch)
+    : undefined;
+  consumed.push(...rangeOf(year));
+  const pages = findPageSeriesLocators(contentText, segment);
+  if (pages.length === 0) pages.push(...findBareContributionLocators(contentText, segment));
+  consumed.push(...pages);
+  const firstPage = pages[0];
+  const pinpointPages = pages.slice(1);
+  if (!marker || !honoree || !containerTitle) {
+    return extractOther(contentText, segment);
+  }
+  const data: FestschriftContributionExtraction = {
+    authors,
+    marker,
+    honoree,
+    containerTitle,
+    ...(year ? { year } : {}),
+    ...(firstPage ? { firstPage } : {}),
+    pinpointPages,
+  };
+  const remainder = collectUnparsedRemainder(segment, contentText, consumed);
+  return {
+    type: "FESTSCHRIFT_CONTRIBUTION",
+    status: extractionStatus(2 + authors.length + pages.length, remainder),
+    data,
+    unparsedRemainder: remainder,
+  };
+}
+
+function extractYearbookContribution(
+  contentText: string,
+  footnote: FootnoteSnapshot,
+  segment: CitationSegment
+): CitationExtractionResult {
+  const consumed: TextRange[] = [];
+  const containerMatch = /\bJahrbuch\s+für\s+Recht\s+und\s+Ethik\b/iu.exec(segment.coreText);
+  const containerTitle = containerMatch
+    ? componentFromMatch(contentText, segment.coreStart, containerMatch)
+    : undefined;
+  const authors = extractAuthorPrefix(
+    contentText,
+    footnote,
+    segment,
+    containerTitle?.start ?? segment.coreStart
+  );
+  consumed.push(...authors, ...rangeOf(containerTitle));
+  const yearMatch = YEAR_PATTERN.exec(segment.coreText);
+  const year = yearMatch
+    ? componentFromMatch(contentText, segment.coreStart, yearMatch)
+    : undefined;
+  consumed.push(...rangeOf(year));
+  const pages = findPageSeriesLocators(contentText, segment);
+  consumed.push(...pages);
+  if (!containerTitle) return extractOther(contentText, segment);
+  const data: YearbookContributionExtraction = {
+    authors,
+    containerTitle,
+    ...(year ? { year } : {}),
+    ...(pages[0] ? { firstPage: pages[0] } : {}),
+    pinpointPages: pages.slice(1),
+  };
+  const remainder = collectUnparsedRemainder(segment, contentText, consumed);
+  return {
+    type: "YEARBOOK_CONTRIBUTION",
+    status: extractionStatus(1 + authors.length + pages.length, remainder),
+    data,
+    unparsedRemainder: remainder,
+  };
+}
+
+function extractManuscript(
+  contentText: string,
+  footnote: FootnoteSnapshot,
+  segment: CitationSegment
+): CitationExtractionResult {
+  const match = /\(\s*Manuskript\s*\)/iu.exec(segment.coreText);
+  const manuscriptMarker = match
+    ? componentFromMatch(contentText, segment.coreStart, match)
+    : undefined;
+  const authors = extractAuthorPrefix(
+    contentText,
+    footnote,
+    segment,
+    manuscriptMarker?.start ?? segment.coreStart
+  );
+  if (!manuscriptMarker) return extractOther(contentText, segment);
+  const data: ManuscriptExtraction = { authors, manuscriptMarker };
+  const remainder = collectUnparsedRemainder(segment, contentText, [...authors, manuscriptMarker]);
+  return {
+    type: "MANUSCRIPT",
+    status: extractionStatus(1 + authors.length, remainder),
+    data,
+    unparsedRemainder: remainder,
+  };
+}
+
+function extractForthcoming(
+  contentText: string,
+  segment: CitationSegment
+): CitationExtractionResult {
+  const stateMatch = /\(\s*im\s+Erscheinen\s*\)/iu.exec(segment.coreText);
+  const publicationState = stateMatch
+    ? componentFromMatch(contentText, segment.coreStart, stateMatch)
+    : undefined;
+  if (!publicationState) return extractOther(contentText, segment);
+  const yearMatch = YEAR_PATTERN.exec(segment.coreText);
+  const year = yearMatch
+    ? componentFromMatch(contentText, segment.coreStart, yearMatch)
+    : undefined;
+  const sourceEnd = year?.start ?? publicationState.start;
+  const publicationSource = findTitleBetween(contentText, segment.coreStart, sourceEnd);
+  const data: ForthcomingExtraction = {
+    ...(publicationSource ? { publicationSource } : {}),
+    ...(year ? { year } : {}),
+    publicationState,
+  };
+  const remainder = collectUnparsedRemainder(segment, contentText, [
+    ...rangeOf(publicationSource),
+    ...rangeOf(year),
+    publicationState,
+  ]);
+  return {
+    type: "FORTHCOMING",
+    status: extractionStatus(1 + Number(Boolean(publicationSource)), remainder, true),
     data,
     unparsedRemainder: remainder,
   };
@@ -1467,6 +1817,14 @@ function extractSegment(
       return extractJournalArticle(contentText, footnote, segment);
     case "BOOK_CHAPTER":
       return extractBookChapter(contentText, footnote, segment);
+    case "FESTSCHRIFT_CONTRIBUTION":
+      return extractFestschriftContribution(contentText, footnote, segment);
+    case "YEARBOOK_CONTRIBUTION":
+      return extractYearbookContribution(contentText, footnote, segment);
+    case "MANUSCRIPT":
+      return extractManuscript(contentText, footnote, segment);
+    case "FORTHCOMING":
+      return extractForthcoming(contentText, segment);
     case "CASE_NOTE":
       return extractCaseNote(contentText, footnote, segment);
     case "LEGISLATIVE_MATERIAL":

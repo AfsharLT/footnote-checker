@@ -93,7 +93,7 @@ function runRequiredClassificationCases(): void {
   assertType("https://example.com", "ONLINE_SOURCE");
   assertType("https://support.tiktok.com/... (letzter Aufruf am 31.03.2026)", "ONLINE_SOURCE");
   assertType("BMF-Schreiben v. 01.01.2025, IV A 1 – ...", "ADMINISTRATIVE_MATERIAL");
-  assertType("Müller, in: Festschrift für X, 2025, S. 123", "BOOK_CHAPTER");
+  assertType("Müller, in: Festschrift für X, 2025, S. 123", "FESTSCHRIFT_CONTRIBUTION");
   assertType("Müller, Anm. zu BGH, Urt. v. ..., NJW 2025, 100", "CASE_NOTE");
   assertType("Müller, NJW 2025, 1234", "JOURNAL_ARTICLE");
   assertType("BGH NJW 2025, 1234", "CASE_LAW", "JOURNAL");
