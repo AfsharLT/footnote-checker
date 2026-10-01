@@ -1,2 +1,2 @@
-2815c2421bb2d42ba624b85f84788f9792ef62430103aead6a39d20ca81f9e1c  Footnote-Checker-macOS-Beta.zip
-295a8418092d5856118f6a297c7de4741e8918dd2b05d0b36be065bb895c3131  Footnote-Checker-Windows-Beta.zip
+3dfbdc11f4f4683caac8dd1f5c60c5652959b5547ff077ac35b89f0c3ee7444d  Footnote-Checker-macOS-Beta.zip
+e36c43d518aac4c22b5adb9ab4eea2f88d4477f2a3f0505f6d74e1c7e72ec97b  Footnote-Checker-Windows-Beta.zip
