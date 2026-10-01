@@ -1,0 +1,31 @@
+POC 17.5 — Loading & Progress UX, lokale Umsetzung
+
+Projekt: Footnote-Checker (FNC), Word-Task-Pane, React/TypeScript/Office.js.
+Checkout: /Users/afsharshayesteh/Footnote Checker. Ausgangsbranch poc/17.2-source-registry.
+Quellen: CTO-Chat 69d2d340-f660-838c-b3a7-0337f92fbff9; Head Of Product 6aa71ab4-e0d0-83ed-9e2b-ecb287595565; explizite Nutzererweiterungen in diesem Chat.
+
+Verifiziert: Reader verarbeitet Word-Fußnoten in 150er-Chunks. CPU-Analyse bisher synchron. Progress springt von Reader auf 95 Prozent statt echte Analyseschritte zu zählen. Settings/Quellenverwaltung nutzen lokalen Speicher, keinen Server-Write. Typprüfung vor Änderung erfolgreich, Editor zeigt eine nicht reproduzierte Markierung in tsconfig.json. POC 17.3.2 ist committed; der CTO-Chat meldet dennoch offene reale Festschrift-Pinpoint-Fälle (Hassemer/Hruschka). Diese nicht als fachlich abgeschlossen darstellen.
+
+Ziele und Verhalten:
+1. Sofortige Startmeldung vor erster Office-Operation; Doppelstart ausschließen.
+2. Phasen: Vorbereitung, Lesen, Zusatzinformationen, Quellenerkennung, Zuordnung, Regelprüfung, Ergebnisvorbereitung, ggf. Korrektur, Abschluss.
+3. Echte fertig verarbeitete Fußnoten zählen; Quellenschritte als Prüfschritte kennzeichnen. Monotone phasengewichtete Prozentwerte, nie 100 vor echten Ergebnissen bzw. beendetem Korrekturlauf. Keine Zeit-basierte Erhöhung der fertigen Fußnoten. Animation und Sekundenanzeige halten Wartephasen sichtbar lebendig; das Wunschziel +1 Prozent alle zwei Sekunden ist bei blockierendem Word/unklarer Restdauer nicht ehrlich garantierbar. CTO und Produktchat verlangen reale Signale und aktiven Waiting-State.
+4. Analyse kooperativ in kurzen Abschnitten ausführen, vorhandene synchronen Engine-APIs und identische Resultate/IDs/Offsets/Schutzbereiche erhalten. Keine Regellogik neu entwickeln.
+5. Nur kleines Statuspanel per Zeitgeber aktualisieren; Progressmeldungen bündeln. Keine React-Updates pro Zeichen/Quelle im heißen Pfad.
+6. Bei Fehler keine Erfolgsanzeige, keine veralteten Callback-Meldungen nach Abbruch/Unmount; Zeitgeber aufräumen. Korrektur-Zähler bleiben echte abgeschlossene Aktionen.
+7. Nach-oben-Button für den tatsächlichen Scrollcontainer in Analyse/Review/Korrektur; rechts unten, tastaturbedienbar, zugänglicher Name, Fokus zur Kopfzeile. Keine Word-Dokumentnavigation vorziehen.
+8. Dezente sichtbare innere Seitenkante; nicht als funktionsfähigen Word-Resizegriff darstellen. Native Word-Splitterfläche liegt außerhalb des Add-ins.
+9. Weißer Hintergrund, Petrol #18313A statt alter blauer Akzente, sparsam Salbei #43B7A3/Korall #E88B72. Originales FNC_LOGO.png unverändert übernehmen, quadratische Word-Icons 16/32/80 und UI-Logo 160 ableiten; alte Bilder aus assets entfernen und alle Referenzen umstellen. README/Installationsdarstellung bewahren.
+10. tsconfig-Editorproblem untersuchen; gültige Alias-Auflösung erhalten. Keine TypeScript-/Frameworkmigration.
+11. Settings bleiben lokal im selben Profil/Host gespeichert, dürfen mehrere lokale Dokumente desselben Profils betreffen. Keine globalen Servereinstellungen hinzufügen.
+
+Scope: Fortschrittsmodell, kooperative Parser-/Registry-/Regelausführung, kleines Loading-Panel, Scrollnavigation, Palette/Logo, Manifest-Iconreferenzen, Konfiguration, gezielte Tests und Real-Word-Checkliste.
+Non-Goals: Festschrift-Fachfix erneut umbauen, POC17.6 Wordnavigation, KI, Settings-Redesign, neue Serverendpunkte, neue Plattform-/Buildabhängigkeiten, Marketplace-Manifestmigration.
+Performance/Kompatibilität: 1000+ Fußnoten, keine neuen context.sync-Schleifen oder parallelen Word.run, keine langlebigen Office-Proxies, Safari15/ältere unterstützte WebViews, 320/400/520px, prefers-reduced-motion, lokal degradierende optionale Word-Funktionen.
+
+Tests: Sync-/Async-Ergebnisgleichheit bei 0/1/80/1200 Fußnoten inklusive Kurzbelege/Festschriften, echte Zähler, monotone Phasen, Abbruch/Fehler, UI-Eventloop-Yields und Update-Drosselung; laufende Korrektur niemals 100; lokale Settings-/Mapping-Storage-Regression; Icons/Manifestauflösung; bestehende17.3.2-Tests.
+Commands: npm run typecheck; npm run lint; npm test; npm run build; npm run validate; npx --no-install office-addin-manifest validate manifest.production.xml; git diff --check. Prüfen Typen, Qualität, Regressionen, Build, beide XML-Manifeste, Whitespace; Build schreibt dist. Keine Installation von neuen Projektabhängigkeiten.
+Real Word: macOS und Windows getrennt; kleines Dokument, 80-Fußnoten-Korpus, 1000+; alle Modi; Langzeit-Office-Warten; sofortige Rückmeldung, echte Counts,100 nur am Ende, Scrollbutton, schmale/breite Fenster, Settings-Neustart lokal, neues Word-Icon mit lokalem Manifest. Hostingstand ist unverändert; lokale Entwicklung testen. Nach Erfolg Abschlussbericht, dann menschliche Commit-/Push-Entscheidung.
+Final Report: geänderte Dateien/Verhalten, getestete Checks, messbare Large-Document-Ergebnisse, echte Hosttests versus Simulation, Grenzen des Word-Resize und der Prozentgarantie, offener Festschrift-Bug, lokale Start-/Prüfanleitung.
+Acceptance: sinnvolle Phasen und Aktivität über gesamten Lauf; identische fachliche Ergebnisse;100 nur bei Fertigstellung; keine neue Word-API-Verarbeitungslast; sauber aufgeräumte Timer; keine alten Assets/Referenzen; weißes UI/Petrol/neues Logo; lokaler Speicher; alle automatisierten Checks erfolgreich oder konkrete unvermeidbare Umgebungslimitierung dokumentiert.
+Policy: KEIN COMMIT. KEIN PUSH. KEIN DEPLOYMENT. Keine Veröffentlichung, keine GitHub-Schreibaktionen. Nur lokal implementieren und prüfen.

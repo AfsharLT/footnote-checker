@@ -1,7 +1,8 @@
 import * as React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog as AriaDialog, Heading, Modal, ModalOverlay } from "react-aria-components";
 import {
+  ArrowUp,
   AlertTriangle,
   Check,
   CheckCheck,
@@ -21,7 +22,8 @@ import {
 import { Collapsible } from "@/components/ui/collapsible";
 import { FilterSelect, type FilterOption } from "@/components/ui/filter-select";
 import { NeonButton } from "@/components/ui/neon-button";
-import { Progress } from "@/components/ui/progress";
+import { LoadingProgress } from "./LoadingProgress";
+import { loadingDisplay } from "../loading-progress";
 import { SpotlightCard } from "@/components/ui/spotlight-card";
 import { documentSourceForCitationItem } from "@/document-source-registry";
 import { BrandLogo } from "@/taskpane/components/BrandLogo";
@@ -65,7 +67,6 @@ import type { HostCapabilities } from "@/taskpane/host-capabilities";
 import type { AnalysisPerformanceMetrics, HostWorkState } from "@/taskpane/performance";
 import {
   canApplySingleReviewItem,
-  batchProgressPercent,
   writeBackResultLabel,
   writeBackResultForItem,
   type BatchProgress,
@@ -889,6 +890,9 @@ function GlobalTechnicalData({
 }
 
 export function ReviewWorkspace(props: ReviewWorkspaceProps) {
+  const scrollOwnerRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
   const [filters, setFilters] = useState<ReviewFilters>(DEFAULT_REVIEW_FILTERS);
   const [visibleGroupLimit, setVisibleGroupLimit] = useState(80);
   const [openFootnotes, setOpenFootnotes] = useState<OpenFootnoteState>(createClosedFootnoteState);
@@ -921,10 +925,28 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
   const batchSummary = props.batchResult?.summary;
   const batchHasIssues = props.batchResult?.status === "COMPLETED_WITH_ISSUES";
 
+  const loading = loadingDisplay(
+    props.progress,
+    props.batchProgress,
+    isBatchRunning,
+    props.mode === "CORRECTION",
+    props.isLoading
+  );
+  const backToTop = () => {
+    const owner = scrollOwnerRef.current;
+    if (!owner) return;
+    owner.scrollTop = 0;
+    headerRef.current?.focus({ preventScroll: true });
+  };
+
   return (
     <main className="fc-app">
-      <div className="fc-shell">
-        <header className="fc-header">
+      <div
+        className="fc-shell"
+        ref={scrollOwnerRef}
+        onScroll={(event) => setShowBackToTop(event.currentTarget.scrollTop > 180)}
+      >
+        <header className="fc-header" ref={headerRef} tabIndex={-1}>
           <div className="fc-brand">
             <BrandLogo size={34} />
             <div>
@@ -935,7 +957,7 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
           <NeonButton
             variant="ghost"
             size="icon"
-            disabled={isMutationRunning}
+            disabled={props.isLoading || isMutationRunning}
             aria-label="Einstellungen öffnen"
             title="Einstellungen"
             onClick={props.onOpenSettings}
@@ -949,7 +971,7 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
             <button
               key={option.value}
               type="button"
-              disabled={isMutationRunning}
+              disabled={props.isLoading || isMutationRunning}
               className={props.mode === option.value ? "is-active" : ""}
               aria-pressed={props.mode === option.value}
               onClick={() => props.onModeChange(option.value)}
@@ -976,34 +998,7 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
                 : "Fußnoten prüfen"}
         </NeonButton>
 
-        {isBatchRunning && props.batchProgress ? (
-          <section className="fc-progress-panel" aria-live="polite">
-            <strong>
-              {props.hostWorkState === "FINALIZING"
-                ? "Korrekturlauf wird abgeschlossen …"
-                : "Sichere Korrekturen werden durchgeführt …"}
-            </strong>
-            <Progress
-              value={batchProgressPercent(props.batchProgress)}
-              label="Fortschritt der sicheren Korrekturen"
-            />
-            <span>
-              {props.batchProgress.processed.toLocaleString("de-DE")} /{" "}
-              {props.batchProgress.total.toLocaleString("de-DE")} Korrekturen ·{" "}
-              {batchProgressPercent(props.batchProgress)} %
-            </span>
-          </section>
-        ) : props.isLoading && props.progress ? (
-          <section className="fc-progress-panel" aria-live="polite">
-            <strong>Fußnoten werden geprüft</strong>
-            <Progress value={props.progress.percent} label="Fortschritt der Fußnotenprüfung" />
-            <span>
-              {props.progress.total > 0
-                ? `${props.progress.processed.toLocaleString("de-DE")} / ${props.progress.total.toLocaleString("de-DE")} Fußnoten · ${props.progress.percent} %`
-                : `${props.progress.percent} %`}
-            </span>
-          </section>
-        ) : null}
+        {loading && <LoadingProgress display={loading} />}
 
         {props.message && (
           <div
@@ -1368,6 +1363,17 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
           />
         )}
       </div>
+      {showBackToTop && (
+        <button
+          type="button"
+          className="fc-back-to-top"
+          aria-label="Nach oben zu Einstellungen und Aktionen"
+          title="Nach oben"
+          onClick={backToTop}
+        >
+          <ArrowUp size={20} aria-hidden="true" />
+        </button>
+      )}
     </main>
   );
 }

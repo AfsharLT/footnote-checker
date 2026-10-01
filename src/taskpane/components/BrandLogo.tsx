@@ -1,6 +1,6 @@
 import * as React from "react";
 
-export const FOOTNOTE_CHECKER_LOGO_SRC = "assets/footnote-checker-80.png";
+export const FOOTNOTE_CHECKER_LOGO_SRC = "assets/fnc-logo-160.png";
 
 interface BrandLogoProps {
   size?: number;

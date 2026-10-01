@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0" xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="TaskPaneApp">
   <Id>e99f1e9d-b886-4eb7-a1b8-2c0561b078e8</Id>
-  <Version>1.0.0.0</Version>
+  <Version>1.0.0.1</Version>
   <ProviderName>Afshar Shayesteh</ProviderName>
   <DefaultLocale>de-DE</DefaultLocale>
   <DisplayName DefaultValue="Footnote-Checker"/>
   <Description DefaultValue="Prüft juristische Fußnoten und unterstützt sichere, nachvollziehbare Korrekturen."/>
-  <IconUrl DefaultValue="https://footnote-checker.shayesteh-afshar.workers.dev/assets/footnote-checker-32.png"/>
-  <HighResolutionIconUrl DefaultValue="https://footnote-checker.shayesteh-afshar.workers.dev/assets/footnote-checker-80.png"/>
+  <IconUrl DefaultValue="https://footnote-checker.shayesteh-afshar.workers.dev/assets/fnc-icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://footnote-checker.shayesteh-afshar.workers.dev/assets/fnc-icon-80.png"/>
   <SupportUrl DefaultValue="https://github.com/AfsharLT/footnote-checker/issues"/>
   <AppDomains>
     <AppDomain>https://footnote-checker.shayesteh-afshar.workers.dev</AppDomain>
@@ -62,9 +62,9 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16x16" DefaultValue="https://footnote-checker.shayesteh-afshar.workers.dev/assets/footnote-checker-16.png"/>
-        <bt:Image id="Icon.32x32" DefaultValue="https://footnote-checker.shayesteh-afshar.workers.dev/assets/footnote-checker-32.png"/>
-        <bt:Image id="Icon.80x80" DefaultValue="https://footnote-checker.shayesteh-afshar.workers.dev/assets/footnote-checker-80.png"/>
+        <bt:Image id="Icon.16x16" DefaultValue="https://footnote-checker.shayesteh-afshar.workers.dev/assets/fnc-icon-16.png"/>
+        <bt:Image id="Icon.32x32" DefaultValue="https://footnote-checker.shayesteh-afshar.workers.dev/assets/fnc-icon-32.png"/>
+        <bt:Image id="Icon.80x80" DefaultValue="https://footnote-checker.shayesteh-afshar.workers.dev/assets/fnc-icon-80.png"/>
       </bt:Images>
       <bt:Urls>
         <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://go.microsoft.com/fwlink/?LinkId=276812"/>

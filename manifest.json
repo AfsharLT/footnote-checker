@@ -18,8 +18,8 @@
       "termsOfUseUrl": "https://www.contoso.com/servicesagreement"
     },
     "icons": {
-      "outline": "assets/outline.png",
-      "color": "assets/color.png"
+      "outline": "assets/fnc-icon-32.png",
+      "color": "assets/fnc-logo-160.png"
     },
     "accentColor": "#230201",
     "localizationInfo": {
@@ -96,9 +96,9 @@
                     "id": "msgComposeGroup",
                     "label": "Contoso Add-in",
                     "icons": [
-                      { "size": 16, "url": "https://localhost:3000/assets/icon-16.png" },
-                      { "size": 32, "url": "https://localhost:3000/assets/icon-32.png" },
-                      { "size": 80, "url": "https://localhost:3000/assets/icon-80.png" }
+                      { "size": 16, "url": "https://localhost:3000/assets/fnc-icon-16.png" },
+                      { "size": 32, "url": "https://localhost:3000/assets/fnc-icon-32.png" },
+                      { "size": 80, "url": "https://localhost:3000/assets/fnc-icon-80.png" }
                     ],
                     "controls": [
                       {
@@ -106,9 +106,9 @@
                         "type": "button",
                         "label": "Show Task Pane",
                         "icons": [
-                          { "size": 16, "url": "https://localhost:3000/assets/icon-16.png" },
-                          { "size": 32, "url": "https://localhost:3000/assets/icon-32.png" },
-                          { "size": 80, "url": "https://localhost:3000/assets/icon-80.png" }
+                          { "size": 16, "url": "https://localhost:3000/assets/fnc-icon-16.png" },
+                          { "size": 32, "url": "https://localhost:3000/assets/fnc-icon-32.png" },
+                          { "size": 80, "url": "https://localhost:3000/assets/fnc-icon-80.png" }
                         ],
                         "supertip": {
                           "title": "Show Task Pane",
@@ -121,9 +121,9 @@
                         "type": "button",
                         "label": "Perform an action",
                         "icons": [
-                          { "size": 16, "url": "https://localhost:3000/assets/icon-16.png" },
-                          { "size": 32, "url": "https://localhost:3000/assets/icon-32.png" },
-                          { "size": 80, "url": "https://localhost:3000/assets/icon-80.png" }
+                          { "size": 16, "url": "https://localhost:3000/assets/fnc-icon-16.png" },
+                          { "size": 32, "url": "https://localhost:3000/assets/fnc-icon-32.png" },
+                          { "size": 80, "url": "https://localhost:3000/assets/fnc-icon-80.png" }
                         ],
                         "supertip": {
                           "title": "Perform an action",

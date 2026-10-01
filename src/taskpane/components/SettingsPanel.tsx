@@ -176,7 +176,7 @@ const useStyles = makeStyles({
   },
   identity: { display: "flex", alignItems: "center", gap: "10px", minWidth: 0 },
   logo: { width: "36px", height: "36px", objectFit: "contain", flexShrink: 0 },
-  title: { margin: 0, color: "#003381", fontSize: "21px", lineHeight: "26px" },
+  title: { margin: 0, color: "#18313A", fontSize: "21px", lineHeight: "26px" },
   subtitle: { margin: "4px 0", color: tokens.colorNeutralForeground2 },
   stickyActionBar: {
     position: "sticky",
@@ -192,7 +192,7 @@ const useStyles = makeStyles({
     border: "1px solid #c8d8ee",
     borderRadius: "10px",
     backgroundColor: "rgba(255, 255, 255, 0.96)",
-    boxShadow: "0 5px 18px rgba(0, 51, 129, 0.08)",
+    boxShadow: "0 5px 18px rgba(24, 49, 58, 0.08)",
   },
   searchArea: { position: "relative", flex: "1 1 100%", minWidth: 0 },
   searchField: {
@@ -256,7 +256,7 @@ const useStyles = makeStyles({
     border: "1px solid #c8d8ee",
     borderRadius: "8px",
     backgroundColor: "#fff",
-    color: "#003381",
+    color: "#18313A",
     cursor: "pointer",
     fontSize: "12px",
     fontWeight: 600,
@@ -285,7 +285,7 @@ const useStyles = makeStyles({
     padding: "10px 12px",
     border: 0,
     backgroundColor: "#fff",
-    color: "#003381",
+    color: "#18313A",
     cursor: "pointer",
     fontFamily: "inherit",
     fontSize: "14px",
@@ -305,7 +305,7 @@ const useStyles = makeStyles({
     borderRadius: "10px",
     backgroundColor: tokens.colorNeutralBackground1,
   },
-  sectionTitle: { margin: 0, color: "#003381", fontSize: "18px" },
+  sectionTitle: { margin: 0, color: "#18313A", fontSize: "18px" },
   subsection: {
     display: "grid",
     gap: "10px",
@@ -362,7 +362,7 @@ const useStyles = makeStyles({
     borderRadius: "10px",
     backgroundColor: tokens.colorNeutralBackground2,
   },
-  cardTitle: { fontWeight: tokens.fontWeightSemibold, color: "#003381" },
+  cardTitle: { fontWeight: tokens.fontWeightSemibold, color: "#18313A" },
   aliasCard: {
     display: "grid",
     gap: "10px",

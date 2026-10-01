@@ -2,11 +2,7 @@ import * as React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./components/App";
 import { TaskpaneErrorBoundary } from "./components/TaskpaneErrorBoundary";
-import {
-  createLightTheme,
-  FluentProvider,
-  type BrandVariants,
-} from "@fluentui/react-components";
+import { createLightTheme, FluentProvider, type BrandVariants } from "@fluentui/react-components";
 import "./styles.css";
 
 /* global document, Office, module, require, HTMLElement */
@@ -14,22 +10,22 @@ import "./styles.css";
 const rootElement: HTMLElement | null = document.getElementById("container");
 const root = rootElement ? createRoot(rootElement) : undefined;
 const footnoteCheckerBrand: BrandVariants = {
-  10: "#000b1f",
-  20: "#00102d",
-  30: "#00163a",
-  40: "#001d48",
-  50: "#002456",
-  60: "#002a65",
-  70: "#003074",
-  80: "#003381",
-  90: "#1d4b91",
-  100: "#3c63a1",
-  110: "#597bb1",
-  120: "#7694c2",
-  130: "#94acd2",
-  140: "#b2c5e2",
-  150: "#d2def0",
-  160: "#f1f5fb",
+  10: "#03090b",
+  20: "#081215",
+  30: "#0c1a20",
+  40: "#10242b",
+  50: "#132930",
+  60: "#152d35",
+  70: "#173038",
+  80: "#18313A",
+  90: "#304851",
+  100: "#496069",
+  110: "#647c84",
+  120: "#81979d",
+  130: "#a1b4b9",
+  140: "#c0cdd0",
+  150: "#dde5e7",
+  160: "#f3f6f7",
 };
 const footnoteCheckerTheme = createLightTheme(footnoteCheckerBrand);
 

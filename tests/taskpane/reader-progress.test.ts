@@ -19,14 +19,14 @@ assert(
 );
 assert(
   progressValues[progressValues.length - 1].processed === total &&
-    progressValues[progressValues.length - 1].percent === 90,
+    progressValues[progressValues.length - 1].percent === 60,
   "Reader completion must reserve progress for analysis"
 );
 
 const analyzing = createFootnoteReadProgress("analyzing", total, total);
 const correcting = createFootnoteReadProgress("correcting", 12, 27);
 const complete = createFootnoteReadProgress("complete", total, total);
-assert(analyzing.percent === 95, "Analysis phase must follow reader progress");
+assert(analyzing.percent === 72, "Analysis phase must follow reader progress");
 assert(
   correcting.processed === 12 && correcting.total === 27 && correcting.percent === 44,
   "Correction progress must reflect actually processed automatic actions"

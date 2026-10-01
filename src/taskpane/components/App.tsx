@@ -4,7 +4,7 @@ import * as React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCitationSourceMapping } from "@/citation-mapping/use-citation-source-mapping";
 import { useCitationSettings } from "@/citation-settings/use-citation-settings";
-import { analyzeFootnotes } from "@/footnote-engine/engine";
+import { analyzeFootnotesAsync } from "@/footnote-engine/engine";
 import { promoteDocumentSources } from "@/document-source-registry";
 import { SEGMENTATION_USER_MESSAGE } from "@/footnote-engine/citation-sequence-segmenter";
 import type { FootnoteEngineResult } from "@/footnote-engine/types";
@@ -57,6 +57,8 @@ import {
   type WriteBackState,
 } from "@/write-back-engine";
 
+import { yieldToInterface } from "@/footnote-engine/cooperative";
+
 const ReviewWorkspace = React.lazy(() =>
   import("./ReviewWorkspace").then((module) => ({ default: module.ReviewWorkspace }))
 );
@@ -99,6 +101,7 @@ const App: React.FC = () => {
   const [showSourceReview, setShowSourceReview] = useState(false);
   const [sourcePromotionMessage, setSourcePromotionMessage] = useState("");
   const [hostCapabilities] = useState<HostCapabilities>(() => getOfficeHostCapabilities());
+  const analysisAbortRef = useRef<AbortController | null>(null);
   const readInProgressRef = useRef(false);
   const batchInFlightRef = useRef(false);
   const writeBackInFlightRef = useRef(new Set<string>());
@@ -106,14 +109,27 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const cleanupBestEffortResources = () => {
-      readInProgressRef.current = false;
-      batchInFlightRef.current = false;
+      analysisAbortRef.current?.abort();
+      // Keep in-flight guards until their finally blocks finish. Office work
+      // already queued cannot be cancelled by aborting the local CPU pipeline.
       writeBackInFlightRef.current.clear();
       appliedMutationsRef.current = [];
     };
-    window.addEventListener("pagehide", cleanupBestEffortResources);
+    const handlePageHide = () => {
+      cleanupBestEffortResources();
+      setIsLoading(false);
+      setReadProgress(null);
+      setBatchProgress(null);
+      setBatchRunStatus((current) =>
+        current === "PLANNING" || current === "RUNNING" || current === "FINALIZING"
+          ? "FAILED"
+          : current
+      );
+      setHostWorkState("IDLE");
+    };
+    window.addEventListener("pagehide", handlePageHide);
     return () => {
-      window.removeEventListener("pagehide", cleanupBestEffortResources);
+      window.removeEventListener("pagehide", handlePageHide);
       cleanupBestEffortResources();
     };
   }, []);
@@ -155,6 +171,8 @@ const App: React.FC = () => {
       setTechnicalError(unsupportedCapabilityTechnicalDetails(hostCapabilities));
       return;
     }
+    const controller = new AbortController();
+    analysisAbortRef.current = controller;
     const analysisStartedAt = performance.now();
     readInProgressRef.current = true;
     setHostWorkState("ANALYZING");
@@ -164,16 +182,27 @@ const App: React.FC = () => {
     setTechnicalError("");
     setReadProgress(createFootnoteReadProgress("initializing", 0, 0));
     try {
-      const result = await readFootnotes(setReadProgress);
+      await yieldToInterface();
+      if (controller.signal.aborted) return;
+      const result = await readFootnotes((progress) => {
+        if (!controller.signal.aborted) setReadProgress(progress);
+      });
+      if (controller.signal.aborted) return;
       const readerNotice = createReaderNotice(result);
-      setReadProgress(
-        createFootnoteReadProgress("analyzing", result.footnotes.length, result.footnotes.length)
-      );
-      const analysis = analyzeFootnotes(result.footnotes, {
+      setReadProgress(createFootnoteReadProgress("analyzing", 0, result.footnotes.length));
+      const analysis = await analyzeFootnotesAsync(result.footnotes, {
+        signal: controller.signal,
+        onProgress: (progress) => {
+          if (!controller.signal.aborted)
+            setReadProgress(
+              createFootnoteReadProgress(progress.phase, progress.processed, progress.total)
+            );
+        },
         profile: activeProfile,
         mappingData,
         mappingIndex,
       });
+      if (controller.signal.aborted) return;
       const analysisNotice = [
         readerNotice,
         analysis.parseResults.some((parseResult) =>
@@ -184,6 +213,11 @@ const App: React.FC = () => {
       ]
         .filter(Boolean)
         .join(" ");
+      setReadProgress(
+        createFootnoteReadProgress("finalizing", result.footnotes.length, result.footnotes.length)
+      );
+      await yieldToInterface();
+      if (controller.signal.aborted) return;
       setFootnotes(result.footnotes);
       setDocumentFormatting(result.documentFormatting);
       setReaderMetrics(result.readerMetrics);
@@ -229,6 +263,7 @@ const App: React.FC = () => {
           items: analyzedReview.items,
           footnotes: result.footnotes,
           onProgress: (progress) => {
+            if (controller.signal.aborted) return;
             setBatchProgress(progress);
             setBatchRunStatus(
               progress.phase === "PLANNING"
@@ -239,18 +274,29 @@ const App: React.FC = () => {
             );
             setHostWorkState(hostWorkStateForBatchPhase(progress.phase));
           },
-          onResults: (writeBackResults) =>
+          onResults: (writeBackResults) => {
+            if (controller.signal.aborted) return;
             setWriteBackState((current) => {
               const next = { ...current };
               for (const result of writeBackResults) next[result.reviewItemId] = result;
               return next;
-            }),
+            });
+          },
         });
+        if (controller.signal.aborted) return;
         setWriteBackState(batch.state);
         appliedMutationsRef.current = batch.mutations;
         setBatchResult(batch);
         setBatchRunStatus(batch.status);
         setHostWorkState("IDLE");
+        if (batch.status === "FAILED") {
+          setHasError(true);
+          setMessage(
+            "Der Korrekturlauf konnte nicht abgeschlossen werden. Bitte prüfen Sie die Ergebnisse."
+          );
+          setReadProgress(null);
+          return;
+        }
         setMessage(analysisNotice);
       } else if (result.footnotes.length === 0) {
         setMessage("Das Dokument enthält keine Fußnoten.");
@@ -260,10 +306,13 @@ const App: React.FC = () => {
       setShowSourceReview(
         (analysis.documentSourceRegistry?.unpromotedConfirmedSourceCount ?? 0) > 0
       );
-      setReadProgress(
-        createFootnoteReadProgress("complete", result.footnotes.length, result.footnotes.length)
-      );
+      if (!controller.signal.aborted) {
+        setReadProgress(
+          createFootnoteReadProgress("complete", result.footnotes.length, result.footnotes.length)
+        );
+      }
     } catch (error) {
+      if (controller.signal.aborted) return;
       setHasError(true);
       setMessage(readerErrorUserMessage(error));
       setTechnicalError(formatReaderError(error));
@@ -271,8 +320,10 @@ const App: React.FC = () => {
     } finally {
       batchInFlightRef.current = false;
       readInProgressRef.current = false;
-      setIsLoading(false);
-      setHostWorkState("IDLE");
+      if (!controller.signal.aborted) {
+        setIsLoading(false);
+        setHostWorkState("IDLE");
+      }
     }
   };
 
@@ -364,6 +415,7 @@ const App: React.FC = () => {
     setBatchResult(null);
     setBatchRunStatus("PLANNING");
     setBatchProgress(null);
+    setReadProgress(null);
     setReportError("");
     try {
       const batch = await runWriteBackBatch(plan, {
@@ -496,13 +548,13 @@ const App: React.FC = () => {
       <ReviewWorkspace
         mode={mode}
         onModeChange={(nextMode) => {
-          if (!batchInFlightRef.current) setMode(nextMode);
+          if (!readInProgressRef.current && !batchInFlightRef.current) setMode(nextMode);
         }}
         isLoading={isLoading}
         progress={readProgress}
         onAnalyze={requestAnalysis}
         onOpenSettings={() => {
-          if (!batchInFlightRef.current) setView("SETTINGS");
+          if (!readInProgressRef.current && !batchInFlightRef.current) setView("SETTINGS");
         }}
         footnotes={footnotes}
         engineResult={engineResult}

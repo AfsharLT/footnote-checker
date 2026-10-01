@@ -12,7 +12,7 @@
 Footnote-Checker unterstützt die formale Prüfung juristischer Fußnoten direkt in Microsoft Word. Es erkennt Zitierbestandteile, prüft sie nach konfigurierbaren Regeln und zeigt nachvollziehbare Korrekturvorschläge.
 
 - **Zitierweise prüfen:** Interpunktion, Abkürzungen, Seiten-/Randnummernangaben und Formatierung.
-- **Quellen unterscheiden:** Gesetze, Rechtsprechung, Kommentare, Bücher und Zeitschriften; die lokale 17.3-Erweiterung ergänzt unter anderem Festschriftbeiträge.
+- **Quellen unterscheiden:** Gesetze, Rechtsprechung, Kommentare, Bücher und Zeitschriften; die 17.3-Erweiterung erkennt zusätzlich unter anderem Festschriftbeiträge. Einzelne Festschrift-Regeln befinden sich noch in der Beta-Prüfung.
 - **Konsistenz herstellen:** Werkbezeichnungen, alternative Schreibweisen, Kurzbelege und dokumentbezogene Quellenzuordnung.
 - **Kontrolliert korrigieren:** Einzelentscheidungen oder sichere gebündelte Korrekturen. Unsichere Stellen bleiben zur manuellen Prüfung offen.
 - **Ergebnisse weitergeben:** CSV-Bericht sowie Import/Export der Einstellungen und Quellenverwaltung.
@@ -28,7 +28,7 @@ FNC arbeitet regelbasiert. Es ersetzt keine fachliche Prüfung und verifiziert d
 | macOS | [Mac-Betapaket herunterladen](https://github.com/AfsharLT/footnote-checker/raw/refs/heads/main/downloads/Footnote-Checker-macOS-Beta.zip) | Entpacken → Word beenden → Mac-Installer öffnen |
 | Windows | [Windows-Betapaket herunterladen](https://github.com/AfsharLT/footnote-checker/raw/refs/heads/main/downloads/Footnote-Checker-Windows-Beta.zip) | Entpacken → Word beenden → Windows-Installer starten |
 
-Die Links werden verfügbar, sobald diese Dateien nach `main` gepusht wurden; bei einem privaten Repository ist GitHub-Zugriff erforderlich. Die ZIP-Dateien enthalten das Produktionsmanifest und die vollständige Anleitung. [Paketinhalte und Prüfsummen](downloads/README.md).
+Bei einem privaten Repository ist GitHub-Zugriff für die Downloads erforderlich. Die Pakete laden die jeweils gehostete Beta; ein GitHub-Update aktualisiert diesen Dienst nicht automatisch. Die ZIP-Dateien enthalten das Produktionsmanifest und die vollständige Anleitung. [Paketinhalte und Prüfsummen](downloads/README.md).
 
 ### macOS – Schritt für Schritt
 
@@ -65,44 +65,156 @@ Die Windows-Kataloginstallation ist ein Testverfahren, keine fertige Marketplace
 
 Hinweise, unklare Quellen und technisch nicht sicher bearbeitbare Stellen bleiben zur Prüfung offen. Nach Änderungen erneut analysieren und den CSV-Bericht bei Bedarf exportieren.
 
-## Entwicklungsstand
+## Technischer Workflow
 
-Stand der lokalen Vorbereitung: **1. Oktober 2026**. Git-Stand, lokale Änderungen und gehostete Version sind getrennt zu betrachten.
-
-| POC | Ergebnis / Status |
-| --- | --- |
-| 1–7 | Word-Fußnoten lesen, Struktur und Formatierung erfassen; Grundlage für große Dokumente. |
-| 8–12 | Befunde, Quellenparser, Einstellungen, Regelwerk und Prüfentscheidungen. |
-| 13–15 | Bedienoberfläche, sichere Word-Korrekturen, Batch-Verarbeitung und CSV-Bericht. |
-| 16 / Safari-Kompatibilität | Produkthärtung und Produktionshosting; im Git-Verlauf enthalten. |
-| 16.4 | Word-Kompatibilitätsfallback; mit `bf75519` nach main übernommen. |
-| 17.1 | Segmentierung und Prüfoberfläche gehärtet; committed. |
-| 17.4 | Einstellungen vereinfacht und Verzeichnisse strukturiert; vorgezogen und committed. |
-| 17.2 einschließlich 17.2.2/17.2.3 | Quellenregister und Zitierzuverlässigkeit; im CTO-Chat abgeschlossen, Commit `7ae0f63`. |
-| 17.3 / 17.3.2 | Erweiterte Quellenerkennung und Reliability-Fixes; committed und gepusht als `a274652`. Echte Word-/Installer-Prüfungen bleiben separat zu dokumentieren. |
-
-### Git-Verlauf
-
-Ausgewählte Meilensteine der Entwicklung bis POC 17.3.2; die POC-17-Arbeit entstand auf `poc/17.2-source-registry`. POC-Gruppen können mehrere Unterversionen enthalten. Der Graph zeigt die ausgewählten Entwicklungscommits in Reihenfolge; separate Validierungs-, Dokumentations- und Merge-Commits sind ausgelassen. Die Beschriftungen sind POC-Zuordnungen, keine zusätzlichen Git-Tags.
+Die **Task Pane** ist die Seitenleiste in Word. Sie startet die Prüfung und zeigt Ergebnisse und Entscheidungen. Der folgende Ablauf entspricht der aktuellen Architektur; gestrichelte Verbindungen markieren geplante Erweiterungen.
 
 ```mermaid
-%%{init: {'theme': 'base', 'gitGraph': {'mainBranchName': 'poc/17.2-source-registry'}, 'themeVariables': {'primaryColor': '#F7F4EC', 'primaryTextColor': '#18313A', 'lineColor': '#18313A', 'git0': '#18313A', 'gitBranchLabel0': '#F7F4EC', 'commitLabelColor': '#18313A', 'commitLabelBackground': '#F7F4EC'}}}%%
-gitGraph
-    commit id: "ff903af" tag: "POC 1"
-    commit id: "42ac4c2" tag: "POC 7"
-    commit id: "fc5be4d" tag: "POC 12"
-    commit id: "7d6731b" tag: "POC 15"
-    commit id: "d0f7133" tag: "POC 16"
-    commit id: "2d0ccf3" tag: "POC 16.4 WIP"
-    commit id: "556238c" tag: "POC 17.1"
-    commit id: "bd25554" tag: "POC 17.4"
-    commit id: "7ae0f63" tag: "POC 17.2"
-    commit id: "a274652" tag: "POC 17.3.2" type: HIGHLIGHT
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#F7F4EC', 'primaryTextColor': '#18313A', 'primaryBorderColor': '#18313A', 'lineColor': '#18313A'}}}%%
+flowchart TD
+    Word["Word-Dokument<br/>Fußnoten und Formatierung"]
+    UI["Task Pane · React / TypeScript<br/>Analyse · Prüfung · Korrektur · Einstellungen"]
+    Reader["Footnote Reader · Office.js<br/>Word.run + gebündeltes context.sync<br/>150 Fußnoten je Leseabschnitt"]
+    Snapshot["Lokale Snapshots<br/>Text · Referenz · Locator · Texthash<br/>Formatierung und geschützte Bereiche"]
+    Word --> UI --> Reader
+    Word --> Reader --> Snapshot
+
+    subgraph Engine["Footnote Engine · deterministische Analyse"]
+        Parse["Textmuster + Parser<br/>Quellen, Zusätze und Fließtext segmentieren<br/>Quellenart und Fundstellen extrahieren"]
+        Mapping["Quellen-Mapping + Source Registry<br/>Werke zuordnen · Voll- und Kurzbelege verbinden"]
+        Rules["Rule Engine<br/>Zitier- und Formatregeln anwenden"]
+        Findings["Findings · Prüfhinweise<br/>Regel · Textposition · Originaltext · Vorschlag"]
+        Parse --> Mapping --> Rules --> Findings
+    end
+    Snapshot --> Parse
+    Local["Lokale Einstellungen und Verzeichnisse<br/>Zitierprofil · Werke · Abkürzungen"] --> Mapping
+    Local --> Rules
+    Review["Review Engine<br/>Vorschläge bewerten und Konflikte prüfen<br/>AUTO · MANUAL · TECHNICAL · INFO"]
+    Findings --> Review
+    Results["Analyse-Modus<br/>Ergebnisse anzeigen · Dokument bleibt unverändert"]
+    Manual["Prüfung-Modus<br/>Übernehmen · Ablehnen · Später · Manuell geprüft"]
+    Auto["Korrektur-Modus<br/>Nur sichere, ausführbare AUTO-Aktionen"]
+    Review --> Results
+    Review --> Manual
+    Review --> Auto
+    Plan["Write-back Engine<br/>Freigegebene Aktionen planen<br/>Ziel, aktuellen Text und Schutzbereiche erneut prüfen"]
+    Manual -->|"Nur freigegebene ausführbare Aktionen"| Plan
+    Auto --> Plan
+    Write["Gebündeltes Zurückschreiben<br/>Office.js · Word JavaScript API"]
+    Plan -->|"Sicher und konfliktfrei"| Write --> Word
+    Plan -->|"Verändert oder unsicher"| Notice["Überspringen und verständlich melden"]
+    Results --> Report["Lokaler CSV-Bericht"]
+    Manual --> Report
+    Write --> Report
+    UI -.-> Navigation["POC 17.6 · geplant<br/>Zur aktiven Fußnote im Word-Dokument springen"]
+    Navigation -.-> Word
+    classDef future fill:#ffffff,stroke:#E88B72,stroke-dasharray:5 5,color:#18313A;
+    class Navigation future;
 ```
 
-**Enthalten:** POC 17.3/17.3.2, README-Logo und Farbpalette, Installationsanleitung und Betapakete. Die zusätzliche Designänderung am Add-in wurde zurückgenommen: Oberfläche und Word-Symbole behalten die bisherigen Farben und Logos. Syntax: [Mermaid GitGraph](https://mermaid.js.org/syntax/gitgraph.html).
+- **Reader / Snapshot:** Office.js liest Word-Daten gebündelt. Ein Snapshot ist eine lokale Momentaufnahme einer Fußnote. Der **Locator** beschreibt ihre Position; der **Texthash** ist ein Fingerabdruck, mit dem FNC spätere Änderungen erkennt. Word-Objekte werden nicht als dauerhaft gespeicherte Daten weitergereicht.
+- **Parser / Regeln:** Textmuster erkennen etwa `Rn. 12`; der Parser ordnet dies einer Quelle und Fundstelle zu. Das Mapping identifiziert hinterlegte Werke, die dokumentbezogene Source Registry verbindet Kurzbelege mit früheren Quellen. Deterministische Regeln ergeben bei gleichen Daten und Einstellungen dieselben Befunde.
+- **Review / Write-back:** Die Review Engine unterscheidet automatisch bearbeitbare, manuell zu prüfende, technisch blockierte und informative Hinweise. Eine manuelle Prüfbestätigung löst keine unsichere Textänderung aus. Vor dem Schreiben prüft FNC das aktuelle Word-Ziel erneut; geänderte oder geschützte Stellen werden übersprungen.
+- **Fortschritt / Speicher:** POC 17.5 zeigt echte Verarbeitungszähler und verständliche Phasen. Die lokale Analyse gibt der Oberfläche zwischen kurzen Arbeitsabschnitten Zeit zum Aktualisieren. Einstellungen bleiben im jeweiligen lokalen Add-in-Profil; es gibt keine gemeinsame Servereinstellung. Eine KI-/LLM-Prüfung ist derzeit nicht Teil dieses Ablaufs.
 
-**Als Nächstes geplant:** 17.5 Lade-/Fortschrittsfeedback → 17.6 Fußnotennavigation → 18 Ähnlichkeit von Quellen → 19 Literatur-Bulk-Import/Export und Report-UX → 20 kontrollierte KI-/ML-Erweiterungen. Diese Funktionen sind noch keine Produktzusagen.
+## Entwicklungsstand
+
+Stand im Repository: **1. Oktober 2026**. POC 17.5 ist implementiert und committed; die reale Word-Prüfung steht noch aus. POC 17.6 ist geplant. Repository, gehostete Beta und tatsächliche Word-Validierung haben jeweils einen eigenen Stand.
+
+### POC 1–17: Kategorien und Meilensteine
+
+Die Commitlinks führen zum tatsächlichen Codestand. Für mehrteilige POCs ist ein repräsentativer Abschlussstand angegeben; Datum = Datum des jeweiligen Git-Commits.
+
+| POC | Kurzname | Kategorie | Ergebnis | Datum / Commit |
+| --- | --- | --- | --- | --- |
+| 1 | Basis-UI | Task Pane | Word-Seitenleiste und Startoberfläche. | 15.08.2026 · [ff903af](https://github.com/AfsharLT/footnote-checker/commit/ff903af) |
+| 2 | Fußnoten lesen | Reader | Word-Fußnoten über Office.js auslesen. | 15.08.2026 · [f8b4ce4](https://github.com/AfsharLT/footnote-checker/commit/f8b4ce4) |
+| 3 | Snapshot-Kerndaten | Reader | Text, Reihenfolge, Anzeige und Texthash erfassen. | 15.08.2026 · [17904a6](https://github.com/AfsharLT/footnote-checker/commit/17904a6) |
+| 4 | Referenz / Locator | Reader | Referenz und beschreibbares Word-Ziel; im POC-5-Commit enthalten. | 16.08.2026 · [39630a7](https://github.com/AfsharLT/footnote-checker/commit/39630a7) |
+| 5 | Fußnotenstruktur | Reader | Absätze, Hyperlinks und schlanker Locator. | 16.08.2026 · [39630a7](https://github.com/AfsharLT/footnote-checker/commit/39630a7) |
+| 6 | Formatierungsdaten | Reader | Zeichen- und Absatzformatierung zuverlässig erfassen. | 16.08.2026 · [db1e723](https://github.com/AfsharLT/footnote-checker/commit/db1e723) |
+| 7 | Reader-Härtung | Reader | Felder, Schutzbereiche, Textpositionen und große Dokumente. | 16.08.2026 · [42ac4c2](https://github.com/AfsharLT/footnote-checker/commit/42ac4c2) |
+| 8 | Erste Befunde | Footnote Engine | Prüfhinweise, Textmuster, URL-Schutz und erste Regel. | 17.08.2026 · [283dd43](https://github.com/AfsharLT/footnote-checker/commit/283dd43) |
+| 9 | Quellenparser | Footnote Engine | Zitate segmentieren, Quellenarten und Fundstellen extrahieren. | 18.08.2026 · [1866e28](https://github.com/AfsharLT/footnote-checker/commit/1866e28) |
+| 10 | Quellen / Einstellungen | Footnote Engine | Zitierprofile, persistentes Werk-Mapping und Einstellungsoberfläche. | 20.08.2026 · [ddfbf22](https://github.com/AfsharLT/footnote-checker/commit/ddfbf22) |
+| 11 | Zitierregeln | Footnote Engine | Deterministisches Regelwerk und Quellenkonsistenz. | 21.08.2026 · [a546382](https://github.com/AfsharLT/footnote-checker/commit/a546382) |
+| 12 | Vorschlagsbewertung | Review Engine | Sichere, unsichere, informative und technisch blockierte Vorschläge unterscheiden. | 22.08.2026 · [fc5be4d](https://github.com/AfsharLT/footnote-checker/commit/fc5be4d) |
+| 13 | Prüfoberfläche | Review / UI | Analyse, Prüfung und Korrektur mit nutzbaren Entscheidungen. | 23.08.2026 · [84381f6](https://github.com/AfsharLT/footnote-checker/commit/84381f6) |
+| 14 | Sicher schreiben | Write-back | Einzeländerungen mit erneuter Ziel- und Textprüfung. | 23.08.2026 · [c00e5a7](https://github.com/AfsharLT/footnote-checker/commit/c00e5a7) |
+| 15 | Batch / Bericht | Write-back | Gebündelte Korrekturen und CSV-Bericht. | 23.08.2026 · [7d6731b](https://github.com/AfsharLT/footnote-checker/commit/7d6731b) |
+| 16 | Produkthärtung | Kompatibilität | Performance, Host-Fallbacks, UI-Härtung und Produktionsgrundlage. | 26.08.2026 · [d0f7133](https://github.com/AfsharLT/footnote-checker/commit/d0f7133) |
+| 17 | Quellen / UX | Engine / Produkt | Segmentierung, Quellenregister, Verzeichnisse, Quellentypen und Fortschrittsanzeige. | 16.09.–01.10.2026 · zuletzt [cce805d](https://github.com/AfsharLT/footnote-checker/commit/cce805d) |
+
+**POC 4 hat keinen eigenständig benannten Commit im vorhandenen Verlauf.** Seine Referenz-/Locator-Strukturen sind im POC-5-Stand nachweisbar; deshalb teilen beide denselben Commitlink.
+
+### Git-Verlauf von links nach rechts
+
+Zwei aufeinanderfolgende Ausschnitte derselben Entwicklungslinie, mit POC-Nummer, Kurzname und echtem Commit. Die Zweiteilung hält die Beschriftungen lesbar. Die Grafik fasst Meilensteine zusammen; sie zeigt keine vollständige Branch-/Merge-Historie. Die POC-Labels sind Diagrammbeschriftungen, keine zusätzlich angelegten Git-Tags. Datumsangaben stehen in der Tabelle.
+
+**Teil 1 · Oberfläche und Reader → Quellenanalyse**
+
+```mermaid
+%%{init: {'theme': 'base', 'gitGraph': {'mainBranchName': 'Meilensteine', 'rotateCommitLabel': true}, 'themeVariables': {'primaryColor': '#F7F4EC', 'primaryTextColor': '#18313A', 'lineColor': '#18313A', 'git0': '#18313A', 'gitBranchLabel0': '#F7F4EC', 'commitLabelColor': '#18313A', 'commitLabelBackground': '#F7F4EC'}}}%%
+gitGraph LR:
+    commit id: "ff903af · Basis-UI" tag: "POC 1"
+    commit id: "f8b4ce4 · Fußnoten lesen" tag: "POC 2"
+    commit id: "17904a6 · Snapshot-Kerndaten" tag: "POC 3"
+    commit id: "39630a7 · Referenz / Struktur" tag: "POC 4 / 5"
+    commit id: "db1e723 · Formatierungsdaten" tag: "POC 6"
+    commit id: "42ac4c2 · Reader-Härtung" tag: "POC 7"
+    commit id: "283dd43 · Erste Befunde" tag: "POC 8"
+    commit id: "1866e28 · Quellenparser" tag: "POC 9"
+    commit id: "ddfbf22 · Quellen / Einstellungen" tag: "POC 10"
+```
+
+**Teil 2 · Regelwerk und sichere Änderungen → POC 17.5**
+
+```mermaid
+%%{init: {'theme': 'base', 'gitGraph': {'mainBranchName': 'Meilensteine', 'rotateCommitLabel': true}, 'themeVariables': {'primaryColor': '#F7F4EC', 'primaryTextColor': '#18313A', 'lineColor': '#18313A', 'git0': '#18313A', 'gitBranchLabel0': '#F7F4EC', 'commitLabelColor': '#18313A', 'commitLabelBackground': '#F7F4EC'}}}%%
+gitGraph LR:
+    commit id: "a546382 · Zitierregeln" tag: "POC 11"
+    commit id: "fc5be4d · Vorschlagsbewertung" tag: "POC 12"
+    commit id: "84381f6 · Prüfoberfläche" tag: "POC 13"
+    commit id: "c00e5a7 · Sicher schreiben" tag: "POC 14"
+    commit id: "7d6731b · Batch / Bericht" tag: "POC 15"
+    commit id: "d0f7133 · Produkthärtung" tag: "POC 16"
+    commit id: "2d0ccf3 · Host-Fallbacks" tag: "POC 16.4 WIP"
+    commit id: "556238c · Segmentierung" tag: "POC 17.1"
+    commit id: "bd25554 · Verzeichnisse" tag: "POC 17.4"
+    commit id: "7ae0f63 · Quellenregister" tag: "POC 17.2"
+    commit id: "a274652 · Zuverlässigkeit" tag: "POC 17.3.2"
+    commit id: "cce805d · Fortschrittsfeedback" tag: "POC 17.5" type: HIGHLIGHT
+```
+
+POC 17.4 wurde vor 17.2 umgesetzt; der Graph folgt den tatsächlichen Commits. Die spätere POC-16.4-Integration nach `main` erfolgte mit `bf75519`. Syntax: [Mermaid GitGraph](https://mermaid.js.org/syntax/gitgraph.html).
+
+### POC 17 im Detail und Ausblick
+
+| POC | Schwerpunkt | Stand |
+| --- | --- | --- |
+| 17.1 | Segmentierung und Review-Härtung | Implementiert: einzelne Quellen, Zusätze und Fließtext getrennt behandeln. |
+| 17.2 / 17.2.2 / 17.2.3 | Quellenregister und Kurzbelege | Implementiert: Rückverweise und Varianten konservativ zuordnen. |
+| 17.3 / 17.3.2 | Quellenabdeckung und Zuverlässigkeit | Implementierter Stand committed; reale Hassemer-/Hruschka-Festschrift-Pinpoints laut CTO-Chat weiter offen. |
+| 17.4 | Einstellungen und Verzeichnisse | Vorgezogen und implementiert. |
+| **17.5** | **Lade- und Fortschrittsfeedback** | **Implementiert, committed und automatisiert geprüft; reale Word-Validierung offen.** Phasen, echte Zähler, aktive Warteanzeige, Nach-oben-Button und neues Logo. |
+| **17.6** | **Word-Fußnotennavigation** | **Geplant, noch nicht implementiert:** optional aus dem Checker zur zuletzt geöffneten und noch aktiven Fußnote im Word-Dokument springen. |
+| 17.7 | Festschrift-Regeln und Quellenpflege | Vorgemerkt: offene Pinpoint-Fälle und Festschrift-Auswahl/Filter im Literaturverzeichnis. |
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#F7F4EC', 'primaryTextColor': '#18313A', 'primaryBorderColor': '#18313A', 'lineColor': '#18313A'}}}%%
+flowchart LR
+    Current["17.5 · Fortschrittsfeedback<br/>Implementiert · Word-Test offen"]
+    Navigation["17.6 · Fußnotennavigation<br/>Geplant"]
+    Festschrift["17.7 · Festschrift-Regeln<br/>Vorgemerkt"]
+    Similarity["18 · Quellenähnlichkeit<br/>Geplant"]
+    Import["19 · Bulk-Import / Export<br/>Geplant"]
+    AI["20 · Kontrollierte KI<br/>Geplant"]
+    Current -.-> Navigation -.-> Festschrift -.-> Similarity -.-> Import -.-> AI
+    classDef planned fill:#ffffff,stroke:#E88B72,stroke-dasharray:5 5,color:#18313A;
+    class Navigation,Festschrift,Similarity,Import,AI planned;
+```
+
+Die gestrichelte Roadmap beschreibt die weitere Planung. **Für 17.6 existiert noch kein Implementierungscommit.** Diese Funktionen sind noch keine Produktzusagen. Der Repository-Stand enthält das neue FNC-Logo und die dezenten Petrol-Akzente auf weißem Hintergrund aus 17.5; der gehostete Dienst wurde damit noch nicht aktualisiert. [17.5-Abschlussbericht und Word-Testanleitung](docs/POC_17_5_VALIDATION.md).
 
 ## Entwicklung und Validierung
 

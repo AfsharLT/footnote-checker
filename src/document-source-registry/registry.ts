@@ -1,3 +1,4 @@
+import { finishWork, type WorkProgress } from "../footnote-engine/cooperative";
 /* global performance */
 
 import type { CitationSourceMappingData, CitationSourceMaster } from "../citation-mapping/types";
@@ -1494,9 +1495,9 @@ function itemRecords(input: BuildDocumentSourceRegistryInput): ItemRecord[] {
   );
 }
 
-export function buildDocumentSourceRegistry(
+export function* buildDocumentSourceRegistryWork(
   input: BuildDocumentSourceRegistryInput
-): DocumentSourceRegistry {
+): Generator<WorkProgress, DocumentSourceRegistry, void> {
   const startedAt = timestamp();
   const persistentIndex = persistentSourceIndex(input.mappingData);
   const state: RegistryBuildState = {
@@ -1509,12 +1510,17 @@ export function buildDocumentSourceRegistry(
     resolutionByItemId: new Map(),
   };
   const records = itemRecords(input);
-  records
-    .filter((record) => !record.specialReference)
-    .forEach((record) => processRegularRecord(record, state, persistentIndex));
-  records
-    .filter((record) => record.specialReference === "ANM")
-    .forEach((record) => processPersistentRecord(record, state, persistentIndex));
+  const total = records.length * 2;
+  let processed = 0;
+  yield { phase: "resolving", processed, total };
+  for (const record of records) {
+    if (!record.specialReference) processRegularRecord(record, state, persistentIndex);
+    yield { phase: "resolving", processed: ++processed, total };
+  }
+  for (const record of records) {
+    if (record.specialReference === "ANM") processPersistentRecord(record, state, persistentIndex);
+    yield { phase: "resolving", processed: ++processed, total };
+  }
   const footnoteIdByOrdinal = new Map(
     input.footnotes.map((footnote) => [footnote.ordinal, footnote.id])
   );
@@ -1609,6 +1615,12 @@ export function buildDocumentSourceRegistry(
     }),
     durationMs: Number((timestamp() - startedAt).toFixed(3)),
   };
+}
+
+export function buildDocumentSourceRegistry(
+  input: BuildDocumentSourceRegistryInput
+): DocumentSourceRegistry {
+  return finishWork(buildDocumentSourceRegistryWork(input));
 }
 
 export function documentSourceForCitationItem(
