@@ -65,6 +65,8 @@ Die Windows-Kataloginstallation ist ein Testverfahren, keine fertige Marketplace
 
 Hinweise, unklare Quellen und technisch nicht sicher bearbeitbare Stellen bleiben zur Prüfung offen. Nach Änderungen erneut analysieren und den CSV-Bericht bei Bedarf exportieren.
 
+Nach der Analyse eine Fußnote in der Ergebnisliste aufklappen und **„Zur Fußnote“** anklicken. Der Button bleibt beim Scrollen erreichbar und öffnet die aktive Fußnote in Word. Ohne aktive Fußnote oder während einer Prüfung/Korrektur ist er deaktiviert. Nach manuellen Dokumentänderungen kann eine erneute Analyse nötig sein. Diese Navigation gehört zur lokalen POC-17.6-Fassung.
+
 ## Technischer Workflow
 
 Die **Task Pane** ist die Seitenleiste in Word. Sie startet die Prüfung und zeigt Ergebnisse und Entscheidungen. Der folgende Ablauf entspricht der aktuellen Architektur; gestrichelte Verbindungen markieren geplante Erweiterungen.
@@ -106,7 +108,7 @@ flowchart TD
     Results --> Report["Lokaler CSV-Bericht"]
     Manual --> Report
     Write --> Report
-    UI -.-> Navigation["POC 17.6 · geplant<br/>Zur aktiven Fußnote im Word-Dokument springen"]
+    UI --> Navigation["POC 17.6 · lokal implementiert<br/>Zur aktiven Fußnote im Word-Dokument springen"]
     Navigation -.-> Word
     classDef future fill:#ffffff,stroke:#E88B72,stroke-dasharray:5 5,color:#18313A;
     class Navigation future;
@@ -119,7 +121,7 @@ flowchart TD
 
 ## Entwicklungsstand
 
-Stand im Repository: **1. Oktober 2026**. POC 17.5 ist implementiert und committed; die reale Word-Prüfung steht noch aus. POC 17.6 ist geplant. Repository, gehostete Beta und tatsächliche Word-Validierung haben jeweils einen eigenen Stand.
+Stand dieses Checkouts: **3. Oktober 2026**. POC 17.5 ist veröffentlicht. POC 17.6 ist lokal implementiert und die Navigation wurde in Word für macOS mit allen 80 Fußnoten eines Testdokuments geprüft. Ein Deployment und ein neues Release für 17.6 stehen noch aus. Windows- und große Real-Word-Dokumente bleiben separat zu prüfen.
 
 ### POC 1–17: Kategorien und Meilensteine
 
@@ -197,24 +199,25 @@ POC 17.4 wurde vor 17.2 umgesetzt; der Graph folgt den tatsächlichen Commits. D
 | 17.3 / 17.3.2 | Quellenabdeckung und Zuverlässigkeit | Implementierter Stand committed; reale Hassemer-/Hruschka-Festschrift-Pinpoints laut CTO-Chat weiter offen. |
 | 17.4 | Einstellungen und Verzeichnisse | Vorgezogen und implementiert. |
 | **17.5** | **Lade- und Fortschrittsfeedback** | **Implementiert, committed und automatisiert geprüft; reale Word-Validierung offen.** Phasen, echte Zähler, aktive Warteanzeige, Nach-oben-Button und neues Logo. |
-| **17.6** | **Word-Fußnotennavigation** | **Geplant, noch nicht implementiert:** optional aus dem Checker zur zuletzt geöffneten und noch aktiven Fußnote im Word-Dokument springen. |
+| **17.6** | **Word-Fußnotennavigation** | **Lokal implementiert und in Word für macOS mit 80 Fußnoten geprüft:** „Zur Fußnote“ öffnet die zuletzt aufgeklappte, noch aktive Fußnote. Veraltete oder mehrdeutige Ziele werden abgewiesen. Noch nicht veröffentlicht. |
 | 17.7 | Festschrift-Regeln und Quellenpflege | Vorgemerkt: offene Pinpoint-Fälle und Festschrift-Auswahl/Filter im Literaturverzeichnis. |
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#F7F4EC', 'primaryTextColor': '#18313A', 'primaryBorderColor': '#18313A', 'lineColor': '#18313A'}}}%%
 flowchart LR
-    Current["17.5 · Fortschrittsfeedback<br/>Implementiert · Word-Test offen"]
-    Navigation["17.6 · Fußnotennavigation<br/>Geplant"]
+    Current["17.5 · Fortschrittsfeedback<br/>Veröffentlicht · Beta"]
+    Navigation["17.6 · Fußnotennavigation<br/>Lokal implementiert · Mac geprüft"]
     Festschrift["17.7 · Festschrift-Regeln<br/>Vorgemerkt"]
     Similarity["18 · Quellenähnlichkeit<br/>Geplant"]
     Import["19 · Bulk-Import / Export<br/>Geplant"]
     AI["20 · Kontrollierte KI<br/>Geplant"]
-    Current -.-> Navigation -.-> Festschrift -.-> Similarity -.-> Import -.-> AI
+    Current --> Navigation
+    Navigation -.-> Festschrift -.-> Similarity -.-> Import -.-> AI
     classDef planned fill:#ffffff,stroke:#E88B72,stroke-dasharray:5 5,color:#18313A;
-    class Navigation,Festschrift,Similarity,Import,AI planned;
+    class Festschrift,Similarity,Import,AI planned;
 ```
 
-Die gestrichelte Roadmap beschreibt die weitere Planung. **Für 17.6 existiert noch kein Implementierungscommit.** Diese Funktionen sind noch keine Produktzusagen. Der Repository-Stand enthält das neue FNC-Logo und die dezenten Petrol-Akzente auf weißem Hintergrund aus 17.5; der gehostete Dienst wurde damit noch nicht aktualisiert. [17.5-Abschlussbericht und Word-Testanleitung](docs/POC_17_5_VALIDATION.md).
+Die Roadmap unterscheidet lokale Umsetzung und weitere Planung. **17.6 ist implementiert und für macOS geprüft; noch nicht als Release veröffentlicht oder gehostet.** 17.5 ist bereits als Beta veröffentlicht und gehostet. [17.6-Testbericht](docs/POC_17_6_VALIDATION.md) · [17.5-Abschlussbericht](docs/POC_17_5_VALIDATION.md).
 
 ## Daten, Beta und Feedback
 

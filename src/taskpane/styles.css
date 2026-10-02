@@ -576,3 +576,11 @@ textarea {
 .fc-back-to-top { position: absolute; z-index: 60; right: 20px; bottom: 18px; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--brand-primary-border); border-radius: 50%; background: white; color: var(--brand-primary); box-shadow: 0 3px 12px rgba(24, 49, 58, 0.15); cursor: pointer; }
 .fc-back-to-top:hover { background: rgba(67, 183, 163, 0.08); }
 @media (prefers-reduced-motion: reduce) { .fc-progress--active::after { animation: none; display: none; } }
+
+/* POC 17.6: explicit Word navigation, same white/Petrol palette. */
+.fc-footnote-navigation { position: sticky; top: 0; z-index: 40; display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 9px 0; background: #fff; border-bottom: 1px solid #e5e7eb; }
+.fc-footnote-navigation .fc-muted { font-size: 11px; overflow-wrap: anywhere; }
+
+.fc-app--ready .fc-progress-panel { position: static; }
+.fc-app--ready .fc-sticky-actions { top: var(--navigation-height, 70px); }
+.fc-app:not(.fc-app--ready) .fc-progress-panel { top: var(--navigation-height, 0px); }
