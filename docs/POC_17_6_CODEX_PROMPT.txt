@@ -1,0 +1,12 @@
+POC 17.6 – sichere Word-Fußnotennavigation
+Kontext: FNC Word-Add-in, POC 17.5 vorhanden. CTO: expliziter optionaler Button Zur Fußnote; kein unsicheres Springen.
+Ziel: zuletzt aufgeklappte, noch aktive Fußnote in Word öffnen, in Analyse/Prüfung/Korrektur. Ohne aktive Fußnote deaktiviert. Aufklappen navigiert nicht. Weiß/Petrol, verständlicher Status, Tastaturbedienung.
+Scope: Navigation, sichere Locator-Revalidierung, kurze lokale README-Aktualisierung, Regressionen und Real-Word-Test an Kopie des gelieferten 80-Fußnoten-Dokuments.
+Sicherheit: Anzahl, Ordinal, vollständiger Text und Referenzkontext müssen passen. Keine globale Textsuche, keine Vermutung bei Mehrdeutigkeit. Bekannte eigene Korrekturen dürfen nachvollziehbar eingerechnet werden. Veraltete Ziele: erneut prüfen. Nur select; keine Dokumentänderung.
+Kompatibilität/Performance: WordApi1.5 bestehende Basis, keine neuen Desktop-Anforderungen, kein parallel Word.run während Analyse/Korrektur/Navigation, keine dauerhaften Office-Proxies, nur Zieltext laden und konstante sync-Anzahl pro explizitem Klick. Optionaler Navigationsfehler darf Analyse nicht blockieren.
+Non-Goals: POC17.7-Festschrift-Regel, KI, Hostingänderung, globale Settings, automatisches Springen.
+Tests: 0/1/80/1200 Ziele, ungültige Ordinals, eingefügte/gelöschte Fußnoten, Text-/Kontextänderung, Duplikate, eigene Korrektur, Hostfehler, keine Mutation, genau Zielauswahl, alle 80 Fußnoten im Word-Test, Moduswechsel, Settings, Sticky-Button. Fehler beheben und erneut prüfen.
+Commands: npm run typecheck; npm run lint; npm test; npm run build; npm run validate; Produktionsmanifest validieren; git diff --check. Erfolg nicht allein aus Build ableiten.
+Final Report: Änderungen, Checks, reale Word-Belege und offene Befunde separat; Original unverändert nachweisen. README implementiert versus real validiert korrekt unterscheiden.
+Acceptance: aktive Zielnote sichtbar geöffnet; unsichere Navigation verweigert; kein stilles falsches Ziel; keine fachliche Regression; alle Fußnoten bilanziert.
+Policy: KEIN COMMIT, KEIN PUSH, KEIN DEPLOY, KEIN RELEASE.

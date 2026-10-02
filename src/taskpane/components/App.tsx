@@ -57,6 +57,7 @@ import {
   type WriteBackState,
 } from "@/write-back-engine";
 
+import { navigateToFootnote } from "@/taskpane/footnote-navigation";
 import { yieldToInterface } from "@/footnote-engine/cooperative";
 
 const ReviewWorkspace = React.lazy(() =>
@@ -101,6 +102,11 @@ const App: React.FC = () => {
   const [showSourceReview, setShowSourceReview] = useState(false);
   const [sourcePromotionMessage, setSourcePromotionMessage] = useState("");
   const [hostCapabilities] = useState<HostCapabilities>(() => getOfficeHostCapabilities());
+  const [navigationBusy, setNavigationBusy] = useState(false);
+  const [navigationMessage, setNavigationMessage] = useState("");
+  const [navigationTargetId, setNavigationTargetId] = useState<string | null>(null);
+  const navigationInFlightRef = useRef(false);
+  const navigationGenerationRef = useRef(0);
   const analysisAbortRef = useRef<AbortController | null>(null);
   const readInProgressRef = useRef(false);
   const batchInFlightRef = useRef(false);
@@ -110,6 +116,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const cleanupBestEffortResources = () => {
       analysisAbortRef.current?.abort();
+      navigationGenerationRef.current += 1;
       // Keep in-flight guards until their finally blocks finish. Office work
       // already queued cannot be cancelled by aborting the local CPU pipeline.
       writeBackInFlightRef.current.clear();
@@ -118,6 +125,9 @@ const App: React.FC = () => {
     const handlePageHide = () => {
       cleanupBestEffortResources();
       setIsLoading(false);
+      setNavigationBusy(false);
+      setNavigationMessage("");
+      setNavigationTargetId(null);
       setReadProgress(null);
       setBatchProgress(null);
       setBatchRunStatus((current) =>
@@ -160,6 +170,7 @@ const App: React.FC = () => {
 
   const analyzeCurrentDocument = async () => {
     if (
+      navigationInFlightRef.current ||
       readInProgressRef.current ||
       batchInFlightRef.current ||
       writeBackInFlightRef.current.size > 0
@@ -180,6 +191,8 @@ const App: React.FC = () => {
     setHasError(false);
     setMessage("");
     setTechnicalError("");
+    setNavigationMessage("");
+    setNavigationTargetId(null);
     setReadProgress(createFootnoteReadProgress("initializing", 0, 0));
     try {
       await yieldToInterface();
@@ -357,7 +370,13 @@ const App: React.FC = () => {
       setDecisionState((current) => acceptAllAutomatic(current, reviewResult.items));
   };
   const handleApplySingle = async (item: ReviewItem) => {
-    if (batchInFlightRef.current || writeBackInFlightRef.current.has(item.reviewItemId)) return;
+    if (
+      navigationInFlightRef.current ||
+      readInProgressRef.current ||
+      batchInFlightRef.current ||
+      writeBackInFlightRef.current.size > 0
+    )
+      return;
     const footnote = footnotes.find((candidate) => candidate.id === item.finding.footnoteId);
     if (!footnote) {
       const result: WriteBackResult = {
@@ -399,6 +418,7 @@ const App: React.FC = () => {
     if (
       !reviewResult ||
       batchInFlightRef.current ||
+      navigationInFlightRef.current ||
       readInProgressRef.current ||
       writeBackInFlightRef.current.size > 0
     )
@@ -452,6 +472,38 @@ const App: React.FC = () => {
     } finally {
       batchInFlightRef.current = false;
       setHostWorkState("IDLE");
+    }
+  };
+
+  const handleNavigateToFootnote = async (footnote: FootnoteSnapshot) => {
+    if (
+      navigationInFlightRef.current ||
+      readInProgressRef.current ||
+      batchInFlightRef.current ||
+      writeBackInFlightRef.current.size > 0
+    )
+      return;
+    if (!hostCapabilities.supported) {
+      setNavigationMessage(
+        "Diese Word-Version unterstützt das direkte Springen zur Fußnote nicht."
+      );
+      return;
+    }
+    navigationInFlightRef.current = true;
+    const generation = navigationGenerationRef.current;
+    setNavigationTargetId(footnote.id);
+    setNavigationBusy(true);
+    setNavigationMessage(`Fußnote ${footnote.ordinal} wird in Word geöffnet …`);
+    try {
+      const result = await navigateToFootnote({
+        footnote,
+        footnotes,
+        appliedMutations: appliedMutationsRef.current,
+      });
+      if (generation === navigationGenerationRef.current) setNavigationMessage(result.message);
+    } finally {
+      navigationInFlightRef.current = false;
+      if (generation === navigationGenerationRef.current) setNavigationBusy(false);
     }
   };
 
@@ -547,6 +599,10 @@ const App: React.FC = () => {
     >
       <ReviewWorkspace
         mode={mode}
+        navigationBusy={navigationBusy}
+        navigationMessage={navigationMessage}
+        navigationTargetId={navigationTargetId}
+        onNavigateToFootnote={handleNavigateToFootnote}
         onModeChange={(nextMode) => {
           if (!readInProgressRef.current && !batchInFlightRef.current) setMode(nextMode);
         }}

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog as AriaDialog, Heading, Modal, ModalOverlay } from "react-aria-components";
 import {
   ArrowUp,
+  ExternalLink,
   AlertTriangle,
   Check,
   CheckCheck,
@@ -111,6 +112,10 @@ const CATEGORY_OPTIONS: FilterOption[] = [
 ];
 
 interface ReviewWorkspaceProps {
+  navigationBusy: boolean;
+  navigationMessage: string;
+  navigationTargetId: string | null;
+  onNavigateToFootnote(footnote: FootnoteSnapshot): void;
   mode: ReviewMode;
   onModeChange(mode: ReviewMode): void;
   isLoading: boolean;
@@ -891,7 +896,9 @@ function GlobalTechnicalData({
 
 export function ReviewWorkspace(props: ReviewWorkspaceProps) {
   const scrollOwnerRef = useRef<HTMLDivElement>(null);
+  const navigationRef = useRef<HTMLElement>(null);
   const headerRef = useRef<HTMLElement>(null);
+  const [activeFootnoteId, setActiveFootnoteId] = useState<string | null>(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [filters, setFilters] = useState<ReviewFilters>(DEFAULT_REVIEW_FILTERS);
   const [visibleGroupLimit, setVisibleGroupLimit] = useState(80);
@@ -909,7 +916,10 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
   const { filteredItems, groups } = preparedDisplay;
   const filterSignature = `${filters.severity}:${filters.reviewClass}:${filters.status}:${filters.category}:${filters.search}`;
   useEffect(() => setVisibleGroupLimit(80), [filterSignature]);
-  useEffect(() => setOpenFootnotes(createClosedFootnoteState()), [props.engineResult]);
+  useEffect(() => {
+    setOpenFootnotes(createClosedFootnoteState());
+    setActiveFootnoteId(null);
+  }, [props.engineResult]);
   const visibleGroups = groups.slice(0, visibleGroupLimit);
   const hasAnalysis = props.engineResult !== null && props.reviewResult !== null;
   const activeFilters = hasActiveFilters(filters);
@@ -920,7 +930,8 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
   const isSingleWriteBackRunning = Object.values(props.writeBackState).some(
     (result) => result.status === "PENDING" && result.message === "Wird durchgeführt …"
   );
-  const isMutationRunning = isBatchRunning || isSingleWriteBackRunning;
+  const isMutationRunning = isBatchRunning || isSingleWriteBackRunning || props.navigationBusy;
+  const activeFootnote = props.footnotes.find((note) => note.id === activeFootnoteId);
   const isCorrecting = isBatchRunning && props.mode === "CORRECTION";
   const batchSummary = props.batchResult?.summary;
   const batchHasIssues = props.batchResult?.status === "COMPLETED_WITH_ISSUES";
@@ -932,6 +943,21 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
     props.mode === "CORRECTION",
     props.isLoading
   );
+  useEffect(() => {
+    const navigation = navigationRef.current;
+    const owner = scrollOwnerRef.current;
+    if (!navigation || !owner) return undefined;
+    const update = () =>
+      owner.style.setProperty(
+        "--navigation-height",
+        `${navigation.getBoundingClientRect().height}px`
+      );
+    update();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(update);
+    observer.observe(navigation);
+    return () => observer.disconnect();
+  }, [hasAnalysis]);
   const backToTop = () => {
     const owner = scrollOwnerRef.current;
     if (!owner) return;
@@ -940,7 +966,11 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
   };
 
   return (
-    <main className="fc-app">
+    <main
+      className={
+        hasAnalysis && !props.isLoading && !isBatchRunning ? "fc-app fc-app--ready" : "fc-app"
+      }
+    >
       <div
         className="fc-shell"
         ref={scrollOwnerRef}
@@ -998,6 +1028,49 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
                 : "Fußnoten prüfen"}
         </NeonButton>
 
+        {hasAnalysis && (
+          <section
+            ref={navigationRef}
+            className="fc-footnote-navigation"
+            aria-label="Word-Fußnotennavigation"
+          >
+            <NeonButton
+              variant="secondary"
+              size="sm"
+              disabled={
+                !activeFootnote ||
+                props.isLoading ||
+                isMutationRunning ||
+                !props.hostCapabilities.supported
+              }
+              onClick={() => activeFootnote && props.onNavigateToFootnote(activeFootnote)}
+              aria-label={
+                activeFootnote
+                  ? `Zur Fußnote ${activeFootnote.ordinal} in Word`
+                  : "Zur Fußnote in Word"
+              }
+            >
+              {props.navigationBusy ? (
+                <LoaderCircle size={15} aria-hidden="true" />
+              ) : (
+                <ExternalLink size={15} aria-hidden="true" />
+              )}
+              {props.navigationBusy
+                ? "Wird geöffnet …"
+                : activeFootnote
+                  ? `Zur Fußnote ${activeFootnote.ordinal}`
+                  : "Zur Fußnote"}
+            </NeonButton>
+            <span className="fc-muted" role="status" aria-live="polite">
+              {(props.navigationTargetId === activeFootnoteId && activeFootnote
+                ? props.navigationMessage
+                : "") ||
+                (activeFootnote
+                  ? "Öffnet die aktive Fußnote in Word."
+                  : "Eine Fußnote in der Ergebnisliste aufklappen.")}
+            </span>
+          </section>
+        )}
         {loading && <LoadingProgress display={loading} />}
 
         {props.message && (
@@ -1286,7 +1359,10 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
                       onApplySingle={props.onApplySingle}
                       batchRunning={isMutationRunning}
                       open={openFootnotes.has(group.footnote.id)}
-                      onOpenChange={(open) =>
+                      onOpenChange={(open) => {
+                        setActiveFootnoteId((current) =>
+                          open ? group.footnote.id : current === group.footnote.id ? null : current
+                        );
                         setOpenFootnotes((current) =>
                           setFootnoteOpen(
                             current,
@@ -1294,8 +1370,8 @@ export function ReviewWorkspace(props: ReviewWorkspaceProps) {
                             open,
                             props.autoCloseInactiveFootnotes
                           )
-                        )
-                      }
+                        );
+                      }}
                     />
                   ))}
                   {visibleGroupLimit < groups.length && (
