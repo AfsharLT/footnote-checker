@@ -1,0 +1,13 @@
+POC 17.7 – Abschlussfix und Real-Word-Korpusprüfung
+Kontext: 17.6 committed; 17.7 lokal umsetzen. Beide Original-DOCX unverändert lassen, mit Testkopien prüfen.
+Verifizierte Ursachen: LoadingProgress hängt den Timer an display.label; Phasenwechsel setzt ihn zurück. Festschrift-Default pagePrefix deaktiviert die Klammerregel. Jahrbücher ohne S.-Präfix verlieren Seiten. Großdokument enthält 1144 FN und 100 unterschiedliche Texte, nicht nur Kopien des 80-FN-Dokuments.
+Ziele: monotone verstrichene Sekunden über alle Phasen und Auto-Korrektur hinweg, Zeitmessung statt Tick-Zähler; UI regelmäßig freigeben. Festschrift als auswählbare/filterbare Quellenart, CSV/JSON/Persistenz kompatibel. Sicher extrahierte Pinpoints regelbasiert prüfen, eigene Nutzerpräferenzen respektieren. Beide Korpora vollständig analysieren, manuelle Fälle und übersehene Regeln prüfen, verifizierte Quellen/Aliase ergänzen.
+Sicherheit: Keine erfundenen Zuordnungen oder unterdrückten unsicheren Findings. Nur belegte Aliasfehler ergänzen. Geschützte Bereiche, präzise Offsets, konservativer Write-back bleiben erhalten. Keine Word.run parallel, kein sync pro Fußnote.
+Non-Goals: KI, Hosting, Marketplace. Keine absolute Echtzeitgarantie während Word/WebView pausiert; verstrichene Zeit nach Verzögerung korrekt nachführen.
+Tests: Phasenwechsel und verzögerte Timer; Hassemer/Hruschka mit Unicode-Leerraum; Jahrbücher; Komma-Präferenz; bereits korrekte Klammern; beschädigte Seiten; CSV/JSON-Roundtrip; alle Fußnoten und alle einzigartigen Texte; zweiter Lauf ohne wiederholte Korrekturen; Navigation und Settings.
+Commands: npm run typecheck; npm run lint; npm test; npm run build; npm run validate; git diff --check.
+Real Word: macOS, Kopien beider Dateien, Korrekturmodus, alle offenen Fälle klassifizieren, sichere Korrekturen verifizieren; Großdokument Timer/Performance und vollständige Fußnotenzahl.
+Finalreport: Änderungen, Ursachen, Tests, gemessene Zeiten, verbleibende echte manuelle Fälle, Hostgrenzen, Status 17er-Abschluss. README korrekt aktualisieren.
+Policy: Kein Commit, Push, Deployment oder Release in diesem Implementierungsdurchlauf.
+
+Zusätzliche bestätigte Ursachen: identische Regelvorschläge führten zu mehrfachen Schreibversuchen; Work-Namen verdrängten Bearbeiter-Strukturen; persistierte BOOK-Einträge wurden bei der JSON-Normalisierung verbreitert, weshalb die Festschrift-Migration über bekannte Standard-ID und unveränderten Standardnamen erfolgen muss. FESTSCHRIFT braucht einen eigenen JSON-Typzweig. Bereits dem expliziten Profil entsprechende Datumsangaben dürfen keine Dokument-Konsistenzwarnung erzeugen. Verdächtiges Jahr 2918 nur manuell markieren.

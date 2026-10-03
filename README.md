@@ -11,8 +11,12 @@
 
 Footnote-Checker unterstützt die formale Prüfung juristischer Fußnoten direkt in Microsoft Word. Es erkennt Zitierbestandteile, prüft sie nach konfigurierbaren Regeln und zeigt nachvollziehbare Korrekturvorschläge.
 
+![Footnote-Checker in Word: Startansicht mit Analyse, Prüfung und Korrektur](docs/screenshots/word-start.png)
+
+*FNC öffnet sich direkt neben dem Dokument in Word.*
+
 - **Zitierweise prüfen:** Interpunktion, Abkürzungen, Seiten-/Randnummernangaben und Formatierung.
-- **Quellen unterscheiden:** Gesetze, Rechtsprechung, Kommentare, Bücher und Zeitschriften; die 17.3-Erweiterung erkennt zusätzlich unter anderem Festschriftbeiträge. Einzelne Festschrift-Regeln befinden sich noch in der Beta-Prüfung.
+- **Quellen unterscheiden:** Gesetze, Rechtsprechung, Kommentare, Bücher, Zeitschriften, Festschrift- und Jahrbuchbeiträge. Festschriften lassen sich als eigene Quellenart verwalten und filtern.
 - **Konsistenz herstellen:** Werkbezeichnungen, alternative Schreibweisen, Kurzbelege und dokumentbezogene Quellenzuordnung.
 - **Kontrolliert korrigieren:** Einzelentscheidungen oder sichere gebündelte Korrekturen. Unsichere Stellen bleiben zur manuellen Prüfung offen.
 - **Ergebnisse weitergeben:** CSV-Bericht sowie Import/Export der Einstellungen und Quellenverwaltung.
@@ -57,6 +61,10 @@ Die Windows-Kataloginstallation ist ein Testverfahren, keine fertige Marketplace
 3. **Fußnoten prüfen** starten.
 4. Den passenden Modus nutzen:
 
+![Zitiereinstellungen in Word: Regeln für Rechtsprechung, Kommentare, Bücher, Zeitschriften und Festschriften](docs/screenshots/word-settings.png)
+
+*Die Regeln und das Literaturverzeichnis lassen sich im lokalen Add-in-Profil anpassen. Einstellungen können importiert und exportiert werden.*
+
 | Modus | Verhalten |
 | --- | --- |
 | Analyse | Zeigt Befunde, ohne das Dokument zu verändern. |
@@ -65,11 +73,15 @@ Die Windows-Kataloginstallation ist ein Testverfahren, keine fertige Marketplace
 
 Hinweise, unklare Quellen und technisch nicht sicher bearbeitbare Stellen bleiben zur Prüfung offen. Nach Änderungen erneut analysieren und den CSV-Bericht bei Bedarf exportieren.
 
-Nach der Analyse eine Fußnote in der Ergebnisliste aufklappen und **„Zur Fußnote“** anklicken. Der Button bleibt beim Scrollen erreichbar und öffnet die aktive Fußnote in Word. Ohne aktive Fußnote oder während einer Prüfung/Korrektur ist er deaktiviert. Nach manuellen Dokumentänderungen kann eine erneute Analyse nötig sein. Diese Navigation gehört zur lokalen POC-17.6-Fassung.
+![Abgeschlossener Korrekturlauf: 80 geprüfte Fußnoten, 329 durchgeführte Korrekturen und sechs manuelle Hinweise](docs/screenshots/word-correction-results.png)
+
+*Beispiel aus dem Testdokument: Die Abschlussübersicht unterscheidet tatsächlich durchgeführte Korrekturen, offene manuelle Hinweise und fehlgeschlagene Aktionen. Die Zahlen hängen vom Dokument und den Einstellungen ab.*
+
+Nach der Analyse eine Fußnote in der Ergebnisliste aufklappen und **„Zur Fußnote“** anklicken. Der Button bleibt beim Scrollen erreichbar und öffnet die aktive Fußnote in Word. Ohne aktive Fußnote oder während einer Prüfung/Korrektur ist er deaktiviert. Nach manuellen Dokumentänderungen kann eine erneute Analyse nötig sein. Diese Navigation gehört zur POC-17.6-Fassung.
 
 ## Technischer Workflow
 
-Die **Task Pane** ist die Seitenleiste in Word. Sie startet die Prüfung und zeigt Ergebnisse und Entscheidungen. Der folgende Ablauf entspricht der aktuellen Architektur; gestrichelte Verbindungen markieren geplante Erweiterungen.
+Die **Task Pane** ist die Seitenleiste in Word. Sie startet die Prüfung und zeigt Ergebnisse und Entscheidungen. Der folgende Ablauf entspricht der aktuellen Architektur.
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#F7F4EC', 'primaryTextColor': '#18313A', 'primaryBorderColor': '#18313A', 'lineColor': '#18313A'}}}%%
@@ -108,10 +120,8 @@ flowchart TD
     Results --> Report["Lokaler CSV-Bericht"]
     Manual --> Report
     Write --> Report
-    UI --> Navigation["POC 17.6 · lokal implementiert<br/>Zur aktiven Fußnote im Word-Dokument springen"]
-    Navigation -.-> Word
-    classDef future fill:#ffffff,stroke:#E88B72,stroke-dasharray:5 5,color:#18313A;
-    class Navigation future;
+    UI --> Navigation["POC 17.6 · Fußnotennavigation<br/>Zur aktiven Fußnote im Word-Dokument springen"]
+    Navigation --> Word
 ```
 
 - **Reader / Snapshot:** Office.js liest Word-Daten gebündelt. Ein Snapshot ist eine lokale Momentaufnahme einer Fußnote. Der **Locator** beschreibt ihre Position; der **Texthash** ist ein Fingerabdruck, mit dem FNC spätere Änderungen erkennt. Word-Objekte werden nicht als dauerhaft gespeicherte Daten weitergereicht.
@@ -119,9 +129,19 @@ flowchart TD
 - **Review / Write-back:** Die Review Engine unterscheidet automatisch bearbeitbare, manuell zu prüfende, technisch blockierte und informative Hinweise. Eine manuelle Prüfbestätigung löst keine unsichere Textänderung aus. Vor dem Schreiben prüft FNC das aktuelle Word-Ziel erneut; geänderte oder geschützte Stellen werden übersprungen.
 - **Fortschritt / Speicher:** POC 17.5 zeigt echte Verarbeitungszähler und verständliche Phasen. Die lokale Analyse gibt der Oberfläche zwischen kurzen Arbeitsabschnitten Zeit zum Aktualisieren. Einstellungen bleiben im jeweiligen lokalen Add-in-Profil; es gibt keine gemeinsame Servereinstellung. Eine KI-/LLM-Prüfung ist derzeit nicht Teil dieses Ablaufs.
 
+### Fortschritt bei großen Dokumenten
+
+FNC zeigt die aktuelle Arbeitsphase, tatsächlich verarbeitete Fußnoten und die seit dem Start verstrichenen Sekunden. Die Laufzeitanzeige bleibt über Phasenwechsel und automatische Korrekturen hinweg erhalten.
+
+![Fortschrittsanzeige beim großen Dokument: 1.144 gelesene Fußnoten, Linkinformationen und verstrichene Sekunden](docs/screenshots/word-large-document-progress.png)
+
+*Die Oberfläche zeigt auch während der Ergänzung von Word-Zusatzinformationen, dass die Prüfung weiterläuft.*
+
 ## Entwicklungsstand
 
-Stand dieses Checkouts: **3. Oktober 2026**. POC 17.5 ist veröffentlicht. POC 17.6 ist lokal implementiert und die Navigation wurde in Word für macOS mit allen 80 Fußnoten eines Testdokuments geprüft. Ein Deployment und ein neues Release für 17.6 stehen noch aus. Windows- und große Real-Word-Dokumente bleiben separat zu prüfen.
+Stand: **3. Oktober 2026 · POC 17.7**. **Die Implementierung der POC-17-Reihe ist abgeschlossen.** Quellenregister, Quellenabdeckung, Einstellungen, Fortschrittsfeedback und Fußnotennavigation sind umgesetzt. POC 17.7 ergänzt Festschrift-Regeln, Quellenpflege und die kontinuierliche Sekundenanzeige. Die macOS-Validierung umfasst Dokumente mit 80 und 1.144 Fußnoten; ein einzelner abschließender ZStW-Nachtest bleibt im [Testbericht](docs/POC_17_7_VALIDATION.md) dokumentiert.
+
+Der GitHub-Codestand enthält POC 17.7. Die gehostete Beta und die Installationspakete laden weiterhin den zuletzt bereitgestellten Dienst; Git-Push und Deployment sind getrennt. Ein neues Deployment/Release für 17.6–17.7 und die reale Windows-Validierung stehen noch aus.
 
 ### POC 1–17: Kategorien und Meilensteine
 
@@ -145,7 +165,7 @@ Die Commitlinks führen zum tatsächlichen Codestand. Für mehrteilige POCs ist 
 | 14 | Sicher schreiben | Write-back | Einzeländerungen mit erneuter Ziel- und Textprüfung. | 23.08.2026 · [c00e5a7](https://github.com/AfsharLT/footnote-checker/commit/c00e5a7) |
 | 15 | Batch / Bericht | Write-back | Gebündelte Korrekturen und CSV-Bericht. | 23.08.2026 · [7d6731b](https://github.com/AfsharLT/footnote-checker/commit/7d6731b) |
 | 16 | Produkthärtung | Kompatibilität | Performance, Host-Fallbacks, UI-Härtung und Produktionsgrundlage. | 26.08.2026 · [d0f7133](https://github.com/AfsharLT/footnote-checker/commit/d0f7133) |
-| 17 | Quellen / UX | Engine / Produkt | Segmentierung, Quellenregister, Verzeichnisse, Quellentypen und Fortschrittsanzeige. | 16.09.–01.10.2026 · zuletzt [cce805d](https://github.com/AfsharLT/footnote-checker/commit/cce805d) |
+| 17 | Quellen / UX | Engine / Produkt | Segmentierung, Quellenregister, Verzeichnisse, Quellentypen und Fortschrittsanzeige. | 16.09.–03.10.2026 · zuletzt [8f55429](https://github.com/AfsharLT/footnote-checker/commit/8f55429) |
 
 **POC 4 hat keinen eigenständig benannten Commit im vorhandenen Verlauf.** Seine Referenz-/Locator-Strukturen sind im POC-5-Stand nachweisbar; deshalb teilen beide denselben Commitlink.
 
@@ -169,7 +189,7 @@ gitGraph LR:
     commit id: "ddfbf22 · Quellen / Einstellungen" tag: "POC 10"
 ```
 
-**Teil 2 · Regelwerk und sichere Änderungen → POC 17.5**
+**Teil 2 · Regelwerk und sichere Änderungen → POC 17.7**
 
 ```mermaid
 %%{init: {'theme': 'base', 'gitGraph': {'mainBranchName': 'Meilensteine', 'rotateCommitLabel': true}, 'themeVariables': {'primaryColor': '#F7F4EC', 'primaryTextColor': '#18313A', 'lineColor': '#18313A', 'git0': '#18313A', 'gitBranchLabel0': '#F7F4EC', 'commitLabelColor': '#18313A', 'commitLabelBackground': '#F7F4EC'}}}%%
@@ -185,7 +205,9 @@ gitGraph LR:
     commit id: "bd25554 · Verzeichnisse" tag: "POC 17.4"
     commit id: "7ae0f63 · Quellenregister" tag: "POC 17.2"
     commit id: "a274652 · Zuverlässigkeit" tag: "POC 17.3.2"
-    commit id: "cce805d · Fortschrittsfeedback" tag: "POC 17.5" type: HIGHLIGHT
+    commit id: "cce805d · Fortschrittsfeedback" tag: "POC 17.5"
+    commit id: "92c321a · Fußnotennavigation" tag: "POC 17.6"
+    commit id: "8f55429 · Abschlussfix" tag: "POC 17.7" type: HIGHLIGHT
 ```
 
 POC 17.4 wurde vor 17.2 umgesetzt; der Graph folgt den tatsächlichen Commits. Die spätere POC-16.4-Integration nach `main` erfolgte mit `bf75519`. Syntax: [Mermaid GitGraph](https://mermaid.js.org/syntax/gitgraph.html).
@@ -196,28 +218,28 @@ POC 17.4 wurde vor 17.2 umgesetzt; der Graph folgt den tatsächlichen Commits. D
 | --- | --- | --- |
 | 17.1 | Segmentierung und Review-Härtung | Implementiert: einzelne Quellen, Zusätze und Fließtext getrennt behandeln. |
 | 17.2 / 17.2.2 / 17.2.3 | Quellenregister und Kurzbelege | Implementiert: Rückverweise und Varianten konservativ zuordnen. |
-| 17.3 / 17.3.2 | Quellenabdeckung und Zuverlässigkeit | Implementierter Stand committed; reale Hassemer-/Hruschka-Festschrift-Pinpoints laut CTO-Chat weiter offen. |
+| 17.3 / 17.3.2 | Quellenabdeckung und Zuverlässigkeit | Implementierter Stand committed; die offenen Hassemer-/Hruschka-Pinpoints sind in POC 17.7 behoben. |
 | 17.4 | Einstellungen und Verzeichnisse | Vorgezogen und implementiert. |
-| **17.5** | **Lade- und Fortschrittsfeedback** | **Implementiert, committed und automatisiert geprüft; reale Word-Validierung offen.** Phasen, echte Zähler, aktive Warteanzeige, Nach-oben-Button und neues Logo. |
-| **17.6** | **Word-Fußnotennavigation** | **Lokal implementiert und in Word für macOS mit 80 Fußnoten geprüft:** „Zur Fußnote“ öffnet die zuletzt aufgeklappte, noch aktive Fußnote. Veraltete oder mehrdeutige Ziele werden abgewiesen. Noch nicht veröffentlicht. |
-| 17.7 | Festschrift-Regeln und Quellenpflege | Vorgemerkt: offene Pinpoint-Fälle und Festschrift-Auswahl/Filter im Literaturverzeichnis. |
+| **17.5** | **Lade- und Fortschrittsfeedback** | **Implementiert, committed und automatisiert geprüft; Laufzeitanzeige in POC 17.7 zusätzlich in Word für macOS geprüft.** Phasen, echte Zähler, aktive Warteanzeige, Nach-oben-Button und neues Logo. |
+| **17.6** | **Word-Fußnotennavigation** | **Implementiert und in Word für macOS mit 80 Fußnoten geprüft:** „Zur Fußnote“ öffnet die zuletzt aufgeklappte, noch aktive Fußnote. Veraltete oder mehrdeutige Ziele werden abgewiesen. Im GitHub-Codestand enthalten; separates Deployment/Release steht aus. |
+| **17.7** | **Abschlussfix und Korpusprüfung** | **Implementierung abgeschlossen:** Festschrift-Pinpoints, Quellenart/Filter, Übernahme alter Standardquellen, Quellen- und Bearbeitererkennung sowie durchgehende Sekundenanzeige. Korrekturmodus mit 80 und 1.144 Fußnoten in Word für macOS geprüft; unsichere Fälle bleiben manuell. Abschließender einzelner Word-Nachtest im Testbericht dokumentiert; Deployment/Release steht aus. |
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#F7F4EC', 'primaryTextColor': '#18313A', 'primaryBorderColor': '#18313A', 'lineColor': '#18313A'}}}%%
 flowchart LR
     Current["17.5 · Fortschrittsfeedback<br/>Veröffentlicht · Beta"]
-    Navigation["17.6 · Fußnotennavigation<br/>Lokal implementiert · Mac geprüft"]
-    Festschrift["17.7 · Festschrift-Regeln<br/>Vorgemerkt"]
+    Navigation["17.6 · Fußnotennavigation<br/>Implementiert · Mac geprüft"]
+    Festschrift["17.7 · Abschlussfix / Quellenpflege<br/>Implementierung POC 17 abgeschlossen"]
     Similarity["18 · Quellenähnlichkeit<br/>Geplant"]
     Import["19 · Bulk-Import / Export<br/>Geplant"]
     AI["20 · Kontrollierte KI<br/>Geplant"]
     Current --> Navigation
-    Navigation -.-> Festschrift -.-> Similarity -.-> Import -.-> AI
+    Navigation --> Festschrift -.-> Similarity -.-> Import -.-> AI
     classDef planned fill:#ffffff,stroke:#E88B72,stroke-dasharray:5 5,color:#18313A;
-    class Festschrift,Similarity,Import,AI planned;
+    class Similarity,Import,AI planned;
 ```
 
-Die Roadmap unterscheidet lokale Umsetzung und weitere Planung. **17.6 ist implementiert und für macOS geprüft; noch nicht als Release veröffentlicht oder gehostet.** 17.5 ist bereits als Beta veröffentlicht und gehostet. [17.6-Testbericht](docs/POC_17_6_VALIDATION.md) · [17.5-Abschlussbericht](docs/POC_17_5_VALIDATION.md).
+Die Roadmap unterscheidet abgeschlossene Implementierung und weitere Planung. **POC 17 ist im Codestand abgeschlossen; die dokumentierten Validierungsgrenzen bleiben bestehen.** Für 17.6/17.7 steht ein separates Deployment/Release aus. 17.5 ist bereits als Beta veröffentlicht und gehostet. [17.7-Testbericht](docs/POC_17_7_VALIDATION.md) · [17.7-Korpusprüfung](docs/POC_17_7_CORPUS_AUDIT.md) · [17.6-Testbericht](docs/POC_17_6_VALIDATION.md) · [17.5-Abschlussbericht](docs/POC_17_5_VALIDATION.md).
 
 ## Daten, Beta und Feedback
 
