@@ -24,7 +24,7 @@ const book = (id: string, name: string, aliases: string[]): CorpusSourceDefiniti
 
 const festschrift = (id: string, name: string, aliases: string[]): CorpusSourceDefinition => ({
   id: `festschrift-${id}`,
-  kind: "BOOK",
+  kind: "FESTSCHRIFT",
   name,
   types: ["FESTSCHRIFT_CONTRIBUTION"],
   aliases,
@@ -40,6 +40,13 @@ const journal = (id: string, name: string, aliases: string[] = []): CorpusSource
 
 export const POC_17_3_CORPUS_SOURCES: readonly CorpusSourceDefinition[] = [
   {
+    id: "commentary-stgb-fischer",
+    kind: "COMMENTARY",
+    name: "Fischer",
+    types: ["COMMENTARY"],
+    aliases: ["Fischer/{Bearbeiter}-StGB", "Fischer/{Bearbeiter} StGB"],
+  },
+  {
     id: "commentary-stgb-muekostgb",
     kind: "COMMENTARY",
     name: "MüKoStGB",
@@ -51,7 +58,11 @@ export const POC_17_3_CORPUS_SOURCES: readonly CorpusSourceDefinition[] = [
     kind: "COMMENTARY",
     name: "Tübinger Kommentar StGB",
     types: ["COMMENTARY"],
-    aliases: ["Tübinger Kommentar StGB", "{Bearbeiter}, in: Tübinger Kommentar StGB"],
+    aliases: [
+      "TK-StGB/{Bearbeiter}",
+      "Tübinger Kommentar StGB",
+      "{Bearbeiter}, in: Tübinger Kommentar StGB",
+    ],
   },
   {
     id: "commentary-stgb-sk-stgb",
@@ -81,6 +92,131 @@ export const POC_17_3_CORPUS_SOURCES: readonly CorpusSourceDefinition[] = [
     types: ["CASE_LAW"],
     aliases: ["RGSt. 66, 397", "RGSt 66, 397"],
   },
+  // Publisher-verified handbooks keep BOOK taxonomy; their slash/Rn. syntax
+  // deliberately uses the existing COMMENTARY rule family without claiming
+  // they are commentaries bibliographically.
+  {
+    id: "handbook-it-security",
+    kind: "BOOK",
+    name: "Hornung/Schallbruch IT-Sicherheitsrecht",
+    types: ["COMMENTARY", "BOOK"],
+    aliases: [
+      "Hornung/Schallbruch IT-Sicherheitsrecht/{Bearbeiter}",
+      "Hornung/Schallbruch IT-Sicherheitsrecht",
+    ],
+  },
+  {
+    id: "handbook-multimedia",
+    kind: "BOOK",
+    name: "Hoeren/Sieber/Holznagel MMR-HdB",
+    types: ["COMMENTARY", "BOOK"],
+    aliases: [
+      "Hoeren/Sieber/Holznagel MMR-HdB/{Bearbeiter}",
+      "Hoeren/Sieber/Holznagel MultimediaR-Hdb/{Bearbeiter}",
+    ],
+  },
+  {
+    id: "commentary-info-media",
+    kind: "COMMENTARY",
+    name: "BeckOK InfoMedienR",
+    types: ["COMMENTARY"],
+    aliases: ["BeckOK InfoMedienR/{Bearbeiter}", "BeckOK InfoMedienR"],
+  },
+  {
+    id: "commentary-electronic-media",
+    kind: "COMMENTARY",
+    name: "Spindler/Schuster/Kaesling",
+    types: ["COMMENTARY"],
+    aliases: ["Spindler/Schuster/Kaesling/{Bearbeiter}"],
+  },
+  {
+    id: "commentary-stgb-matt-renzikowski",
+    kind: "COMMENTARY",
+    name: "Matt/Renzikowski",
+    types: ["COMMENTARY"],
+    aliases: ["Matt/Renzikowski/{Bearbeiter} StGB", "{Bearbeiter}, in: Matt/Renzikowski StGB"],
+  },
+  {
+    id: "commentary-stgb-lackner-kuehl-heger",
+    kind: "COMMENTARY",
+    name: "Lackner/Kühl/Heger",
+    types: ["COMMENTARY"],
+    aliases: ["Lackner/Kühl/Heger/{Bearbeiter}-StGB", "{Bearbeiter}, in: Lackner/Kühl/Heger"],
+  },
+  {
+    id: "commentary-dsa-hofmann-raue",
+    kind: "COMMENTARY",
+    name: "NK-DSA",
+    types: ["COMMENTARY"],
+    aliases: ["NK-DSA/{Bearbeiter}", "{Bearbeiter}, in: NK-DSA"],
+  },
+  {
+    id: "handbook-kraul-dsa",
+    kind: "BOOK",
+    name: "Kraul Der neue DSA",
+    types: ["COMMENTARY", "BOOK"],
+    aliases: ["Kraul Der neue DSA/{Bearbeiter}"],
+  },
+  {
+    id: "commentary-eu-groeben",
+    kind: "COMMENTARY",
+    name: "von der Groeben",
+    types: ["COMMENTARY"],
+    aliases: [
+      "Von der Groeben/{Bearbeiter}",
+      "Von der Groeben/{Bearbeiter} AEUV",
+      "Von der Groeben/{Bearbeiter} EUV",
+    ],
+  },
+  journal("zstw", "ZStW"),
+  journal("nzkart", "NZKart"),
+  journal("pstr", "PStR"),
+  journal("strafo", "StraFo"),
+  journal("mmr", "MMR"),
+  journal("grur", "GRUR"),
+  book("parker-platform-revolution", "Parker/Van Alstyne/Choudary, Die Plattform-Revolution", [
+    "Parker/Van Alstyne/Choudary, Die Plattform-Revolution",
+    "Parker/Van Alystne/Choudary, Die Plattform-Revolution",
+  ]),
+  book(
+    "nussbaum-social-networks",
+    "Nussbaum, Die strafrechtliche Verantwortlichkeit von Anbietern (innerhalb) sozialer Netzwerke",
+    [
+      "Nussbaum, Die strafrechtliche Verantwortlichkeit von Anbietern (innerhalb) sozialer Netzwerke",
+    ]
+  ),
+  book(
+    "fries-influencer-marketing",
+    "Fries, Influencer-Marketing: Informationspflichten bei Werbung durch Meinungsführer in Social Media",
+    [
+      "Fries, Influencer-Marketing: Informationspflichten bei Werbung durch Meinungsführer in Social Media",
+      "Fries, Influencer-Marketing",
+    ]
+  ),
+  {
+    id: "report-gabriel-digital-platforms",
+    kind: "REPORT",
+    name: "Gabriel, Digitale Plattformen: Grundlagen und Erscheinungsformen",
+    types: ["BOOK"],
+    aliases: [
+      "Gabriel, Digitale Plattformen: Grundlagen und Erscheinungsformen",
+      "Gabriel, Lorenz, Digitale Plattformen: Grundlagen und Erscheinungsformen",
+    ],
+  },
+  {
+    id: "yearbook-pawlik-recht-und-ethik-2003-287",
+    kind: "BOOK",
+    name: "Pawlik, Jahrbuch für Recht und Ethik 2003",
+    types: ["YEARBOOK_CONTRIBUTION"],
+    aliases: ["Pawlik, Jahrbuch für Recht und Ethik 2003"],
+  },
+  {
+    id: "yearbook-renzikowski-recht-und-ethik-2003-269",
+    kind: "BOOK",
+    name: "Renzikowski, Jahrbuch für Recht und Ethik 2003",
+    types: ["YEARBOOK_CONTRIBUTION"],
+    aliases: ["Renzikowski, Jahrbuch für Recht und Ethik 2003"],
+  },
   journal("jr", "JR"),
   journal("jura", "Jura"),
   journal("ga", "GA"),
@@ -93,6 +229,7 @@ export const POC_17_3_CORPUS_SOURCES: readonly CorpusSourceDefinition[] = [
   ]),
   book("schmidhaeuser-strafrecht-at", "Schmidhäuser, Strafrecht Allgemeiner Teil", [
     "Schmidhäuser, Strafrecht Allgemeiner Teil",
+    "Schmidhäuser, AT",
   ]),
   book(
     "hruschka-strafrecht-logisch-analytisch",
@@ -146,7 +283,10 @@ export const POC_17_3_CORPUS_SOURCES: readonly CorpusSourceDefinition[] = [
     "Küper, Der verschuldete Notstand",
     "Küper Der verschuldete Notstand",
   ]),
-  book("pawlik-notstand", "Pawlik, Notstand", ["Pawlik, Notstand"]),
+  book("pawlik-notstand", "Pawlik, Notstand", [
+    "Pawlik, Notstand",
+    "Pawlik, Der rechtfertigende Notstand",
+  ]),
   book("heller-aufgedraengte-nothilfe", "Heller, Die aufgedrängte Nothilfe", [
     "Heller, Die aufgedrängte Nothilfe",
   ]),
@@ -221,11 +361,11 @@ export const POC_17_3_CORPUS_SOURCES: readonly CorpusSourceDefinition[] = [
     "FS Schünemann",
   ]),
   {
-    id: "yearbook-hruschka-recht-und-ethik-2014-137",
+    id: "yearbook-pawlik-recht-und-ethik-2014-137",
     kind: "BOOK",
-    name: "Hruschka, Jahrbuch für Recht und Ethik 2014",
+    name: "Pawlik, Jahrbuch für Recht und Ethik 2014",
     types: ["YEARBOOK_CONTRIBUTION"],
-    aliases: ["Hruschka, Jahrbuch für Recht und Ethik 2014"],
+    aliases: ["Pawlik, Jahrbuch für Recht und Ethik 2014"],
   },
   {
     id: "yearbook-silva-sanchez-recht-und-ethik-2005-681",
@@ -280,7 +420,31 @@ export function mergeCorpusCoverageSources(
   return {
     ...mapping,
     sources: [
-      ...mapping.sources,
+      ...mapping.sources.map((candidate) =>
+        candidate.canonicalSourceId === "yearbook-hruschka-recht-und-ethik-2014-137" &&
+        candidate.sourceOrigin === "DEFAULT" &&
+        candidate.preferredName === "Hruschka, Jahrbuch für Recht und Ethik 2014"
+          ? {
+              ...candidate,
+              active: false,
+              notes:
+                "POC 17.7: frühere falsche Autorzuordnung; Verlag belegt Pawlik, JRE 22 (2014), 137.",
+            }
+          : candidate.sourceOrigin === "DEFAULT" &&
+              candidate.kind === "BOOK" &&
+              POC_17_3_CORPUS_SOURCES.some(
+                (definition) =>
+                  definition.kind === "FESTSCHRIFT" &&
+                  definition.id === candidate.canonicalSourceId &&
+                  definition.name === candidate.preferredName
+              )
+            ? {
+                ...candidate,
+                kind: "FESTSCHRIFT" as const,
+                applicableCitationTypes: ["FESTSCHRIFT_CONTRIBUTION" as const],
+              }
+            : candidate
+      ),
       ...POC_17_3_CORPUS_SOURCES.filter((definition) => !existingSourceIds.has(definition.id)).map(
         source
       ),

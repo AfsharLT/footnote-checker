@@ -3,7 +3,8 @@ import type { CitationType } from "../footnote-engine/types";
 
 export const CURRENT_CITATION_SOURCE_MAPPING_SCHEMA_VERSION = 1 as const;
 
-export type CitationSourceKind = "COMMENTARY" | "JOURNAL" | "BOOK" | "REPORT" | "CUSTOM";
+export type CitationSourceKind =
+  "COMMENTARY" | "JOURNAL" | "BOOK" | "FESTSCHRIFT" | "REPORT" | "CUSTOM";
 export type CitationSourceLegalArea =
   "ZIVILRECHT" | "STRAFRECHT" | "PROZESSRECHT" | "OEFFENTLICHES_RECHT" | "EUROPARECHT" | "SONSTIGE";
 export type CommentaryPersonStructureHint =

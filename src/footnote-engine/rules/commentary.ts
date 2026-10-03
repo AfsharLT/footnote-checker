@@ -182,7 +182,9 @@ export const commentaryFormattingRule: FootnoteRule = {
   evaluate(context) {
     const extraction = data(context);
     const findings: RuleFindingCandidate[] = [];
-    for (const person of context.sourceMapping?.matchSource === "STRUCTURED_ALIAS"
+    const mappedPersons = mappedCommentaryBearbeiterCandidates(context);
+    for (const person of mappedPersons.length > 0 ||
+    context.sourceMapping?.matchSource === "STRUCTURED_ALIAS"
       ? []
       : (extraction?.persons ?? [])) {
       if (person.role === "bearbeiter") {
@@ -205,7 +207,7 @@ export const commentaryFormattingRule: FootnoteRule = {
         );
       }
     }
-    for (const mappedBearbeiter of mappedCommentaryBearbeiterCandidates(context)) {
+    for (const mappedBearbeiter of mappedPersons) {
       findings.push(
         ...formattingCandidates(
           context,
@@ -218,7 +220,14 @@ export const commentaryFormattingRule: FootnoteRule = {
           metadata: {
             ...candidate.metadata,
             roleResolutionSource: "SOURCE_MAPPING_HINT",
-            requiresManualReview: true,
+            requiresManualReview:
+              context.sourceMapping?.matchSource !== "STRUCTURED_ALIAS" &&
+              !extraction?.persons.some(
+                (p) =>
+                  p.start === mappedBearbeiter.start &&
+                  p.end === mappedBearbeiter.end &&
+                  p.role === "bearbeiter"
+              ),
           },
         }))
       );

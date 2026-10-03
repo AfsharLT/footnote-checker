@@ -1,5 +1,6 @@
 import { isRangeProtected } from "../protected-ranges";
-import { actualFormattingValue } from "./helpers";
+import { actualFormattingValue, formatNormalizedDate } from "./helpers";
+import type { CaseLawCitationSettings } from "../../citation-settings/types";
 import type {
   DocumentFindingCandidate,
   DocumentRule,
@@ -208,7 +209,14 @@ function citationStyleOccurrences(context: RuleContext): TextOccurrence[] {
         });
       }
     }
-    if (data.date?.normalizedValue) {
+    if (
+      data.date?.normalizedValue &&
+      data.date.rawText !==
+        formatNormalizedDate(
+          data.date.normalizedValue,
+          (context.resolvedSettings.settings as CaseLawCitationSettings).dateFormat
+        )
+    ) {
       if (!isRangeProtected(data.date.start, data.date.end, context.protectedRanges)) {
         output.push({
           context,

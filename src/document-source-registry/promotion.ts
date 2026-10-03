@@ -62,6 +62,8 @@ function refreshAccounting(registry: DocumentSourceRegistry): void {
 function mappingKind(sourceType: CitationType): CitationSourceKind {
   if (sourceType === "COMMENTARY") return "COMMENTARY";
   if (sourceType === "JOURNAL_ARTICLE" || sourceType === "CASE_NOTE") return "JOURNAL";
+  if (sourceType === "FESTSCHRIFT_CONTRIBUTION") return "FESTSCHRIFT";
+  if (sourceType === "YEARBOOK_CONTRIBUTION") return "BOOK";
   if (sourceType === "BOOK" || sourceType === "BOOK_CHAPTER") return "BOOK";
   if (sourceType === "LEGISLATIVE_MATERIAL") return "REPORT";
   return "CUSTOM";

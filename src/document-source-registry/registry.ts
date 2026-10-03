@@ -1310,13 +1310,18 @@ function resolveSpecialRecords(
 
     const previous = [...records.slice(0, index)]
       .reverse()
-      .map((candidate) => state.resolutionByItemId.get(candidate.item.id))
-      .find((resolution) => resolution?.documentSourceId || resolution?.persistentSourceId);
-    const previousSource = previous?.documentSourceId
-      ? state.sources.get(previous.documentSourceId)
+      .map((candidate) => ({
+        record: candidate,
+        resolution: state.resolutionByItemId.get(candidate.item.id),
+      }))
+      .find(({ resolution }) => resolution?.documentSourceId || resolution?.persistentSourceId);
+    const previousRecord = previous?.record;
+    const previousResolution = previous?.resolution;
+    const previousSource = previousResolution?.documentSourceId
+      ? state.sources.get(previousResolution.documentSourceId)
       : undefined;
-    const previousPersistentSource = previous?.persistentSourceId
-      ? persistentIndex.sourcesById.get(previous.persistentSourceId)
+    const previousPersistentSource = previousResolution?.persistentSourceId
+      ? persistentIndex.sourcesById.get(previousResolution.persistentSourceId)
       : undefined;
     if (!previousSource && !previousPersistentSource) {
       unresolvedSpecial(record, "UNRESOLVED", "IMMEDIATE_CONTEXT", [], state);
@@ -1347,11 +1352,32 @@ function resolveSpecialRecords(
       continue;
     }
     if (fingerprint && record.specialReference === "DERS_DIES") {
-      const previousAuthors = previousSource
-        ? previousSource.canonicalFingerprint.normalizedAuthors
-        : previousPersistentSource
-          ? [normalizePersonName(previousPersistentSource.preferredName.split(",")[0])]
+      const previousExtraction = previousRecord?.segment?.extraction;
+      const observedBearbeiters =
+        previousExtraction?.type === "COMMENTARY"
+          ? previousExtraction.data.persons
+              .filter(
+                (person) =>
+                  person.role === "bearbeiter" && !/^(?:ders\.|dies\.)$/iu.test(person.rawText)
+              )
+              .map((person) => normalizePersonName(person.rawText))
           : [];
+      const observedAuthors =
+        previousRecord?.fingerprint?.normalizedAuthors.filter(
+          (author) => !/^(?:ders|dies)$/u.test(author)
+        ) ?? [];
+      const previousAuthors =
+        observedAuthors.length > 0
+          ? observedAuthors
+          : observedBearbeiters.length > 0
+            ? observedBearbeiters
+            : previousSource
+              ? previousSource.canonicalFingerprint.normalizedAuthors
+              : previousPersistentSource &&
+                  previousPersistentSource.preferredName.includes(",") &&
+                  ["BOOK", "FESTSCHRIFT"].includes(previousPersistentSource.kind)
+                ? [normalizePersonName(previousPersistentSource.preferredName.split(",")[0])]
+                : [];
       const inferred: SourceFingerprint = {
         ...fingerprint,
         normalizedAuthors: [...previousAuthors],
@@ -1362,6 +1388,8 @@ function resolveSpecialRecords(
       ) {
         const inferredResolution = state.resolutionByItemId.get(record.item.id);
         if (inferredResolution?.finalState === "PERSISTENT_MATCH") {
+          // Preserve the observed person through consecutive ders./dies. citations.
+          record.fingerprint = inferred;
           inferredResolution.explanation = {
             ...inferredResolution.explanation,
             strategy: "IMMEDIATE_CONTEXT",

@@ -189,7 +189,7 @@ export function parseCitationSourceMappingCsv(
     }
     const kind = enumValue<CitationSourceKind>(
       valueAt(row, "kind"),
-      ["COMMENTARY", "JOURNAL", "BOOK", "REPORT", "CUSTOM"],
+      ["COMMENTARY", "JOURNAL", "BOOK", "FESTSCHRIFT", "REPORT", "CUSTOM"],
       `${path}.kind`,
       errors
     );
@@ -279,7 +279,10 @@ export function parseCitationSourceMappingCsv(
       errors.push(`${path}.overridePinpointStyle has an unsupported value`);
     }
     if (sourceActive === undefined || aliasActive === undefined || wholeWord === undefined) return;
-    if (matchMode === "WHOLE_WORD_MARKER" && !["BOOK", "REPORT", "CUSTOM"].includes(kind)) {
+    if (
+      matchMode === "WHOLE_WORD_MARKER" &&
+      !["BOOK", "FESTSCHRIFT", "REPORT", "CUSTOM"].includes(kind)
+    ) {
       errors.push(`${path}.matchMode WHOLE_WORD_MARKER is incompatible with ${kind}`);
       return;
     }
@@ -326,9 +329,11 @@ export function parseCitationSourceMappingCsv(
                     "YEARBOOK_CONTRIBUTION",
                     "OTHER",
                   ]
-                : kind === "REPORT"
-                  ? ["CASE_LAW", "LEGISLATIVE_MATERIAL", "OTHER"]
-                  : ["MANUSCRIPT", "FORTHCOMING", "OTHER"],
+                : kind === "FESTSCHRIFT"
+                  ? ["FESTSCHRIFT_CONTRIBUTION"]
+                  : kind === "REPORT"
+                    ? ["CASE_LAW", "LEGISLATIVE_MATERIAL", "OTHER"]
+                    : ["MANUSCRIPT", "FORTHCOMING", "OTHER"],
         active: sourceActive,
         ...(optional(valueAt(row, "examplePattern"))
           ? { examplePattern: valueAt(row, "examplePattern") }

@@ -141,7 +141,7 @@ function normalizeForAnalysis(rawText: string): string {
 }
 
 function isNarrativeOpening(text: string): boolean {
-  return /^(?:So\s+wird|Diese[rs]?|Unter\s+Annahme|Zudem|Der\s+Beginn|Ein\s+weiterer|Dadurch|Damit|geht|gehen|ist|sind)\b/i.test(
+  return /^(?:So\s+wird|Diese[rs]?|Unter\s+Annahme|Zudem|Das\s+Gericht|Dabei|Totengräberparagraph|Zu\s+einer|Der\s+Beginn|Ein\s+weiterer|Dadurch|Damit|geht|gehen|ist|sind)\b/i.test(
     normalizeForAnalysis(text)
   );
 }
@@ -172,6 +172,8 @@ function findQualifiers(text: string, range: TextRange): CitationQualifier[] {
 }
 
 function citationEvidence(rawText: string): CitationEvidence {
+  const localStart = findLocalCitationCoreStart(rawText, 0, rawText.length);
+  if (localStart > 0) return citationEvidence(rawText.slice(localStart));
   const text = normalizeForAnalysis(rawText);
   if (isNarrativeOpening(text)) {
     return { score: 0, signals: ["narrativeOpening"] };
@@ -186,11 +188,15 @@ function citationEvidence(rawText: string): CitationEvidence {
     return true;
   };
 
-  const court = add("court", 2, /\b(?:BVerfG|BGH|BAG|BFH|BSG|BVerwG|EuGH|OLG|LG|AG|KG)\b/i);
+  const court = add(
+    "court",
+    2,
+    /\b(?:EuGH|EuG|BVerfG|BGH|BAG|BFH|BSG|BVerwG|EuGH|OLG|LG|AG|KG)\b/i
+  );
   const reporter = add(
     "reporter",
     2,
-    /\b(?:BVerfGE|BGHSt|BGHZ|RGSt|NJW|NStZ(?:-RR)?|JZ|JuS|Jura|JA|JR|StV|wistra|ZStW|GA|MDR|MedR|medstra|HRRS|BeckRS)\b/i
+    /\b(?:BVerfGE|BGHSt|BGHZ|RGZ|RGSt|NJW(?:-RR)?|NStZ(?:-RR)?|JZ|JuS|Jura|JA|JR|StV|wistra|ZStW|GA|MDR|MedR|medstra|HRRS|BeckRS)\b/i
   );
   const statute = add("statute", 2, /(?:^|[\s,;(])(?:§§?|Art\.)\s*\d/i);
   const margin = add("marginNumber", 2, /\b(?:Rn\.|Rdn\.?|Rdnr\.)\s*\d/i);
@@ -218,6 +224,11 @@ function citationEvidence(rawText: string): CitationEvidence {
   const yearbook = add("yearbook", 3, /\bJahrbuch\s+für\s+Recht\s+und\s+Ethik\b/iu);
   const manuscript = /\(Manuskript\)/i.test(text);
   const forthcoming = add("forthcoming", 2, /\(\s*im\s+Erscheinen\s*\)/iu);
+  add(
+    "euLegalMaterial",
+    1,
+    /^(?:Erwägungsgrund\s+\d+|Richtlinie\s+\d{4}\/\d+\/EU|Schlussfolgerungen\s+des\s+Rates\b)/iu
+  );
   add("sourceNoun", 1, /\b(?:Quelle|Fundstelle|Werk)\b/i);
   const yearPage = add("yearPage", 1, /\b(?:19|20)\d{2}\s*,\s*\d+/);
   const docket = add("docket", 2, /\b(?:StR|BvR|BvL|ZR|ZB|AZR|ABR)\s+\d+\/\d+/i);
@@ -312,6 +323,12 @@ function isSentenceBoundary(text: string, index: number, paragraphEnd: number): 
   if (character !== "." && character !== "!" && character !== "?") return false;
   let next = index + 1;
   while (next < paragraphEnd && /\s/.test(text[next])) next += 1;
+  // An ordinal inside prose ("der 1. Strafsenat") does not start a new source.
+  if (
+    character === "." &&
+    /\b(?:der|die|das|den|dem|im|zum)\s+\d+$/iu.test(text.slice(Math.max(0, index - 32), index))
+  )
+    return false;
   const token = precedingToken(text, index);
   const alphaNumericSuffix =
     token === "a" && /\d+a$/i.test(text.slice(Math.max(0, index - 8), index));

@@ -51,11 +51,13 @@ assert(
   "Alias search failed"
 );
 assert(
-  filterCitationSources(mapping, { ...DEFAULT_MAPPING_FILTERS, kind: "COMMENTARY" }).length === 23,
+  filterCitationSources(mapping, { ...DEFAULT_MAPPING_FILTERS, kind: "COMMENTARY" }).length ===
+    mapping.sources.filter((source) => source.kind === "COMMENTARY").length,
   "Commentary filter failed"
 );
 assert(
-  filterCitationSources(mapping, { ...DEFAULT_MAPPING_FILTERS, kind: "JOURNAL" }).length === 10,
+  filterCitationSources(mapping, { ...DEFAULT_MAPPING_FILTERS, kind: "JOURNAL" }).length ===
+    mapping.sources.filter((source) => source.kind === "JOURNAL").length,
   "Journal filter failed"
 );
 assert(

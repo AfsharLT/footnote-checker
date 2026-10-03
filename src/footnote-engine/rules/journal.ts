@@ -57,9 +57,16 @@ function pinpointStyleCandidate(
   pinpoint: CitationLocator | undefined,
   expectedStyle: PinpointStyle
 ): RuleFindingCandidate[] {
-  if (!firstPage || !pinpoint) return [];
+  if (!firstPage || !pinpoint || pinpoint.start < firstPage.end) return [];
   const text = context.footnote.contentText;
   const between = text.slice(firstPage.end, pinpoint.start);
+  if (!/^\s*(?:,|\()\s*$/u.test(between))
+    return informationalCandidate(
+      context,
+      { start: firstPage.end, end: pinpoint.end },
+      "Die Trennung der konkreten Fundstelle ist ungewöhnlich. Bitte prüfen Sie diese Stelle manuell.",
+      { requiresManualReview: true }
+    );
   const closingParenthesis = text[pinpoint.end] === ")";
   const actualStyle: PinpointStyle =
     between.includes("(") && closingParenthesis ? "parentheses" : "comma";
@@ -91,6 +98,20 @@ export const journalPinpointStyleRule: FootnoteRule = {
   supportedCitationTypes: ["JOURNAL_ARTICLE"],
   evaluate(context) {
     const extraction = data(context);
+    if (extraction?.firstPage && extraction.pinpointPages.length === 0) {
+      const tail = context.footnote.contentText.slice(
+        extraction.firstPage.end,
+        context.segment?.coreEnd
+      );
+      const suspicious = /^\s*\.?\s+(\d+\s*(?:ff?\.?)?)/u.exec(tail);
+      if (suspicious)
+        return informationalCandidate(
+          context,
+          { start: extraction.firstPage.end, end: extraction.firstPage.end + suspicious[0].length },
+          "Nach der Anfangsseite steht eine weitere Seitenangabe ohne eindeutige Trennung. Bitte prüfen Sie die konkrete Fundstelle manuell.",
+          { requiresManualReview: true }
+        );
+    }
     return pinpointStyleCandidate(
       context,
       extraction?.firstPage,
@@ -193,7 +214,26 @@ export const journalFollowingSuffixRule: FootnoteRule = {
   },
 };
 
+export const journalPublicationYearRule: FootnoteRule = {
+  ruleId: "JOURNAL_PUBLICATION_YEAR_REVIEW",
+  category: "citation",
+  priority: 185,
+  scope: "segment",
+  supportedCitationTypes: ["JOURNAL_ARTICLE"],
+  evaluate(context) {
+    const year = data(context)?.year;
+    if (!year || Number(year.value) <= 2100) return [];
+    return informationalCandidate(
+      context,
+      year,
+      "Das angegebene Erscheinungsjahr liegt ungewöhnlich weit in der Zukunft. Bitte prüfen Sie die Jahreszahl anhand der Quelle.",
+      { requiresManualReview: true, observedYear: year.value }
+    );
+  },
+};
+
 export const JOURNAL_RULES: readonly FootnoteRule[] = [
+  journalPublicationYearRule,
   journalWorkNameRule,
   journalPinpointStyleRule,
   journalPersonSeparatorRule,

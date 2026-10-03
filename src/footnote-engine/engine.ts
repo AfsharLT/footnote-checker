@@ -283,12 +283,32 @@ function associateFindingsWithCitationItems(
     if (!finding.citationSegmentId) return [finding];
     if (
       (narrativeByFootnote.get(finding.footnoteId) ?? []).some(
-        (narrative) => narrative.start <= finding.start && narrative.end >= finding.end
+        (narrative) =>
+          narrative.reason === "narrative" &&
+          narrative.start <= finding.start &&
+          narrative.end >= finding.end
       )
     ) {
       return [];
     }
     const locations = locationsByFootnote.get(finding.footnoteId) ?? [];
+    if (
+      finding.ruleId === "CITATION_OTHER_REVIEW" &&
+      !locations.some(({ item }) => rangesOverlap(item, finding))
+    ) {
+      let uncovered = finding.originalText;
+      const narrativeSpans = (narrativeByFootnote.get(finding.footnoteId) ?? [])
+        .filter(
+          (narrative) => narrative.reason === "narrative" && rangesOverlap(narrative, finding)
+        )
+        .sort((left, right) => right.start - left.start);
+      for (const span of narrativeSpans) {
+        const start = Math.max(span.start, finding.start) - finding.start;
+        const end = Math.min(span.end, finding.end) - finding.start;
+        uncovered = uncovered.slice(0, start) + " ".repeat(end - start) + uncovered.slice(end);
+      }
+      if (narrativeSpans.length > 0 && !uncovered.trim()) return [];
+    }
     const segmentRange = segmentRanges.get(`${finding.footnoteId}:${finding.citationSegmentId}`);
     const relevant = locations.filter(({ item }) => rangesOverlap(item, segmentRange ?? finding));
     if (relevant.length === 0) return [finding];

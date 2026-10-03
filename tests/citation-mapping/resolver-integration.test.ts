@@ -213,8 +213,8 @@ assert(
 );
 assert(commentarySegment.extraction?.type === "COMMENTARY", "COMMENTARY extraction changed");
 assert(
-  commentarySegment.extraction.data.persons.every((person) => person.role === "unknown"),
-  "Mapping must not rewrite person roles"
+  commentarySegment.extraction.data.persons.every((person) => person.role === "bearbeiter"),
+  "Explicit StGB/work slash syntax must resolve bearer roles before mapping"
 );
 
 const journalResult = analyzeFootnotes([snapshot("Tenckhoff, JuS 1988, 787 (788).")]);

@@ -238,12 +238,21 @@ function semanticFormattingRanges(contexts: readonly RuleContext[]): SemanticFor
   for (const context of contexts) {
     if (
       context.effectiveCitationType === "COMMENTARY" &&
-      context.sourceMapping?.personStructureHint === "WORK_THEN_BEARBEITER"
+      (context.sourceMapping?.personStructureHint === "WORK_THEN_BEARBEITER" ||
+        context.sourceMapping?.matchSource === "STRUCTURED_ALIAS")
     ) {
       const commentarySettings = context.resolvedSettings.settings as {
         bearbeiterFormatting: SemanticFormattingRange["expected"];
       };
-      mappedCommentaryBearbeiterCandidates(context).forEach((candidate) =>
+      const candidates = mappedCommentaryBearbeiterCandidates(context);
+      if (candidates.length > 1 && candidates.every((c) => c.role === "bearbeiter"))
+        addSemanticRange(
+          output,
+          { start: candidates[0].start, end: candidates[candidates.length - 1].end },
+          "bearbeiter",
+          commentarySettings.bearbeiterFormatting
+        );
+      candidates.forEach((candidate) =>
         addSemanticRange(output, candidate, "bearbeiter", commentarySettings.bearbeiterFormatting)
       );
     }
@@ -254,6 +263,14 @@ function semanticFormattingRanges(contexts: readonly RuleContext[]): SemanticFor
         bearbeiterFormatting: SemanticFormattingRange["expected"];
         editorFormatting: SemanticFormattingRange["expected"];
       };
+      const bearbeiters = extraction.data.persons.filter((person) => person.role === "bearbeiter");
+      if (bearbeiters.length > 1)
+        addSemanticRange(
+          output,
+          { start: bearbeiters[0].start, end: bearbeiters[bearbeiters.length - 1].end },
+          "bearbeiter",
+          settings.bearbeiterFormatting
+        );
       extraction.data.persons.forEach((person) => {
         if (person.role === "bearbeiter") {
           addSemanticRange(output, person, "bearbeiter", settings.bearbeiterFormatting);
@@ -263,7 +280,7 @@ function semanticFormattingRanges(contexts: readonly RuleContext[]): SemanticFor
       });
       addSemanticRange(
         output,
-        extraction.data.work,
+        context.sourceMapping?.matchedWorkRange ?? extraction.data.work,
         "workTitle",
         context.resolvedSettings.formatting.workTitle
       );
@@ -287,7 +304,11 @@ function semanticFormattingRanges(contexts: readonly RuleContext[]): SemanticFor
       extraction.data.authors.forEach((author) =>
         addSemanticRange(output, author, "author", settings.authorFormatting)
       );
-    } else if (extraction.type === "BOOK_CHAPTER") {
+    } else if (
+      extraction.type === "BOOK_CHAPTER" ||
+      extraction.type === "FESTSCHRIFT_CONTRIBUTION" ||
+      extraction.type === "YEARBOOK_CONTRIBUTION"
+    ) {
       const settings = context.resolvedSettings.settings as {
         authorFormatting: SemanticFormattingRange["expected"];
         editorFormatting: SemanticFormattingRange["expected"];
@@ -295,7 +316,7 @@ function semanticFormattingRanges(contexts: readonly RuleContext[]): SemanticFor
       extraction.data.authors.forEach((author) =>
         addSemanticRange(output, author, "author", settings.authorFormatting)
       );
-      extraction.data.editors.forEach((editor) =>
+      ("editors" in extraction.data ? extraction.data.editors : []).forEach((editor) =>
         addSemanticRange(output, editor, "editor", settings.editorFormatting)
       );
       addSemanticRange(
@@ -363,6 +384,10 @@ export function createFormattingRuleOutputs(
     actual: FormattingBaselineValue,
     baseline: FormattingBaseline
   ): void => {
+    // Unicode spacing glyphs may use a fallback font; normalizing their font
+    // has no visible benefit and Word cannot safely search whitespace-only ranges.
+    if (definition.property === "fontName" && /^\s+$/u.test(footnote.contentText.slice(start, end)))
+      return;
     const protectedRange = isRangeProtected(start, end, footnoteContext.protectedRanges);
     output.push({
       context: footnoteContext,

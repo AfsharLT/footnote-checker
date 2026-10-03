@@ -124,6 +124,7 @@ const SOURCE_KIND_OPTIONS: Array<Option<CitationSourceKind>> = [
   { value: "COMMENTARY", label: "Kommentar" },
   { value: "JOURNAL", label: "Zeitschrift" },
   { value: "BOOK", label: "Buch / Lehrbuch" },
+  { value: "FESTSCHRIFT", label: "Festschrift" },
   { value: "REPORT", label: "Forschungsbericht" },
   { value: "CUSTOM", label: "Sonstige benutzerdefinierte Quelle" },
 ];
@@ -1954,6 +1955,7 @@ function MappingEditor(props: {
             { value: "COMMENTARY", label: "Kommentar" },
             { value: "JOURNAL", label: "Zeitschrift" },
             { value: "BOOK", label: "Buch / Lehrbuch" },
+            { value: "FESTSCHRIFT", label: "Festschrift" },
             { value: "REPORT", label: "Forschungsbericht" },
             { value: "CUSTOM", label: "Sonstige benutzerdefinierte Quelle" },
           ]}
@@ -2632,7 +2634,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
               ) : (
                 <section className={styles.section}>
                   <h2 className={styles.sectionTitle}>Festschriften</h2>
-                  <p className={styles.help}>Der Fundstellenstil gilt auch für Buchbeiträge.</p>
+                  <p className={styles.help}>
+                    Der Fundstellenstil gilt auch für Buchbeiträge. Er gilt ebenfalls für
+                    Jahrbuchbeiträge. „Seitenpräfix“ prüft keine Klammern. Bereits gespeicherte
+                    Einstellungen bleiben erhalten.
+                  </p>
                   <SelectField
                     label="Konkrete Fundstelle"
                     value={profile.bookChapter.pinpointStyle}

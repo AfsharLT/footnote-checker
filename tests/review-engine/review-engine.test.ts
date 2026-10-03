@@ -165,17 +165,11 @@ for (const ruleId of [
   );
 }
 const caseLawMulti = engineReview([
-  snapshot(
-    "BGH, Urteil vom 5.7.2025 – 3 StR 123/25 = NJW 2025, 1234 = BeckRS 2025, 12345.",
-    40
-  ),
+  snapshot("BGH, Urteil vom 5.7.2025 – 3 StR 123/25 = NJW 2025, 1234 = BeckRS 2025, 12345.", 40),
 ]);
 assert(
-  ["CASE_LAW_DECISION_TYPE", "CASE_LAW_DATE_INTRODUCER", "CASE_LAW_DATE_FORMAT"].every(
-    (ruleId) =>
-      caseLawMulti.items.some(
-        (item) => item.finding.ruleId === ruleId && item.reviewClass === "AUTO"
-      )
+  ["CASE_LAW_DECISION_TYPE", "CASE_LAW_DATE_INTRODUCER", "CASE_LAW_DATE_FORMAT"].every((ruleId) =>
+    caseLawMulti.items.some((item) => item.finding.ruleId === ruleId && item.reviewClass === "AUTO")
   ) && !caseLawMulti.items.some((item) => item.finding.ruleId === "RULE_OUTPUT_INVALID"),
   "The complete case-law citation must expose all three safe automatic findings"
 );
@@ -221,11 +215,7 @@ const muekoFormatted = snapshot("MüKo-StGB/Fischer Rn. 4.", 51, [
 muekoFormatted.baseCharacterFormat = { fontName: "Aptos Serif", fontSize: 8 };
 const muekoFormattedReview = engineReview([muekoFormatted], "CORRECTION");
 const muekoCompatibleItems = muekoFormattedReview.items.filter((item) =>
-  [
-    "COMMENTARY_WORK_NAME",
-    "FORMAT_FONT_NAME",
-    "FORMAT_FONT_SIZE",
-  ].includes(item.finding.ruleId)
+  ["COMMENTARY_WORK_NAME", "FORMAT_FONT_NAME", "FORMAT_FONT_SIZE"].includes(item.finding.ruleId)
 );
 assert(
   muekoCompatibleItems.length === 3 &&
@@ -342,14 +332,13 @@ const bearbeiterFootnote = snapshot(bearbeiterText, 72, [
 bearbeiterFootnote.baseCharacterFormat = { italic: false };
 const bearbeiterItem = engineReview([bearbeiterFootnote]).items.find(
   (item) =>
-    item.finding.ruleId === "COMMENTARY_FORMATTING" &&
-    item.finding.metadata?.role === "bearbeiter"
+    item.finding.ruleId === "COMMENTARY_FORMATTING" && item.finding.metadata?.role === "bearbeiter"
 );
 assert(
-  bearbeiterItem?.reviewClass === "MANUAL" &&
+  bearbeiterItem?.reviewClass === "AUTO" &&
     bearbeiterItem.proposedAction?.type === "FORMAT_CHANGE" &&
     bearbeiterItem.proposedAction.changes.italic === true,
-  "A mapping-hint bearbeiter deviation must remain visible for manual review"
+  "An explicit StGB work/slash bearer deviation must be safely correctable"
 );
 
 const protectedFormatFootnote = snapshot("Formatbereich.", 73, [
@@ -368,22 +357,14 @@ assert(
 
 const documentNormalOne = snapshot("Erste Fußnote.", 74);
 documentNormalOne.baseCharacterFormat = { fontName: "Aptos Serif", fontSize: 8, italic: false };
-documentNormalOne.paragraphs = [
-  { index: 0, start: 0, end: documentNormalOne.contentText.length },
-];
+documentNormalOne.paragraphs = [{ index: 0, start: 0, end: documentNormalOne.contentText.length }];
 const documentNormalTwo = snapshot("Zweite Fußnote.", 75);
 documentNormalTwo.baseCharacterFormat = { fontName: "Aptos Serif", fontSize: 8, italic: false };
-documentNormalTwo.paragraphs = [
-  { index: 0, start: 0, end: documentNormalTwo.contentText.length },
-];
+documentNormalTwo.paragraphs = [{ index: 0, start: 0, end: documentNormalTwo.contentText.length }];
 const documentOutlier = snapshot("Falsch formatierte Fußnote.", 76);
 documentOutlier.baseCharacterFormat = { fontName: "Arial", fontSize: 10 };
 documentOutlier.paragraphs = [{ index: 0, start: 0, end: documentOutlier.contentText.length }];
-const documentFormatReview = engineReview([
-  documentNormalOne,
-  documentNormalTwo,
-  documentOutlier,
-]);
+const documentFormatReview = engineReview([documentNormalOne, documentNormalTwo, documentOutlier]);
 const documentOutlierItems = documentFormatReview.items.filter(
   (item) => item.finding.footnoteId === documentOutlier.id && item.finding.category === "formatting"
 );
@@ -428,10 +409,10 @@ const multiBearbeiterItems = multiBearbeiterReview.items.filter(
 assert(
   multiBearbeiterItems.length === 2 &&
     multiBearbeiterItems.every(
-      (item) => item.reviewClass === "MANUAL" && item.proposedAction?.type === "FORMAT_CHANGE"
+      (item) => item.reviewClass === "AUTO" && item.proposedAction?.type === "FORMAT_CHANGE"
     ) &&
     multiBearbeiterItems.map((item) => item.finding.originalText).join("/") === "Regge/Pegel",
-  "All mapping-hint bearbeiters must reach Review as separate manual actions"
+  "Explicit work/slash bearbeiters must reach Review as separate safe actions"
 );
 
 const journalAuthorsText = "Müller/Meier, NJW 2025, 100 (105).";
@@ -449,9 +430,7 @@ assert(
         item.proposedAction?.type === "FORMAT_CHANGE" &&
         item.proposedAction.changes.italic === true
     ) &&
-    !journalAuthorsReview.items.some(
-      (item) => item.finding.ruleId === "FORMAT_ITALIC_REVIEW"
-    ),
+    !journalAuthorsReview.items.some((item) => item.finding.ruleId === "FORMAT_ITALIC_REVIEW"),
   "All parser-safe journal authors must be automatic without duplicate generic italic findings"
 );
 assert(

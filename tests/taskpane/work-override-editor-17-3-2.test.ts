@@ -134,7 +134,13 @@ async function runUiTest() {
   const unchangedMapping = JSON.stringify(legacy.data);
   const render = (mappingData: CitationSourceMappingData) =>
     React.createElement(SettingsPanel, {
-      activeProfile: createDefaultCitationStyleProfile(),
+      activeProfile: {
+        ...createDefaultCitationStyleProfile(),
+        bookChapter: {
+          ...createDefaultCitationStyleProfile().bookChapter,
+          pinpointStyle: "pagePrefix",
+        },
+      },
       mappingData,
       onSaveProfile: (profile: CitationStyleProfile) => {
         savedProfile = profile;
@@ -279,9 +285,7 @@ async function runUiTest() {
   );
   assert(removeSource !== undefined, "Source removal control missing");
   await act(async () => removeSource.click());
-  const confirmRemoval = card("Kommentar ohne Override").querySelector(
-    '[role="dialog"] button'
-  );
+  const confirmRemoval = card("Kommentar ohne Override").querySelector('[role="dialog"] button');
   assert(confirmRemoval !== null, "Local source removal confirmation missing");
   await act(async () => (confirmRemoval as HTMLButtonElement).click());
   assert(

@@ -50,12 +50,22 @@ export function compileStructuredAlias(alias: string): CompiledStructuredAlias |
       const leadingWhitespace = /^\s*/u.exec(result[0])?.[0].length ?? 0;
       const start = (result.index ?? 0) + leadingWhitespace;
       const end = (result.index ?? 0) + result[0].length;
-      const bearbeiterStart = (result.index ?? 0) + result[0].indexOf(result[1]);
+      const prefix = new RegExp(String.raw`^\s*${escapeLiteral(before)}`, "iu").exec(result[0]);
+      const bearbeiterStart = (result.index ?? 0) + (prefix?.[0].length ?? 0);
       const bearbeiterEnd = bearbeiterStart + result[1].length;
       const tail = text.slice(bearbeiterEnd, end);
       const workSeparator = /^\s*(?:,\s*in\s*:\s*|\/\s*)/iu.exec(tail);
-      const workStart = workSeparator ? bearbeiterEnd + workSeparator[0].length : undefined;
-      const workEnd = workStart === undefined ? undefined : end;
+      const prefixWork = /\/\s*$/u.test(before);
+      const workStart = prefixWork
+        ? start
+        : workSeparator
+          ? bearbeiterEnd + workSeparator[0].length
+          : undefined;
+      const workEnd = prefixWork
+        ? bearbeiterStart - (/\/\s*$/u.exec(text.slice(start, bearbeiterStart))?.[0].length ?? 0)
+        : workStart === undefined
+          ? undefined
+          : end;
       return {
         start,
         end,

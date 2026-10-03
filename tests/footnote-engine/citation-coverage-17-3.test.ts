@@ -256,9 +256,9 @@ assert(
   "Every CitationItem must have exactly one explicit source state"
 );
 assert(
-  corpusResult.documentSourceRegistry?.accounting.persistentMatched === segments.length - 1 &&
-    corpusResult.documentSourceRegistry.accounting.ambiguous === 1,
-  "Every source must resolve canonically except the one context-ambiguous anaphor"
+  corpusResult.documentSourceRegistry?.accounting.persistentMatched === segments.length - 2 &&
+    corpusResult.documentSourceRegistry.accounting.ambiguous === 2,
+  "Only the two context-ambiguous anaphors may remain ambiguous; the 2014 Pawlik contribution must not inherit the former incorrect Hruschka attribution"
 );
 const unresolvedResolutions =
   corpusResult.documentSourceRegistry?.resolutions.filter((resolution) =>
@@ -284,7 +284,7 @@ assert(
 );
 const contextualAnaphor = analyzeFootnotes(
   [
-    snapshot("Hruschka, Strafrecht nach logisch-analytischer Methode, 1988, S. 112.", 1),
+    snapshot("Pawlik, Notstand, 2002, S. 112.", 1),
     snapshot("ders., Jahrbuch für Recht und Ethik, 2014, S. 137, 152 ff.", 2),
   ],
   { mappingData: createDefaultCitationSourceMapping() }

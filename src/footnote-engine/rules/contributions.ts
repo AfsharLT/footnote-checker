@@ -60,7 +60,7 @@ export const contributionPinpointStyleRule: FootnoteRule = {
   scope: "segment",
   supportedCitationTypes: ["FESTSCHRIFT_CONTRIBUTION", "YEARBOOK_CONTRIBUTION"],
   evaluate(context) {
-    if (context.extraction?.status !== "complete") return [];
+    if (context.extraction?.status === "unresolved") return [];
     const data = contributionData(context);
     return pinpointCandidate(
       context,

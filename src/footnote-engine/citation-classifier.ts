@@ -20,16 +20,16 @@ interface TextRange {
 }
 
 const COURT_PATTERN =
-  /\b(?:BVerfG|BGH|BAG|BFH|BVerwG|BSG|OLG(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+)?|KG|LG|AG)\b/;
+  /\b(?:EuGH|EuG|BVerfG|BGH|BAG|BFH|BVerwG|BSG|OLG(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+)?|KG|LG|AG)\b/;
 const OFFICIAL_COLLECTION_PATTERN =
-  /\b(?:BVerfGE|BGHSt|BGHZ|RGSt|BAGE|BFHE|BVerwGE|BSGE)\.?\s+\d+,\s*\d+\b/;
+  /\b(?:BVerfGE|BGHSt|BGHZ|RGZ|RGSt|BAGE|BFHE|BVerwGE|BSGE)\.?\s+\d+,\s*\d+\b/;
 const DECISION_TYPE_PATTERN =
   /(?:\b(?:Urteil|Beschluss)\b|\b(?:Urt|U|Beschl|B|Entsch)\.(?=$|[\s,;:–—-]))/i;
 const DECISION_DATE_PATTERN = /\b(?:v\.|vom)\s*\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2})\b/i;
 const DOCKET_NUMBER_PATTERN =
-  /\b(?:(?:\d+|[IVXLCDM]+)\s+)?(?:StR|BvR|BvL|ZR|ZB|AZR|ABR|R|C|U|K|L|B|A)\s+\d+\/\d{2,4}\b/i;
+  /\b(?:(?:\d+|[IVXLCDM]+)\s+)?(?:StR|BvR|BvL|ZR|ZB|AZR|ABR|R|C|U|K|L|B|A)[\s‑–-]+\d+\/\d{2,4}\b/i;
 const JOURNAL_REFERENCE_PATTERN =
-  /\b(?:NJW|NStZ(?:-RR)?|JZ|JuS|Jura|JA|JR|StV|wistra|ZfIStW|KriPoZ|ZStW|GA|MDR|MedR|medstra|HRRS|ZIP|NZG|GmbHR|DStR|DStZ|BB|NZWiSt)\s+\d{4},\s*\d+[a-z]?\b/i;
+  /\b(?:NJW(?:-RR)?|NStZ(?:-RR)?|JZ|JuS|Jura|JA|JR|StV|wistra|ZfIStW|KriPoZ|ZStW|GA|MDR|MedR|medstra|HRRS|ZIP|NZG|GmbHR|DStR|DStZ|BB|NZWiSt|NZKart|PStR|StraFo|MMR|GRUR)\s+(?:\d+\s*\(\s*)?\d{4}\s*\)?\s*,\s*(?:S\.\s*)?\d+[a-z]?\b/i;
 const DATABASE_REFERENCE_PATTERN = /\b(?:BeckRS\s+\d{4},\s*\d+|juris|openJur)\b/i;
 const LEGISLATIVE_MATERIAL_PATTERN =
   /(?:\b(?:Bundestags-Drucksache|Bundesrats-Drucksache)\b|\b(?:BT|BR)-(?:Drs|Drucks)\.(?=$|[\s,]))/i;
@@ -42,7 +42,7 @@ const COMMENTARY_STRUCTURE_PATTERN =
   /\b(?:[A-Za-zÄÖÜäöüß]+-(?:StGB|BGB|StPO)|Studienkommentar|Kommentar)\//i;
 const WORK_BEARBEITER_PATTERN = /^[^,]+\/[A-ZÄÖÜ][A-Za-zÄÖÜäöüß'-]+/;
 const BEARBEITER_IN_WORK_PATTERN =
-  /^[A-ZÄÖÜ][\p{L}\p{M}'’.-]+(?:\s*\/\s*[A-ZÄÖÜ][\p{L}\p{M}'’.-]+)*\s*,\s*in\s*:\s*[^,;]{2,120}/iu;
+  /^[A-ZÄÖÜ][\p{L}\p{M}'’.-]+(?:\s*\/\s*(?:(?:von|van|de)\s+)?[A-ZÄÖÜ][\p{L}\p{M}'’.-]+)*\s*,\s*in\s*:\s*[^,;]{2,120}/iu;
 const MARGIN_NUMBER_PATTERN = /\b(?:Rn\.|Rdn\.|Rdnr\.)\s*\d+[A-Za-z]?\b/i;
 const BOOK_TITLE_PATTERN =
   /\b(?:Strafrecht|Zivilrecht|Lehrbuch|Handbuch|Monografie|Grundkurs|Allgemeiner\s+Teil|Besonderer\s+Teil)\b/i;
@@ -52,13 +52,14 @@ const BOOK_CHAPTER_IN_PATTERN = /\bin\s*:/i;
 const COLLECTION_WORK_PATTERN = /\b(?:Festschrift|Gedächtnisschrift|Sammelwerk|Handbuch|FS|GS)\b/i;
 const PAGE_PATTERN = /\bS\.\s*\d+\b/;
 const FESTSCHRIFT_PATTERN = /\b(?:Festschrift\s+für|FS\s+)[^,;]{2,80}/iu;
-const YEARBOOK_PATTERN = /\bJahrbuch\s+für\s+Recht\s+und\s+Ethik\s*,?\s*(?:19|20)\d{2}\b/iu;
+const YEARBOOK_PATTERN =
+  /\bJahrbuch\s+für\s+(?:Recht\s+und\s+Ethik\s*,?\s*(?:19|20)\d{2}|die\s+Ordnung\s+von\s+Wirtschaft\s+und\s+Gesellschaft\s*,\s*\d+)\b/iu;
 const MANUSCRIPT_PATTERN = /\(\s*Manuskript\s*\)/iu;
 const FORTHCOMING_PATTERN = /\(\s*im\s+Erscheinen\s*\)/iu;
 const BROAD_AUTHOR_PATTERN =
-  /^(?:(?:von|van|de)\s+)?(?:[A-ZÄÖÜ][\p{L}\p{M}'’.-]+|ders\.|dies\.)(?:\s*\/\s*[A-ZÄÖÜ][\p{L}\p{M}'’.-]+|\s+et\s+al\.)*\s*,/iu;
+  /^(?:(?:von|van|de)\s+)?(?:[A-ZÄÖÜ][\p{L}\p{M}'’.-]+|ders\.|dies\.)(?:\s*\/\s*(?:(?:von|van|de)\s+)?[A-ZÄÖÜ][\p{L}\p{M}'’.-]+|\s+et\s+al\.)*\s*,/iu;
 const BOOK_STRUCTURE_PATTERN =
-  /^(?:(?:von|van|de)\s+)?(?:[A-ZÄÖÜ][\p{L}\p{M}'’.-]+|ders\.|dies\.)(?:\s*\/\s*[A-ZÄÖÜ][\p{L}\p{M}'’.-]+|\s+et\s+al\.)*\s*,?\s+[^;]{2,180}?(?:,?\s*\(\s*Anm\.\s*\d+\s*\)|,\s*(?:Bd\.\s*\d+\s*,\s*)?(?:19|20)\d{2})(?:\s*,)?\s*(?:S\.|§|Kap\.|\d+\.\s*Abschn\.|Rdn\.|Rn\.|\d+\s*ff?\.)/iu;
+  /^(?:(?:von|van|de)\s+)?(?:[A-ZÄÖÜ][\p{L}\p{M}'’.-]+|ders\.|dies\.)(?:\s*\/\s*(?:(?:von|van|de)\s+)?[A-ZÄÖÜ][\p{L}\p{M}'’.-]+|\s+et\s+al\.)*\s*,?\s+[^;]{2,180}?(?:,?\s*\(\s*Anm\.\s*\d+\s*\)|,\s*(?:Bd\.\s*\d+\s*,\s*)?(?:19|20)\d{2})(?:\s*,)?\s*(?:S\.|§|Kap\.|\d+\.\s*Abschn\.|Rdn\.|Rn\.|\d+\s*ff?\.)/iu;
 const ACCESS_DATE_PATTERN =
   /\(?\s*(?:letzter|letzten|zuletzt(?:er)?)\s+(?:Aufruf|Abruf|abgerufen)\s*(?:am)?\s*\d{1,2}\.\d{1,2}\.\d{4}\s*\)?/i;
 const WEB_SOURCE_LABEL_PATTERN = /\b(?:Onlinequelle|Website|Internetquelle|YouTube)\b/i;
@@ -215,7 +216,14 @@ function detectCommentary(segment: CitationSegment): CitationClassification | un
   const isCommentary =
     Boolean(knownWork && workBearbeiter && marginNumber && statute) ||
     Boolean(generalStructure && workBearbeiter && marginNumber && statute) ||
-    Boolean(bearbeiterInWork && marginNumber && statute);
+    Boolean(bearbeiterInWork && marginNumber && statute) ||
+    Boolean(
+      marginNumber &&
+      (statute || /\bTeil\s+\d/u.test(segment.coreText)) &&
+      /^[^;]{2,160}(?:StGB|BGB|StPO|DSA|AEUV|InfoMedienR|IT-Sicherheitsrecht|MMR-HdB|Influencer-MarketingR-HdB|Der neue DSA)[^;]{0,60}(?:§|Art\.|Teil)/iu.test(
+        segment.coreText
+      )
+    );
 
   if (!isCommentary) return undefined;
 
@@ -352,9 +360,12 @@ function findAuthorBeforeJournal(
   journalSignal: ClassificationSignal
 ): ClassificationSignal | undefined {
   const journalStart = journalSignal.start! - segment.coreStart;
-  const prefix = segment.coreText.slice(0, journalStart).replace(/[\s,]+$/, "");
+  const prefix = segment.coreText
+    .slice(0, journalStart)
+    .replace(/,\s*in\s*:\s*$/iu, "")
+    .replace(/[\s,]+$/, "");
   const authorPattern =
-    /^(?:(?:von|van|de)\s+)?(?:[A-ZÄÖÜ][\p{L}\p{M}'’.-]+|ders\.|dies\.)(?:\s*\/\s*[A-ZÄÖÜ][\p{L}\p{M}'’.-]+|\s+et\s+al\.)*$/iu;
+    /^(?:(?:von|van|de)\s+)?(?:[A-ZÄÖÜ][\p{L}\p{M}'’.-]+|ders\.|dies\.)(?:\s*\/\s*(?:(?:von|van|de)\s+)?[A-ZÄÖÜ][\p{L}\p{M}'’.-]+|\s+et\s+al\.)*$/iu;
   if (authorPattern.test(prefix)) {
     return createSignal("AUTHOR_BEFORE_JOURNAL_PATTERN", prefix, segment.coreStart);
   }
@@ -429,9 +440,13 @@ function detectBook(segment: CitationSegment): CitationClassification | undefine
   const page = findSignal(segment.coreText, segment.coreStart, PAGE_PATTERN, "PAGE_PATTERN");
   const strongStructure =
     Boolean(author && edition && year) ||
+    Boolean(author && /,\s*[^;]{4,180},\s*(?:19|20)\d{2}\.?$/u.test(segment.coreText)) ||
     Boolean(author && title && (edition || year || marginNumber)) ||
     Boolean(author && page && /,\s*[^,;]{2,180},?\s*S\.\s*\d/iu.test(segment.coreText)) ||
-    BOOK_STRUCTURE_PATTERN.test(segment.coreText);
+    BOOK_STRUCTURE_PATTERN.test(segment.coreText) ||
+    /^(?:ders\.|dies\.),\s*AT\s*\(\s*Anm\.\s*\d+\s*\),\s*\d+\/\d+\.?$/iu.test(segment.coreText) ||
+    Boolean(author && title && /(?:,|\))\s*\d+\/\d+\.?$/u.test(segment.coreText)) ||
+    /^(?:Roxin\/Greco)\s+StrafR\s+AT\s+[IVX]+\s+§\s*\d+\s+Rn\.\s*\d/iu.test(segment.coreText);
 
   if (!strongStructure) return undefined;
 
@@ -692,11 +707,11 @@ export function classifyCitationSegment(
   const commentary = detectCommentary(segment);
   if (commentary) return commentary;
 
-  const bookChapter = detectBookChapter(segment);
-  if (bookChapter) return bookChapter;
-
   const journalArticle = detectJournalArticle(segment, caseLaw);
   if (journalArticle) return journalArticle;
+
+  const bookChapter = detectBookChapter(segment);
+  if (bookChapter) return bookChapter;
 
   const book = detectBook(segment);
   if (book) return book;

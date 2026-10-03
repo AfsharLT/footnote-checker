@@ -16,9 +16,10 @@ function pinpointCandidate(
   pinpoint: CitationLocator | undefined,
   expectedStyle: PinpointStyle
 ): RuleFindingCandidate[] {
-  if (!firstPage || !pinpoint || firstPage.start === pinpoint.start) return [];
+  if (!firstPage || !pinpoint || pinpoint.start < firstPage.end) return [];
   const text = context.footnote.contentText;
   const between = text.slice(firstPage.end, pinpoint.start);
+  if (!/^\s*(?:,|\()\s*$/.test(between)) return [];
   const closingParenthesis = text[pinpoint.end] === ")";
   const actualStyle: PinpointStyle =
     between.includes("(") && closingParenthesis ? "parentheses" : "comma";
@@ -116,7 +117,7 @@ export const bookChapterRule: FootnoteRule = {
         ...pinpointCandidate(
           context,
           data.firstPage,
-          data.pinpointPages.find((page) => page.start !== data.firstPage?.start),
+          data.pinpointPages.find((page) => page.start >= (data.firstPage?.end ?? Infinity)),
           settings.pinpointStyle
         )
       );

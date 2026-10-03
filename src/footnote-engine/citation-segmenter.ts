@@ -506,6 +506,30 @@ export function segmentFootnote(
   });
   const segments: CitationSegment[] = [];
   const boundaries = createSegmentBoundaries(footnote, protectedRanges);
+  // Reuse verified source boundaries when a sentence changes citation families.
+  // Keep leading qualifiers on the first source and never split protected ranges.
+  const items = sequenceResult.sequences.flatMap((sequence) => sequence.items);
+  const enclosureCoverage = createMatchedEnclosureCoverage(text);
+  const sourceBoundaries: SegmentBoundary[] = [];
+  let boundaryIndex = 0;
+  for (let index = 0; index + 1 < items.length; index += 1) {
+    const item = items[index];
+    const next = items[index + 1];
+    while (boundaryIndex < boundaries.length && boundaries[boundaryIndex].position < item.end)
+      boundaryIndex += 1;
+    if (
+      item.confidence === "high" &&
+      item.citationType !== "OTHER" &&
+      item.end < next.start &&
+      enclosureCoverage[item.end] === 0 &&
+      !isRangeProtected(item.end, item.end + 1, protectedRanges) &&
+      (boundaryIndex >= boundaries.length || boundaries[boundaryIndex].position > next.start)
+    ) {
+      sourceBoundaries.push({ position: item.end, nextStart: item.end, priority: 1 });
+    }
+  }
+  boundaries.push(...sourceBoundaries);
+  boundaries.sort((left, right) => left.position - right.position);
   let rangeStart = 0;
   let separatorBefore: string | undefined;
 

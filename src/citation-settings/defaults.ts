@@ -107,7 +107,7 @@ export function createDefaultCitationStyleProfile(): CitationStyleProfile {
       includeEditionWhenPresent: false,
       includeYearWhenPresent: true,
       pageAbbreviation: "S.",
-      pinpointStyle: "pagePrefix",
+      pinpointStyle: "parentheses",
     },
     caseNote: {
       personSeparator: "/",

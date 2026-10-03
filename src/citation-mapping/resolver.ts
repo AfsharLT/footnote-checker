@@ -229,7 +229,10 @@ function resolveExplicitMarkers(
   const entries = index.fallbackAliases.filter(
     ({ alias, source }) =>
       alias.matchMode === "WHOLE_WORD_MARKER" &&
-      (source.kind === "BOOK" || source.kind === "REPORT" || source.kind === "CUSTOM") &&
+      (source.kind === "BOOK" ||
+        source.kind === "FESTSCHRIFT" ||
+        source.kind === "REPORT" ||
+        source.kind === "CUSTOM") &&
       containsWholeValue(normalized, normalizeCitationSourceText(alias.alias), true)
   );
   const sources = uniqueSources(entries.map(({ source }) => source));
@@ -393,9 +396,21 @@ export function resolveCitationSegmentSources(
         : []
     );
   }
-  if (structured.some(({ resolution }) => resolution.status !== "UNMATCHED")) return structured;
-
   const structuredAlias = resolveStructuredAlias(segment, index);
+  if (structured.some(({ resolution }) => resolution.status !== "UNMATCHED")) {
+    // Exact work identity can coexist with richer, verified bearbeiter offsets.
+    // Only enrich the same source; conflicting aliases must never override it.
+    if (extraction?.type === "COMMENTARY" && structuredAlias.status === "MATCHED") {
+      return structured.map((entry) =>
+        entry.resolution.status === "MATCHED" &&
+        entry.resolution.canonicalSourceId === structuredAlias.canonicalSourceId
+          ? { ...entry, resolution: structuredAlias }
+          : entry
+      );
+    }
+    return structured;
+  }
+
   if (structuredAlias.status !== "UNMATCHED") {
     return [{ target: "PRIMARY_SOURCE", resolution: structuredAlias }];
   }

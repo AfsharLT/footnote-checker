@@ -24,13 +24,14 @@ function optionalString(value: unknown): string | undefined {
 }
 
 function isKind(value: unknown): value is CitationSourceKind {
-  return ["COMMENTARY", "JOURNAL", "BOOK", "REPORT", "CUSTOM"].includes(
+  return ["COMMENTARY", "JOURNAL", "BOOK", "FESTSCHRIFT", "REPORT", "CUSTOM"].includes(
     value as CitationSourceKind
   );
 }
 
 function applicableCitationTypes(kind: CitationSourceKind) {
   if (kind === "COMMENTARY") return ["COMMENTARY"] as const;
+  if (kind === "FESTSCHRIFT") return ["FESTSCHRIFT_CONTRIBUTION"] as const;
   if (kind === "JOURNAL")
     return ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE", "FORTHCOMING"] as const;
   if (kind === "BOOK")

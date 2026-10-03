@@ -337,13 +337,13 @@ function runMappingAndCitationCases(): void {
   );
   assertReplacement(
     findingsFor("mwN BGH NJW 2025, 1234 (1236)."),
-    "CITATION_MODIFIER_STYLE",
+    "CITATION_BOUNDARY_CAPITALIZATION",
     "mwN",
     "M. w. N."
   );
   assertReplacement(
     findingsFor("a.A. BGH NJW 2025, 1234 (1236)."),
-    "CITATION_MODIFIER_STYLE",
+    "CITATION_BOUNDARY_CAPITALIZATION",
     "a.A.",
     "A. A."
   );
@@ -487,8 +487,8 @@ function runFormattingAndReviewCases(): void {
     { mappingData: { ...mappingData, sources: [], aliases: [] } }
   ).findings;
   assert(
-    byRule(unknownRole, "COMMENTARY_FORMATTING").length === 0,
-    "Unknown commentary roles must not create formatting findings"
+    byRule(unknownRole, "COMMENTARY_FORMATTING").length === 2,
+    "Explicit StGB work/slash syntax identifies both bearer roles without mapping"
   );
 
   const technicalText = "0123456789abcdefghij-rest.";
@@ -651,7 +651,7 @@ function runFormattingAndReviewCases(): void {
     mappedFormatting?.originalText === "Fischer" &&
       mappedFormatting.start === mappedText.indexOf("Fischer") &&
       mappedFormatting.metadata?.requiresManualReview === true,
-    "A mapped MüKo bearbeiter candidate must create an exact conservative formatting finding"
+    "A mapping hint without explicit StGB work syntax must remain manual"
   );
 
   const multiBearbeiterText = "MüKo-StGB/Regge/Pegel, § 185 Rn. 39.";

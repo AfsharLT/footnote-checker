@@ -43,19 +43,19 @@ interface CaseLawBuild {
 }
 
 const COURT_PATTERN =
-  /\b(?:BVerfG|BGH|BAG|BFH|BVerwG|BSG|OLG(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+)?|KG|LG|AG)\b/;
+  /\b(?:EuGH|EuG|BVerfG|BGH|BAG|BFH|BVerwG|BSG|OLG(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+)?|KG|LG|AG)\b/;
 const DECISION_TYPE_PATTERN =
   /(?:\b(?:Urteil|Beschluss)\b|\b(?:Urt|U|Beschl|B|Entsch)\.(?=$|[\s,;:–—-]))/i;
 const DATE_WITH_MARKER_PATTERN = /\b(?:v\.|vom)\s*(\d{1,2}\.\d{1,2}\.(?:\d{4}|\d{2}))\b/i;
 const DATE_PATTERN = /\b(\d{1,2}\.\d{1,2}\.\d{4})\b/;
 const DOCKET_NUMBER_PATTERN =
-  /\b(?:(?:\d+|[IVXLCDM]+)\s+)?(?:StR|BvR|BvL|ZR|ZB|AZR|ABR|R|C|U|K|L|B|A)\s+\d+\/\d{2,4}\b/i;
+  /\b(?:(?:\d+|[IVXLCDM]+)\s+)?(?:StR|BvR|BvL|ZR|ZB|AZR|ABR|R|C|U|K|L|B|A)[\s‑–-]+\d+\/\d{2,4}\b/i;
 const PANEL_PATTERN = /\b\d+\.\s*(?:Strafsenat|Zivilsenat|Senat)\b/i;
 const ECLI_PATTERN = /\bECLI:[A-Z]{2}:[A-Z0-9.:-]+\b/i;
 const JOURNAL_PUBLICATION_PATTERN =
-  /\b(NJW|NStZ(?:-RR)?|JZ|JuS|Jura|JA|JR|StV|wistra|ZfIStW|KriPoZ|ZStW|GA|MDR|MedR|medstra|HRRS|ZIP|NZG|GmbHR|DStR|DStZ|BB|NZWiSt)\s+(\d{4}),\s*(\d+)v?(?:\s*(?:\(([^)]*)\)|,\s*(\d+(?:\s*ff?\.)?)|(ff?\.)))?/gi;
+  /\b(NJW(?:-RR)?|NStZ(?:-RR)?|JZ|JuS|Jura|JA|JR|StV|wistra|ZfIStW|KriPoZ|ZStW|GA|MDR|MedR|medstra|HRRS|ZIP|NZG|GmbHR|DStR|DStZ|BB|NZWiSt|NZKart|PStR|StraFo|MMR|GRUR)\s+(?:\d+\s*\(\s*)?(\d{4})\s*\)?\s*,\s*(?:S\.\s*)?(\d+)v?(?:\s*(?:\(([^)]*)\)|,\s*(\d+(?:\s*ff?\.)?)|(ff?\.)))?/gi;
 const OFFICIAL_PUBLICATION_PATTERN =
-  /\b(BVerfGE|BGHSt|BGHZ|RGSt|BAGE|BFHE|BVerwGE|BSGE)\.?\s+(\d+),\s*(\d+)(?:\s*(?:\(([^)]*)\)|,\s*(\d+(?:\s*ff?\.)?)|(ff?\.)))?/g;
+  /\b(BVerfGE|BGHSt|BGHZ|RGZ|RGSt|BAGE|BFHE|BVerwGE|BSGE)\.?\s+(\d+),\s*(\d+)(?:\s*(?:\(([^)]*)\)|,\s*(\d+(?:\s*ff?\.)?)|(ff?\.)))?/g;
 const DATABASE_PUBLICATION_PATTERN = /\b(BeckRS)\s+(\d{4}),\s*(\d+)\b|\b(juris|openJur)\b/gi;
 const PINPOINT_ITEM_PATTERN = /(\d+)(?:\s*(ff?\.?))?/g;
 const MARGIN_LOCATOR_PATTERN =
@@ -78,6 +78,7 @@ const OFFICIAL_COLLECTION_COURTS: Readonly<Record<string, string>> = {
   BVerwGE: "BVerwG",
   BSGE: "BSG",
   RGSt: "RG",
+  RGZ: "RG",
 };
 
 function createComponent<T>(
@@ -355,7 +356,7 @@ function findBareContributionLocators(
   segment: CitationSegment
 ): CitationLocator[] {
   const match =
-    /(?:\(\s*Anm\.\s*\d+\s*\)|(?:19|20)\d{2})\s*,\s*(\d+)(?!\s*\.\s*Abschn|[/.]\d)(?:\s*(ff?\.?))?(?:\s*,\s*(\d+)(?!\s*\.\s*Abschn|[/.]\d)(?:\s*(ff?\.?))?)?/iu.exec(
+    /(?:\(\s*Anm\.\s*\d+\s*\)|(?:19|20)\d{2})\s*,\s*(\d+)(?!\s*\.\s*Abschn|[/.]\d)(?:\s*(ff?\.?))?(?:(?:\s*,\s*|\s*\(\s*)(\d+)(?!\s*\.\s*Abschn|[/.]\d)(?:\s*(ff?\.?))?)?/iu.exec(
       segment.coreText
     );
   if (!match) return [];
@@ -367,7 +368,10 @@ function findBareContributionLocators(
     const value = match[valueGroup];
     if (!value) continue;
     const searchFrom = result.length === 0 ? 0 : result[result.length - 1].end - segment.coreStart;
-    const localStart = match[0].indexOf(value, Math.max(0, searchFrom - match.index));
+    const localStart = match[0].indexOf(
+      value,
+      Math.max(match[0].indexOf(",") + 1, searchFrom - match.index)
+    );
     if (localStart < 0) continue;
     const start = segment.coreStart + match.index + localStart;
     const suffix = match[suffixGroup];
@@ -730,6 +734,8 @@ function extractCasePublications(
       };
       publications.push(citation);
       consumed.push(...rangeOf(journal), ...rangeOf(year), ...rangeOf(firstPage));
+      if (year) consumed.push({ start: journal.end, end: year.start });
+      if (year && firstPage) consumed.push({ start: year.end, end: firstPage.start });
       consumed.push(...pinpointPages);
     }
     journalMatch = JOURNAL_PUBLICATION_PATTERN.exec(segment.coreText);
@@ -901,7 +907,12 @@ function extractCommentary(
   const comma = segment.coreText.indexOf(",");
   const headEnd = comma >= 0 ? segment.coreStart + comma : segment.coreEnd;
   const head = contentText.slice(segment.coreStart, headEnd);
-  const slash = head.indexOf("/");
+  // A named code/handbook ends the work prefix even when its editors contain slashes.
+  const explicitWork =
+    /^(.*(?:StGB|StPO|BGB|NK-DSA|InfoMedienR|IT-Sicherheitsrecht|MMR-HdB|Der neue DSA))\s*\//u.exec(
+      head
+    );
+  const slash = explicitWork ? explicitWork[0].lastIndexOf("/") : head.indexOf("/");
   const workStart = bearbeiterInWork
     ? segment.coreStart + bearbeiterInWork[0].indexOf(bearbeiterInWork[2])
     : segment.coreStart;
@@ -927,7 +938,18 @@ function extractCommentary(
         "bearbeiter"
       )
     : slash >= 0
-      ? extractSlashPersons(contentText, footnote, workEnd + 1, headEnd, "unknown")
+      ? extractSlashPersons(
+          contentText,
+          footnote,
+          workEnd + 1,
+          headEnd,
+          !/(?:Herausgeber|Bearbeiter)/u.test(head) &&
+            /(?:StGB|StPO|BGB|NK-DSA|InfoMedienR|IT-Sicherheitsrecht|MMR-HdB|Der neue DSA)$/u.test(
+              work.rawText.trim()
+            )
+            ? "bearbeiter"
+            : "unknown"
+        )
       : [];
   consumed.push(...persons);
 
@@ -994,7 +1016,9 @@ function extractCommentary(
       ? {
           personSequence: {
             persons,
-            roleResolution: bearbeiterInWork ? ("resolved" as const) : ("ambiguous" as const),
+            roleResolution: persons.every((person) => person.role !== "unknown")
+              ? ("resolved" as const)
+              : ("ambiguous" as const),
           },
         }
       : {}),
@@ -1070,7 +1094,10 @@ function extractBook(
   const marginMatch = MARGIN_LOCATOR_PATTERN.exec(segment.coreText);
   const volumeMatch = VOLUME_PATTERN.exec(segment.coreText);
   const internalReferenceMatch = /\(\s*Anm\.\s*\d+\s*\)/iu.exec(segment.coreText);
+  const pageMatch = PAGE_LOCATOR_PATTERN.exec(segment.coreText);
+  PAGE_LOCATOR_PATTERN.lastIndex = 0;
   const boundaries = [
+    pageMatch ? segment.coreStart + pageMatch.index : segment.coreEnd,
     editionMatch ? segment.coreStart + editionMatch.index : segment.coreEnd,
     yearMatch ? segment.coreStart + yearMatch.index : segment.coreEnd,
     firstCandidate?.start ?? segment.coreEnd,
@@ -1170,11 +1197,15 @@ function extractJournalArticle(
   const consumed: TextRange[] = publicationResult.consumed.slice();
   const journalStart = publication?.journal.start ?? segment.coreEnd;
   const comma = segment.coreText.indexOf(",");
-  const authorEnd = comma >= 0 ? segment.coreStart + comma : segment.coreStart;
+  const authorEnd =
+    comma >= 0 && segment.coreStart + comma < journalStart
+      ? segment.coreStart + comma
+      : journalStart;
   const authors = extractAuthorPrefix(contentText, footnote, segment, authorEnd);
   consumed.push(...authors);
-  const title = findTitleBetween(contentText, authorEnd + 1, journalStart);
-  consumed.push(...rangeOf(title));
+  const extractedTitle = findTitleBetween(contentText, authorEnd + 1, journalStart);
+  const title = /^in\s*:\s*$/iu.test(extractedTitle?.rawText ?? "") ? undefined : extractedTitle;
+  consumed.push(...rangeOf(extractedTitle));
   const data: JournalArticleExtraction = {
     authors,
     ...(title ? { title } : {}),
@@ -1284,7 +1315,10 @@ function extractYearbookContribution(
   segment: CitationSegment
 ): CitationExtractionResult {
   const consumed: TextRange[] = [];
-  const containerMatch = /\bJahrbuch\s+für\s+Recht\s+und\s+Ethik\b/iu.exec(segment.coreText);
+  const containerMatch =
+    /\bJahrbuch\s+für\s+(?:Recht\s+und\s+Ethik|die\s+Ordnung\s+von\s+Wirtschaft\s+und\s+Gesellschaft)\b/iu.exec(
+      segment.coreText
+    );
   const containerTitle = containerMatch
     ? componentFromMatch(contentText, segment.coreStart, containerMatch)
     : undefined;
@@ -1301,7 +1335,37 @@ function extractYearbookContribution(
     : undefined;
   consumed.push(...rangeOf(year));
   const pages = findPageSeriesLocators(contentText, segment);
+  if (pages.length === 0) pages.push(...findBareContributionLocators(contentText, segment));
   consumed.push(...pages);
+  if (pages.length === 0 && containerTitle && /Ordnung/u.test(containerTitle.rawText)) {
+    const tail = contentText.slice(containerTitle.end, segment.coreEnd);
+    const match = /^\s*,\s*\d+\s*,\s*(\d+)(?:\s*\(\s*(\d+)(?:\s*(ff?\.?))?\s*\))?/u.exec(tail);
+    if (match) {
+      for (const group of [1, 2] as const) {
+        const value = match[group];
+        if (!value) continue;
+        const searchFrom =
+          group === 1
+            ? match[0].indexOf(",", match[0].indexOf(",") + 1) + 1
+            : match[0].indexOf("(") + 1;
+        const offset = match[0].indexOf(value, searchFrom);
+        const start = containerTitle.end + offset;
+        const suffix = group === 2 ? match[3] : undefined;
+        const end = suffix
+          ? containerTitle.end + match[0].indexOf(suffix, offset + value.length) + suffix.length
+          : start + value.length;
+        pages.push({
+          type: "page",
+          start,
+          end,
+          rawText: contentText.slice(start, end),
+          value,
+          ...(suffix ? { suffix: suffix as CitationLocator["suffix"] } : {}),
+        });
+      }
+      consumed.push(...pages);
+    }
+  }
   if (!containerTitle) return extractOther(contentText, segment);
   const data: YearbookContributionExtraction = {
     authors,
@@ -1407,7 +1471,7 @@ function extractBookChapter(
     ? componentFromMatch(contentText, segment.coreStart, yearMatch)
     : undefined;
   consumed.push(...rangeOf(year));
-  const pages = findAllLocators(contentText, segment, PAGE_LOCATOR_PATTERN, "page");
+  const pages = findPageSeriesLocators(contentText, segment);
   consumed.push(...pages);
 
   const workCandidate = segment.embeddedStatuteReferences.find(
@@ -1534,7 +1598,7 @@ function extractLegislativeMaterial(
       start: segment.coreStart + match.index,
       end: segment.coreStart + match.index + match[0].length,
     });
-  const pages = findAllLocators(contentText, segment, PAGE_LOCATOR_PATTERN, "page");
+  const pages = findPageSeriesLocators(contentText, segment);
   consumed.push(...pages);
   const dateMatch =
     DATE_WITH_MARKER_PATTERN.exec(segment.coreText) ?? DATE_PATTERN.exec(segment.coreText);

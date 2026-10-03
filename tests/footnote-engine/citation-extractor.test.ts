@@ -204,10 +204,13 @@ function runCommentaryCases(): void {
   assert(single.type === "COMMENTARY", "Single commentary extraction mismatch");
   assert(single.data.work?.value === "MüKo-StGB", "Commentary work missing");
   assert(single.data.persons[0].rawText === "Schneider", "Commentary person missing");
-  assert(single.data.persons[0].role === "unknown", "Commentary role must remain unknown");
+  assert(
+    single.data.persons[0].role === "bearbeiter",
+    "Explicit work/slash syntax establishes the bearer role"
+  );
   assert(single.data.statuteReference?.referenceContext === "statute", "Commented statute missing");
   assert(single.data.marginNumbers[0].value === "4", "Commentary margin missing");
-  assert(single.status === "partial", "Ambiguous commentary role must be partial");
+  assert(single.status === "complete", "Explicit work/slash syntax must be complete");
 
   const multiText = "MüKo-StGB/Regge/Pegel, § 185 Rn. 39";
   const reggeStart = multiText.indexOf("Regge");
@@ -221,8 +224,8 @@ function runCommentaryCases(): void {
     "Formatting signal missing"
   );
   assert(
-    multi.data.persons.every((person) => person.role === "unknown"),
-    "Formatting must not decide roles"
+    multi.data.persons.every((person) => person.role === "bearbeiter"),
+    "Explicit work syntax, rather than formatting, must decide roles"
   );
 
   const ambiguous = extract("MüKo-StGB/Herausgeber/Bearbeiter, § 1 Rn. 2", "COMMENTARY").extraction;

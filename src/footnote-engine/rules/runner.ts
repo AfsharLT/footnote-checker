@@ -192,7 +192,22 @@ function deduplicateAndResolve(findings: readonly PrioritizedFinding[]): Finding
       (left, right) => left.priority - right.priority || left.ruleId.localeCompare(right.ruleId)
     );
     if (suggestions.size === 1) {
-      output.push(...ordered);
+      // One physical replacement per target. Identical outputs from different
+      // rules otherwise collide again during conservative write-back planning.
+      output.push(
+        ordered.length === 1
+          ? ordered[0]
+          : {
+              ...ordered[0],
+              metadata: {
+                ...ordered[0].metadata,
+                contributingRuleIds: ordered.map((finding) => finding.ruleId),
+                ...(ordered.some((finding) => finding.metadata?.requiresManualReview === true)
+                  ? { requiresManualReview: true }
+                  : {}),
+              },
+            }
+      );
       return;
     }
     const first = ordered[0];

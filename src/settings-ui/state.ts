@@ -317,6 +317,7 @@ function citationTypesForKind(kind: CitationSourceKind) {
   if (kind === "COMMENTARY") return ["COMMENTARY"] as const;
   if (kind === "JOURNAL")
     return ["JOURNAL_ARTICLE", "CASE_LAW", "CASE_NOTE", "FORTHCOMING"] as const;
+  if (kind === "FESTSCHRIFT") return ["FESTSCHRIFT_CONTRIBUTION"] as const;
   if (kind === "BOOK")
     return [
       "BOOK",
