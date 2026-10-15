@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="638" viewBox="0 0 960 638" role="img" aria-labelledby="title desc">
+<title id="title">Technischer Workflow des Footnote-Checkers</title>
+<desc id="desc">Von oben nach unten: Prüfung in Word starten, Fußnoten gebündelt lesen, Quellen und Regeln analysieren, Vorschläge bewerten. Danach stehen Analyse, Prüfung und Korrektur nebeneinander. Nur freigegebene sichere Änderungen gelangen zum Write-back. Ergebnisse können als CSV exportiert werden.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#18313A"/></marker></defs>
+<rect width="960" height="638" rx="14" fill="#fff"/>
+<g fill="none" stroke="#18313A" stroke-width="1.6" marker-end="url(#arrow)">
+<path d="M480 66V88"/><path d="M480 150V174"/><path d="M480 270V294"/>
+<path d="M480 356V376H168V390"/><path d="M480 356V390"/><path d="M480 376H792V390"/>
+<path d="M480 464V498"/><path d="M792 464V498"/>
+</g>
+<g font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif" text-anchor="middle" fill="#18313A">
+<rect x="24" y="12" width="912" height="54" rx="9" fill="#18313A"/>
+<text x="480" y="35" font-size="18" font-weight="700" fill="#fff">1 · In Word starten</text>
+<text x="480" y="55" font-size="15" fill="#fff">Task Pane: Modus wählen und Fußnotenprüfung starten</text>
+<rect x="24" y="88" width="912" height="62" rx="9" fill="#F7F4EC" stroke="#18313A"/>
+<text x="480" y="113" font-size="18" font-weight="700">2 · Footnote Reader</text>
+<text x="480" y="136" font-size="15">Office.js liest gebündelt → lokale Snapshots mit Text, Formatierung, Position und Schutzbereichen</text>
+<rect x="24" y="174" width="912" height="96" rx="9" fill="#F7F4EC" stroke="#18313A"/>
+<text x="480" y="197" font-size="18" font-weight="700">3 · Footnote Engine</text>
+<g fill="#fff" stroke="#18313A"><rect x="40" y="209" width="260" height="40" rx="6"/><rect x="350" y="209" width="260" height="40" rx="6"/><rect x="660" y="209" width="260" height="40" rx="6"/></g>
+<text x="170" y="234" font-size="16">Parser: Quellen / Fundstellen</text>
+<text x="480" y="234" font-size="16">Mapping + Quellenregister</text>
+<text x="790" y="234" font-size="16">Zitier- und Formatregeln</text>
+<g fill="none" stroke="#18313A" stroke-width="1.6" marker-end="url(#arrow)"><path d="M304 229H344"/><path d="M614 229H654"/></g>
+<text x="480" y="263" font-size="13">Grundlage: lokales Zitierprofil, Werke und Abkürzungen</text>
+<rect x="24" y="294" width="912" height="62" rx="9" fill="#F7F4EC" stroke="#18313A"/>
+<text x="480" y="319" font-size="18" font-weight="700">4 · Review Engine</text>
+<text x="480" y="342" font-size="15">Vorschläge bewerten, Konflikte prüfen → AUTO · MANUAL · TECHNICAL · INFO</text>
+<g fill="#fff" stroke="#18313A"><rect x="24" y="390" width="288" height="74" rx="9"/><rect x="336" y="390" width="288" height="74" rx="9"/><rect x="648" y="390" width="288" height="74" rx="9"/></g>
+<text x="168" y="416" font-size="18" font-weight="700">Analyse</text>
+<text x="168" y="438" font-size="15">Ergebnisse anzeigen</text><text x="168" y="456" font-size="14">Keine Dokumentänderung</text>
+<text x="480" y="416" font-size="18" font-weight="700">Prüfung</text>
+<text x="480" y="438" font-size="15">Einzeln entscheiden</text><text x="480" y="456" font-size="14">Freigegebene Aktionen ausführen</text>
+<text x="792" y="416" font-size="18" font-weight="700">Korrektur</text>
+<text x="792" y="438" font-size="15">Sichere AUTO-Aktionen</text><text x="792" y="456" font-size="14">Automatisch ausführen</text>
+<rect x="336" y="498" width="600" height="80" rx="9" fill="#F1FAF7" stroke="#43B7A3"/>
+<text x="636" y="523" font-size="18" font-weight="700">5 · Write-back Engine → Word</text>
+<text x="636" y="546" font-size="15">Ziel, aktuellen Text und Schutz erneut prüfen</text>
+<text x="636" y="566" font-size="15">Sicher: gebündelt schreiben · Sonst: überspringen und melden</text>
+<text x="168" y="525" font-size="15">Unsichere oder technisch</text><text x="168" y="546" font-size="15">blockierte Stellen bleiben</text><text x="168" y="567" font-size="15">zur Prüfung sichtbar.</text>
+<path d="M24 599H936" stroke="#d5dddf"/>
+<text x="480" y="624" font-size="15">Ergebnisse: Fußnotenliste · Zur Fußnote springen · Lokaler CSV-Bericht</text>
+</g></svg>

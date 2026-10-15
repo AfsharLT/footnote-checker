@@ -81,48 +81,9 @@ Nach der Analyse eine Fußnote in der Ergebnisliste aufklappen und **„Zur Fuß
 
 ## Technischer Workflow
 
-Die **Task Pane** ist die Seitenleiste in Word. Sie startet die Prüfung und zeigt Ergebnisse und Entscheidungen. Der folgende Ablauf entspricht der aktuellen Architektur.
+Die **Task Pane** ist die Seitenleiste in Word. Sie startet die Prüfung und zeigt Ergebnisse und Entscheidungen. Der Ablauf wird von oben nach unten gelesen. Die drei Modi stehen nebeneinander; nur freigegebene und sichere Änderungen werden in Word zurückgeschrieben. [Diagramm in voller Größe öffnen](docs/technical-workflow.svg).
 
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#F7F4EC', 'primaryTextColor': '#18313A', 'primaryBorderColor': '#18313A', 'lineColor': '#18313A'}}}%%
-flowchart TD
-    Word["Word-Dokument<br/>Fußnoten und Formatierung"]
-    UI["Task Pane · React / TypeScript<br/>Analyse · Prüfung · Korrektur · Einstellungen"]
-    Reader["Footnote Reader · Office.js<br/>Word.run + gebündeltes context.sync<br/>150 Fußnoten je Leseabschnitt"]
-    Snapshot["Lokale Snapshots<br/>Text · Referenz · Locator · Texthash<br/>Formatierung und geschützte Bereiche"]
-    Word --> UI --> Reader
-    Word --> Reader --> Snapshot
-
-    subgraph Engine["Footnote Engine · deterministische Analyse"]
-        Parse["Textmuster + Parser<br/>Quellen, Zusätze und Fließtext segmentieren<br/>Quellenart und Fundstellen extrahieren"]
-        Mapping["Quellen-Mapping + Source Registry<br/>Werke zuordnen · Voll- und Kurzbelege verbinden"]
-        Rules["Rule Engine<br/>Zitier- und Formatregeln anwenden"]
-        Findings["Findings · Prüfhinweise<br/>Regel · Textposition · Originaltext · Vorschlag"]
-        Parse --> Mapping --> Rules --> Findings
-    end
-    Snapshot --> Parse
-    Local["Lokale Einstellungen und Verzeichnisse<br/>Zitierprofil · Werke · Abkürzungen"] --> Mapping
-    Local --> Rules
-    Review["Review Engine<br/>Vorschläge bewerten und Konflikte prüfen<br/>AUTO · MANUAL · TECHNICAL · INFO"]
-    Findings --> Review
-    Results["Analyse-Modus<br/>Ergebnisse anzeigen · Dokument bleibt unverändert"]
-    Manual["Prüfung-Modus<br/>Übernehmen · Ablehnen · Später · Manuell geprüft"]
-    Auto["Korrektur-Modus<br/>Nur sichere, ausführbare AUTO-Aktionen"]
-    Review --> Results
-    Review --> Manual
-    Review --> Auto
-    Plan["Write-back Engine<br/>Freigegebene Aktionen planen<br/>Ziel, aktuellen Text und Schutzbereiche erneut prüfen"]
-    Manual -->|"Nur freigegebene ausführbare Aktionen"| Plan
-    Auto --> Plan
-    Write["Gebündeltes Zurückschreiben<br/>Office.js · Word JavaScript API"]
-    Plan -->|"Sicher und konfliktfrei"| Write --> Word
-    Plan -->|"Verändert oder unsicher"| Notice["Überspringen und verständlich melden"]
-    Results --> Report["Lokaler CSV-Bericht"]
-    Manual --> Report
-    Write --> Report
-    UI --> Navigation["POC 17.6 · Fußnotennavigation<br/>Zur aktiven Fußnote im Word-Dokument springen"]
-    Navigation --> Word
-```
+![Technischer Workflow: Reader, Analyse und Bewertung; drei Prüfmodi und sicheres Zurückschreiben](docs/technical-workflow.svg)
 
 - **Reader / Snapshot:** Office.js liest Word-Daten gebündelt. Ein Snapshot ist eine lokale Momentaufnahme einer Fußnote. Der **Locator** beschreibt ihre Position; der **Texthash** ist ein Fingerabdruck, mit dem FNC spätere Änderungen erkennt. Word-Objekte werden nicht als dauerhaft gespeicherte Daten weitergereicht.
 - **Parser / Regeln:** Textmuster erkennen etwa `Rn. 12`; der Parser ordnet dies einer Quelle und Fundstelle zu. Das Mapping identifiziert hinterlegte Werke, die dokumentbezogene Source Registry verbindet Kurzbelege mit früheren Quellen. Deterministische Regeln ergeben bei gleichen Daten und Einstellungen dieselben Befunde.
