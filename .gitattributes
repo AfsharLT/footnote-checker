@@ -2,3 +2,6 @@
 *.pdf binary
 *.pkg binary
 *.zip binary
+
+# Exclude the generated offline guide from GitHub language statistics.
+downloads/Footnote-Checker-macOS-Installation.html linguist-generated=true
