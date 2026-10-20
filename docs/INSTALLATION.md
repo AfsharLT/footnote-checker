@@ -13,64 +13,36 @@ FNC ist ein Word-Web-Add-in. Das **Manifest** ist die XML-Datei, mit der Word Na
 
 ## Paket auswählen
 
-[macOS herunterladen](https://github.com/AfsharLT/footnote-checker/raw/refs/heads/main/downloads/Footnote-Checker-macOS-Beta.zip) · [Windows herunterladen](https://github.com/AfsharLT/footnote-checker/raw/refs/heads/main/downloads/Footnote-Checker-Windows-Beta.zip)
+**Mac:** [FootnoteChecker.pkg](../downloads/FootnoteChecker.pkg) · [Bebilderte Anleitung](MACOS_INSTALLATION.md) · [PDF](../downloads/Footnote-Checker-macOS-Installation.pdf) · [Offline-HTML](../downloads/Footnote-Checker-macOS-Installation.html).
 
-Download funktioniert nach Push der Paketdateien nach `main`; ein privates Repository erfordert Zugriff. ZIP vollständig entpacken. Scripts und `manifest.production.xml` müssen zusammen im jeweiligen Paketordner bleiben. Die Anleitung ist auch als `INSTALLATION.md` im ZIP enthalten. Prüfsummen stehen im Repository unter `downloads/SHA256SUMS.txt`.
+**Windows:** [Bisheriges Windows-ZIP](https://github.com/AfsharLT/footnote-checker/raw/refs/heads/main/downloads/Footnote-Checker-Windows-Beta.zip). Diesen Stand haben wir bei der Mac-Überarbeitung nicht verändert.
+
+Der lokale Mac-PKG-Installationstest wurde vom Nutzer am 21. Oktober 2026 bestätigt. Das Paket ist unsigniert und nicht notarisiert. Die Downloads richten das Produktionsmanifest ein; sie aktualisieren nicht den gehosteten Dienst.
 
 ## macOS
 
-### Installation mit dem Mac-Script
+### Neuer Standardweg: normaler PKG-Installer
 
-1. Word einmal regulär starten, falls es frisch installiert ist, dann mit **⌘Q** vollständig beenden.
-2. ZIP entpacken. `install-footnote-checker-mac.command` im Finder öffnen.
-3. Die Ausgabe prüfen. Das Script kopiert `manifest.production.xml` nach:
+1. Word einmal regulär öffnen, falls es frisch installiert ist. Dokumente speichern und Word mit **Cmd+Q** vollständig beenden.
+2. **FootnoteChecker.pkg** doppelt anklicken. Kein Terminal, kein `.command`, kein `chmod`.
+3. Falls Gatekeeper blockiert: **Systemeinstellungen → Datenschutz & Sicherheit → Sicherheit → Dennoch öffnen** für genau dieses Paket wählen; eine etwaige macOS-Bestätigung und die erneute Rückfrage mit **Öffnen** bestätigen. Das Paket ist derzeit unsigniert und nicht notarisiert. Kein globales Deaktivieren von Gatekeeper. [Apple-Anleitung](https://support.apple.com/de-de/102445).
+4. **Fortfahren → Fortfahren → Installieren**. Falls die Zielauswahl erscheint: **Nur für mich installieren**. Der Installer fordert bei laufendem Word regulär zum Schließen auf; vorher Dokumente sichern.
+5. Erfolgsmeldung abwarten, **Schließen**, Word starten und ein Dokument öffnen. Unter **Start → Add-Ins** den Footnote-Checker wählen.
+6. Auf einer Dokumentkopie zuerst **Analyse** testen.
 
-   `~/Library/Containers/com.microsoft.Word/Data/Documents/wef/manifest.production.xml`
+[Alle Schritte, echte Installer-Screenshots und Hilfe bei Fehlern](MACOS_INSTALLATION.md). Die Anleitung steht auch als [PDF](../downloads/Footnote-Checker-macOS-Installation.pdf) und [eigenständiges HTML](../downloads/Footnote-Checker-macOS-Installation.html) bereit.
 
-   Eine vorhandene gleichnamige Datei wird vor dem Ersetzen mit Zeitstempel gesichert. Das Script installiert keine zusätzliche Software, lädt keine Dateien herunter und benötigt kein `sudo`.
-4. Erfolg: Terminal meldet **Installation abgeschlossen** und zeigt den Zielpfad.
-5. Word neu starten, Dokument öffnen und unter **Start → Add-Ins** FNC auswählen. Je nach Version **Weitere Add-Ins / Meine Add-Ins** öffnen.
-6. Auf einer Dokumentkopie zunächst **Analyse** ausführen, dann Settings und Literaturverzeichnis öffnen.
+### Was der Installer ändert
 
-### Manuelle Installation ohne Script
-
-1. Word beenden. Finder öffnen, **⇧⌘G** drücken.
-2. `~/Library/Containers/com.microsoft.Word/Data/Documents` eingeben.
-3. Falls nicht vorhanden, den Unterordner `wef` anlegen.
-4. Die Datei `manifest.production.xml` aus dem Paket in `wef` kopieren. Eine bestehende gleichnamige Datei zunächst separat sichern.
-5. Word erneut starten und FNC unter den Add-ins öffnen.
-
-Dieser Weg benötigt keine Ausführung eines heruntergeladenen Scripts. Er folgt [Microsofts dokumentiertem Mac-Sideloading-Verfahren](https://learn.microsoft.com/en-us/office/dev/add-ins/testing/sideload-an-office-add-in-on-mac).
+Er installiert ausschließlich für das aktuelle Benutzerkonto nach `~/Library/Containers/com.microsoft.Word/Data/Documents/wef/manifest.production.xml`. Geänderte ältere FNC-Dateien werden unter `~/Library/Application Support/Footnote-Checker/Installer Backups/` gesichert. Identische Neuinstallationen erzeugen keine zusätzlichen Backups. Andere Add-ins und lokale FNC-Einstellungen werden nicht verändert. Die benutzerbezogene Installation benötigt planmäßig keine Administratorrechte; Gatekeeper oder andere macOS-Freigaben können dennoch eine eigene Bestätigung zeigen.
 
 ### macOS-Probleme lösen
 
-| Symptom | Vorgehen |
-| --- | --- |
-| „Entwickler kann nicht verifiziert werden“ | Manuelle Installation oben verwenden. Wenn du das Script aus diesem Projekt bewusst ausführen möchtest, nach dem blockierten Öffnungsversuch **Systemeinstellungen → Datenschutz & Sicherheit → Dennoch öffnen** prüfen. Das gewährt nur diesem Script eine Ausnahme; Gatekeeper nicht global deaktivieren. [Apple-Anleitung](https://support.apple.com/en-ie/102445). |
-| Script lässt sich nicht ausführen / „Permission denied“ | Ausführungsrecht prüfen; siehe Befehl unten. |
-| Manifest nicht gefunden | ZIP vollständig entpacken; XML und Script im selben Ordner belassen. |
-| Kein Zugriff auf den Word-Ordner | Word einmal starten; reguläres Benutzerkonto verwenden. Bei verwalteten Geräten IT kontaktieren. Nicht mit `sudo` improvisieren. |
-| Add-in erscheint nicht | Word wirklich mit ⌘Q beenden, XML-Zielpfad prüfen, Dokument öffnen und Add-in-Menü erneut aufrufen. |
-| Leere Oberfläche / Ladefehler | Internetzugang und Hosting prüfen, Word neu starten. Screenshots und Word-Version dokumentieren; kein blindes Cache-Löschen. |
-| Alter Stand bleibt sichtbar | Word komplett beenden und erneut starten. Prüfen, ob das Paket die Produktionsadresse enthält. Neuer lokaler Code erreicht die gehostete Beta erst nach Deployment. |
-
-Falls nur das Ausführungsrecht fehlt: Terminal öffnen, `cd ` tippen, den entpackten Paketordner aus dem Finder ins Terminal ziehen und Enter drücken. Das wechselt nur den Arbeitsordner. Danach:
-
-```bash
-chmod u+x ./install-footnote-checker-mac.command
-```
-
-Ändert ausschließlich das Ausführungsrecht dieses Scripts für den eigenen Benutzer; es installiert noch nichts und ersetzt keine Gatekeeper-Freigabe. Erfolg: Das Script lässt sich starten. Zum bewussten Start aus diesem Ordner:
-
-```bash
-./install-footnote-checker-mac.command
-```
-
-Dieser zweite Befehl kopiert das Manifest und sichert eine vorhandene gleichnamige Datei. Erfolg: **Installation abgeschlossen**. Alternativ weiterhin die manuelle Installation verwenden.
+Siehe [Probleme und Lösungen ohne Terminal](MACOS_INSTALLATION.md#wenn-etwas-nicht-klappt). Fehlt der Word-Ordner, Word einmal starten und beenden. Bei gesperrten Add-ins oder fehlender Gatekeeper-Freigabeoption die IT einbeziehen. Keine Systemschutzfunktionen oder Unternehmensrichtlinien umgehen.
 
 ### Entfernen oder Wiederherstellen
 
-Word beenden. Nur die FNC-Datei `manifest.production.xml` aus `wef` entfernen beziehungsweise eine vor der Installation gesicherte Version zurückkopieren. Andere Add-in-Dateien belassen. Word neu starten. Bei weiterhin angezeigten Cache-Einträgen Microsofts [Cache-Anleitung](https://learn.microsoft.com/en-us/office/dev/add-ins/testing/clear-cache) beachten; vorher FNC-Einstellungen exportieren und nicht den gesamten Word-Container löschen.
+Word beenden. Im Finder über **Gehe zu → Gehe zum Ordner** den oben genannten `wef`-Ordner öffnen und nur die FNC-Datei entfernen oder eine gesicherte Version zurückkopieren. Andere Add-in-Dateien belassen. Vor Cachebereinigung FNC-Einstellungen exportieren und niemals den gesamten Word-Container löschen. Der frühere `.command`-Installer bleibt nur als historischer Entwickler-Fallback im Repository; er ist nicht mehr Teil des neuen Mac-Pakets.
 
 ## Windows
 

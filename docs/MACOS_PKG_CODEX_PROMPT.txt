@@ -1,0 +1,10 @@
+Footnote-Checker – lokaler macOS-PKG-Beta-Installer, 17. Oktober 2026
+Kontext: CTO-Entscheidung: unsigned PKG, einmalige bewusste Gatekeeper-Freigabe, normaler macOS-Installer, keine Terminaleingaben. Kein zusätzlicher App-/DMG-Umweg.
+Ziel: Benutzerbezogene Word-Manifest-Installation; normale Installer-Oberfläche, verständliche Vorbedingungen/Erfolg. Word niemals mit ungespeicherten Dokumenten zwangsweise beenden. Bestehende FNC-Manifestdatei sichern, fremde Add-ins/Einstellungen erhalten. Reinstallation identischer Daten ohne neue Sicherungen. Keine Root-Schreiboperationen in Benutzerprofilen, keine globale Sicherheits-/Office-Policy ändern.
+Scope: Mac-PKG, Buildskript, isolierte Tests, Build-/Versionsnachweis und Prüfsummen, lokale README-/Download-/Anleitungsumstellung. Windows-Binärpaket unverändert. HTML/PDF-Anleitung, echte Installer-Vorschaubilder; Gatekeeper-Screens nur als solche belegte echte Screenshots oder ausdrücklich beschriftete Orientierungsgrafiken.
+Nicht enthalten: Signierung, Notarisierung, Apple-Enrollment, Hosting-Deploy, automatische Gatekeeper-Freigabe, globale Rechte, geänderte Engine.
+Prüfen: Apple pkgbuild/productbuild, Paketstruktur/Signaturstatus/Manifestbytes, user-home-only Domain, native Word-Schließen-Dialog, Neuinstallation/Update/Backups/Idempotenz in isoliertem Home, defekte Quelle, fremde ID, Symlink und Pfad mit Leerzeichen. Realer quarantänierter Download und Abschlussinstallation werden vom Nutzer bestätigt; keine Gatekeeper-Warnung umgehen. Keine Build-Prüfung als End-to-End-Installation ausgeben.
+Finalreport: Pfad zur PKG und Anleitung, was lokal vorbereitet ist, tatsächliche Prüfungen und Grenzen, nächster manueller Test, Trennung Manifest und gehostetem Code.
+Policy: Kein Commit, Push, Release oder Deployment. Keine Installation im echten Word-Profil für das bloße Erzeugen des Pakets.
+
+Nachtrag 21. Oktober 2026: Nutzer bestätigt lokalen Test und erlaubt nun ausdrücklich Commit und Push. Anleitung/Downloads aktualisieren und das getestete PKG bytegleich erhalten. Die ursprüngliche No-Commit-Policy galt nur bis zu dieser Freigabe. Kein Hosting-Deploy oder neues Release beauftragt.

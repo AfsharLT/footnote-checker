@@ -1,0 +1,8 @@
+#!/bin/bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+. "$SCRIPT_DIR/context.sh"
+. "$SCRIPT_DIR/install-manifest.sh"
+user_home=$(fnc_user_home)
+fnc_check_environment "$user_home"
+fnc_install_manifest "$user_home" "$SCRIPT_DIR/manifest.production.xml"

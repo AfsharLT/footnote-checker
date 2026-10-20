@@ -1,0 +1,16 @@
+{
+  "installerVersion": "0.1.0",
+  "packageIdentifier": "de.footnote-checker.word-addin.macos",
+  "builtAtUTC": "2026-10-17T11:53:19.287021+00:00",
+  "baseGitCommit": "221c5f7f54f89cc29c1a5dfc0dac67aed87568ee",
+  "localUnpublishedBuild": false,
+  "signed": false,
+  "notarized": false,
+  "installationDomain": "CurrentUserHomeDirectory",
+  "manifestSHA256": "a037365f7709db0ae18cf130de1aacfc2974f3049a7c79973adf106f549a71a5",
+  "packageSHA256": "c9a223c3705b82a68742f71fb5488e97f0bee7a3deac5fb933cebe687ecc7f18",
+  "hostedTaskpane": "https://footnote-checker.shayesteh-afshar.workers.dev/taskpane.html",
+  "applicationCodeIncluded": false,
+  "releaseApprovedOn": "2026-10-21",
+  "userValidation": "Nutzer hat den lokalen Installer-Test bestätigt und Commit/Push freigegeben; einzelne Gatekeeper-/Update-Szenarien wurden nicht separat berichtet."
+}

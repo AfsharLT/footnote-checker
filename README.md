@@ -29,20 +29,28 @@ FNC arbeitet regelbasiert. Es ersetzt keine fachliche Prüfung und verifiziert d
 
 | System | Download | Einstieg |
 | --- | --- | --- |
-| macOS | [Mac-Betapaket herunterladen](https://github.com/AfsharLT/footnote-checker/raw/refs/heads/main/downloads/Footnote-Checker-macOS-Beta.zip) | Entpacken → Word beenden → Mac-Installer öffnen |
+| macOS | [Mac-PKG herunterladen](https://github.com/AfsharLT/footnote-checker/raw/refs/heads/main/downloads/FootnoteChecker.pkg) · [PDF-Anleitung](downloads/Footnote-Checker-macOS-Installation.pdf) | Word beenden → PKG öffnen → Installieren |
 | Windows | [Windows-Betapaket herunterladen](https://github.com/AfsharLT/footnote-checker/raw/refs/heads/main/downloads/Footnote-Checker-Windows-Beta.zip) | Entpacken → Word beenden → Windows-Installer starten |
 
-Bei einem privaten Repository ist GitHub-Zugriff für die Downloads erforderlich. Die Pakete laden die jeweils gehostete Beta; ein GitHub-Update aktualisiert diesen Dienst nicht automatisch. Die ZIP-Dateien enthalten das Produktionsmanifest und die vollständige Anleitung. [Paketinhalte und Prüfsummen](downloads/README.md).
+**Mac-PKG 0.1.0: lokaler Installationstest am 21. Oktober 2026 bestätigt.** Das Paket ist unsigniert und nicht notarisiert; eine Gatekeeper-Freigabe kann erforderlich sein. [Bebilderte Mac-Anleitung](docs/MACOS_INSTALLATION.md).
+
+Bei einem privaten Repository ist GitHub-Zugriff für die Downloads erforderlich. Die Pakete laden die jeweils gehostete Beta; ein GitHub-Update aktualisiert diesen Dienst nicht automatisch. Das Mac-PKG richtet das Produktionsmanifest ein; das optionale Mac-ZIP enthält zusätzlich PDF und HTML-Anleitung. Das bisherige Windows-ZIP bleibt unverändert. [Paketinhalte und Prüfsummen](downloads/README.md).
 
 ### macOS – Schritt für Schritt
 
-1. Mac-Paket herunterladen und vollständig entpacken.
-2. Word mit **⌘Q** beenden; ein geschlossenes Dokumentfenster genügt nicht.
-3. `install-footnote-checker-mac.command` öffnen. Das Script kopiert ausschließlich das Manifest in den Word-Add-in-Ordner und sichert eine vorhandene gleichnamige Datei. Es benötigt keine Administratorrechte.
-4. Word erneut öffnen und ein Dokument laden. Unter **Start → Add-Ins** den **Footnote-Checker** auswählen; je nach Word-Version über **Weitere Add-Ins / Meine Add-Ins**.
-5. Zuerst eine Dokumentkopie im Modus **Analyse** prüfen.
+1. Word einmal starten, falls es frisch installiert ist, dann Dokumente sichern und Word mit **Cmd+Q** vollständig beenden.
+2. **FootnoteChecker.pkg** herunterladen und per Doppelklick öffnen. Kein Entpacken nötig.
+3. Nur falls macOS das unsignierte Paket blockiert: **Systemeinstellungen → Datenschutz & Sicherheit → Sicherheit → Dennoch öffnen**, eine etwaige macOS-Bestätigung und danach **Öffnen** wählen. Die Freigabe gilt für diese Datei. [Apple-Anleitung](https://support.apple.com/de-de/102445).
+4. Im normalen Installer **Fortfahren → Fortfahren → Installieren** wählen. Falls eine Zielauswahl erscheint: **Nur für mich installieren**. Keine Terminaleingabe und kein zusätzliches Script erforderlich.
+5. Nach der Erfolgsmeldung den Installer schließen. Word starten, Dokument öffnen und **Start → Add-Ins → Footnote-Checker** wählen.
 
-**Mac blockiert das Script?** Verwende alternativ die manuelle Installation per Finder: **⇧⌘G** → `~/Library/Containers/com.microsoft.Word/Data/Documents/wef` → `manifest.production.xml` dorthin kopieren → Word neu starten. Fehlt `wef`, den Ordner anlegen. Ist nur die Ausführungsberechtigung verloren gegangen, hilft der in der [Anleitung](docs/INSTALLATION.md#macos-probleme-lösen) erläuterte `chmod`-Befehl. Gatekeeper, Berechtigungen und Cache-Probleme sind dort separat erklärt. [Microsofts Mac-Anleitung](https://learn.microsoft.com/en-us/office/dev/add-ins/testing/sideload-an-office-add-in-on-mac).
+<img src="docs/installation-macos/installer-install.png" alt="Normaler macOS-Installer: Footnote-Checker im eigenen Benutzerordner installieren" width="640">
+
+*Der neue Mac-Weg nutzt den normalen Installer. Eine zusätzliche Terminaleingabe ist nicht nötig.*
+
+Eine ältere FNC-Konfiguration wird vor dem Ersetzen gesichert. Andere Add-ins und lokale FNC-Einstellungen bleiben erhalten. Auf verwalteten Macs kann eine IT-Freigabe nötig sein; die Schutzfunktionen werden nicht global geändert.
+
+[Ausführlich mit echten Installer-Screenshots](docs/MACOS_INSTALLATION.md) · [PDF herunterladen](downloads/Footnote-Checker-macOS-Installation.pdf) · [Offline-HTML](downloads/Footnote-Checker-macOS-Installation.html) · [Optionales Mac-ZIP](downloads/Footnote-Checker-macOS-Beta.zip).
 
 ### Windows – Schritt für Schritt
 
@@ -81,9 +89,11 @@ Nach der Analyse eine Fußnote in der Ergebnisliste aufklappen und **„Zur Fuß
 
 ## Technischer Workflow
 
-Die **Task Pane** ist die Seitenleiste in Word. Sie startet die Prüfung und zeigt Ergebnisse und Entscheidungen. Der Ablauf wird von oben nach unten gelesen. Die drei Modi stehen nebeneinander; nur freigegebene und sichere Änderungen werden in Word zurückgeschrieben. [Diagramm in voller Größe öffnen](docs/technical-workflow.svg).
+Die **Task Pane** ist die Seitenleiste in Word. Sie startet die Prüfung und zeigt Ergebnisse und Entscheidungen. Die Grafik zeigt drei Bereiche: **Einlesen → Analyse → Bewertung und Anwendung**. Innerhalb der Engine sind Parser, Werk-Mapping/Quellenregister und Regelprüfung getrennt dargestellt. Nur freigegebene und sichere Aktionen gelangen zum Zurückschreiben.
 
-![Technischer Workflow: Reader, Analyse und Bewertung; drei Prüfmodi und sicheres Zurückschreiben](docs/technical-workflow.svg)
+[Grafik vergrößern](docs/technical-workflow.png) · [SVG öffnen](docs/technical-workflow.svg) · [Bearbeitbare Draw.io-Datei](docs/technical-workflow.drawio).
+
+![Technischer Workflow: Reader und Snapshots, interne Engine-Module, Review und drei Prüfmodi mit sicherem Write-back](docs/technical-workflow.png)
 
 - **Reader / Snapshot:** Office.js liest Word-Daten gebündelt. Ein Snapshot ist eine lokale Momentaufnahme einer Fußnote. Der **Locator** beschreibt ihre Position; der **Texthash** ist ein Fingerabdruck, mit dem FNC spätere Änderungen erkennt. Word-Objekte werden nicht als dauerhaft gespeicherte Daten weitergereicht.
 - **Parser / Regeln:** Textmuster erkennen etwa `Rn. 12`; der Parser ordnet dies einer Quelle und Fundstelle zu. Das Mapping identifiziert hinterlegte Werke, die dokumentbezogene Source Registry verbindet Kurzbelege mit früheren Quellen. Deterministische Regeln ergeben bei gleichen Daten und Einstellungen dieselben Befunde.
