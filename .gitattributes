@@ -1,0 +1,4 @@
+# Preserve downloadable artifacts byte-for-byte; do not diff them as source text.
+*.pdf binary
+*.pkg binary
+*.zip binary
